@@ -28,9 +28,13 @@ type Settings struct {
 
 func DefaultSettings() Settings {
 	return Settings{Revision: 1, OperationConcurrency: 1, AttributedFailureThreshold: 3,
+		// 401/403 are always immediate; this list is for documentation / future extras.
 		AttributedFailureStatuses: []int{401, 403}, DemotionPriority: -100, ProtectionLevel: "strict",
 		DefaultRestorePriority: 0,
-		DefaultTokenCapacity:   1_000_000, PerAccountTokenCapacity: map[string]uint64{},
+		// 429/5xx participate in the consecutive-threshold path (default off → only 401/403 auto-demote).
+		// Set CPA_GROK_COUNT_429 / CPA_GROK_COUNT_5XX=true to also demote after N consecutive such failures.
+		CountStatus429: false, CountStatus5XX: false,
+		DefaultTokenCapacity: 1_000_000, PerAccountTokenCapacity: map[string]uint64{},
 		HealthStaleAfterSeconds: 86400, OperationTimeoutSeconds: 60, WriteMode: "managed"}
 }
 

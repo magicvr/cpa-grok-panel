@@ -1,6 +1,7 @@
 package application_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -51,6 +52,84 @@ func TestUsageServiceWeakDedupe(t *testing.T) {
 	r2, err := svc.Handle(event)
 	if err != nil || !r2.Duplicate || r2.DedupeMode != "weak" {
 		t.Fatalf("weak dedupe failed: %+v err=%v", r2, err)
+	}
+}
+
+func TestUsageDemotion401Immediate(t *testing.T) {
+	dir := t.TempDir()
+	store, err := stateinfra.Open(dir, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	settings := application.DefaultSettings()
+	settings.AttributedFailureThreshold = 3
+	svc := application.NewUsageServiceWithDemotion(store, time.Now, settings, nil)
+	event := domain.UsageEvent{AuthIndex: "a1", Outcome: "failure", StatusCode: 401, Provider: "xai", OccurredAt: time.Now().UTC()}
+	result, err := svc.Handle(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.DemotionRequested {
+		t.Fatalf("401 should demote immediately: %+v state=%+v", result, store.View().Accounts["a1"].Demotion)
+	}
+}
+
+func TestUsageDemotion429NeedsThreshold(t *testing.T) {
+	dir := t.TempDir()
+	store, err := stateinfra.Open(dir, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	settings := application.DefaultSettings()
+	settings.AttributedFailureThreshold = 3
+	settings.CountStatus429 = true
+	svc := application.NewUsageServiceWithDemotion(store, time.Now, settings, nil)
+	for i := 1; i <= 2; i++ {
+		event := domain.UsageEvent{AuthIndex: "a2", EventID: fmt.Sprintf("e%d", i), Outcome: "failure", StatusCode: 429, Provider: "xai", OccurredAt: time.Now().UTC()}
+		result, err := svc.Handle(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.DemotionRequested {
+			t.Fatalf("429 should not demote before threshold on hit %d", i)
+		}
+	}
+	event := domain.UsageEvent{AuthIndex: "a2", EventID: "e3", Outcome: "failure", StatusCode: 429, Provider: "xai", OccurredAt: time.Now().UTC()}
+	result, err := svc.Handle(event)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.DemotionRequested {
+		t.Fatalf("429 should demote at threshold: streak=%d", store.View().Accounts["a2"].Failure.ConsecutiveAttributedFailures)
+	}
+}
+
+func TestUsageDemotionSuccessClearsStreak(t *testing.T) {
+	dir := t.TempDir()
+	store, err := stateinfra.Open(dir, time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	settings := application.DefaultSettings()
+	settings.AttributedFailureThreshold = 3
+	settings.CountStatus429 = true
+	svc := application.NewUsageServiceWithDemotion(store, time.Now, settings, nil)
+	for i := 1; i <= 2; i++ {
+		_, _ = svc.Handle(domain.UsageEvent{AuthIndex: "a3", EventID: fmt.Sprintf("f%d", i), Outcome: "failure", StatusCode: 429, Provider: "xai", OccurredAt: time.Now().UTC()})
+	}
+	_, _ = svc.Handle(domain.UsageEvent{AuthIndex: "a3", EventID: "ok", Outcome: "success", Provider: "xai", OccurredAt: time.Now().UTC()})
+	if store.View().Accounts["a3"].Failure.ConsecutiveAttributedFailures != 0 {
+		t.Fatalf("success should clear streak")
+	}
+	result, err := svc.Handle(domain.UsageEvent{AuthIndex: "a3", EventID: "f3", Outcome: "failure", StatusCode: 429, Provider: "xai", OccurredAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.DemotionRequested {
+		t.Fatalf("single 429 after clear should not demote")
 	}
 }
 

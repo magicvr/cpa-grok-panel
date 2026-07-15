@@ -91,20 +91,30 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 		account.Failure.ConsecutiveAttributedFailures = 0
 		return false
 	}
-	if !isPotentialXAIOAuth(event) || !service.countsStatus(event.StatusCode) {
+	if !isPotentialXAIOAuth(event) {
 		account.Failure.ConsecutiveAttributedFailures = 0
 		return false
 	}
-	account.Failure.ConsecutiveAttributedFailures++
+	immediate := isImmediateDemotionStatus(event.StatusCode)
+	countable := immediate || service.countsThresholdStatus(event.StatusCode)
+	if !countable {
+		// Non-attributed failure: clear streak (same as success-side hygiene).
+		account.Failure.ConsecutiveAttributedFailures = 0
+		return false
+	}
+
 	failedAt := event.OccurredAt.UTC()
 	if failedAt.IsZero() {
 		failedAt = now
 	}
 	account.Failure.LastFailureAt = &failedAt
 	account.Failure.LastFailureCode = fmt.Sprintf("http_%d", event.StatusCode)
-	if account.Failure.ConsecutiveAttributedFailures < service.settings.AttributedFailureThreshold {
+
+	account.Failure.ConsecutiveAttributedFailures++
+	if !immediate && account.Failure.ConsecutiveAttributedFailures < service.settings.AttributedFailureThreshold {
 		return false
 	}
+
 	demotion := account.Demotion.Normalized()
 	if demotion.State == "requested" || demotion.State == "applied" {
 		return false
@@ -113,17 +123,38 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 	target := service.settings.DemotionPriority
 	account.Demotion = domain.DemotionState{
 		State: "requested", TargetPriority: &target, TriggeredAt: &triggeredAt,
+		FailureCode: account.Failure.LastFailureCode,
 	}
 	return true
 }
 
-func (service *UsageService) countsStatus(status int) bool {
+// 401/403 demote immediately (single attributed failure).
+func isImmediateDemotionStatus(status int) bool {
+	return status == 401 || status == 403
+}
+
+// Other statuses enter the consecutive-threshold path (default threshold=3).
+func (service *UsageService) countsThresholdStatus(status int) bool {
+	if status == 401 || status == 403 {
+		return false
+	}
 	for _, allowed := range service.settings.AttributedFailureStatuses {
-		if status == allowed {
+		if status == allowed && status != 401 && status != 403 {
 			return true
 		}
 	}
-	return status == 429 && service.settings.CountStatus429 || status >= 500 && status <= 599 && service.settings.CountStatus5XX
+	if status == 429 && service.settings.CountStatus429 {
+		return true
+	}
+	if status >= 500 && status <= 599 && service.settings.CountStatus5XX {
+		return true
+	}
+	return false
+}
+
+// countsStatus is kept for diagnostics / tests: any status that can contribute to demotion.
+func (service *UsageService) countsStatus(status int) bool {
+	return isImmediateDemotionStatus(status) || service.countsThresholdStatus(status)
 }
 
 func isSuccessfulOutcome(outcome string) bool {
