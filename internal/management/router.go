@@ -148,6 +148,8 @@ type setEnabledRequest struct {
 }
 
 type settingsUpdateRequest struct {
+	AutoRefreshEnabled         *bool `json:"auto_refresh_enabled"`
+	AutoRefreshIntervalSeconds *int  `json:"auto_refresh_interval_seconds"`
 	AttributedFailureThreshold *int  `json:"attributed_failure_threshold"`
 	CountStatus429             *bool `json:"count_status_429"`
 	CountStatus5XX             *bool `json:"count_status_5xx"`
@@ -171,9 +173,13 @@ func (router *Router) settingsResponse() settingsResponse {
 }
 
 func (router *Router) updateSettings(update settingsUpdateRequest) (application.Settings, error) {
-	if update.AttributedFailureThreshold == nil && update.CountStatus429 == nil && update.CountStatus5XX == nil &&
+	if update.AutoRefreshEnabled == nil && update.AutoRefreshIntervalSeconds == nil &&
+		update.AttributedFailureThreshold == nil && update.CountStatus429 == nil && update.CountStatus5XX == nil &&
 		update.DemotionPriority == nil && update.DefaultRestorePriority == nil {
 		return application.Settings{}, fmt.Errorf("至少提供一个可配置字段")
+	}
+	if update.AutoRefreshIntervalSeconds != nil && (*update.AutoRefreshIntervalSeconds < 2 || *update.AutoRefreshIntervalSeconds > 60) {
+		return application.Settings{}, fmt.Errorf("auto_refresh_interval_seconds 必须在 2..60 范围内")
 	}
 	if update.AttributedFailureThreshold != nil && (*update.AttributedFailureThreshold < 1 || *update.AttributedFailureThreshold > 100) {
 		return application.Settings{}, fmt.Errorf("attributed_failure_threshold 必须在 1..100 范围内")
@@ -191,6 +197,12 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		settings := router.settingsFallback
 		if snapshot.Settings != nil {
 			settings = *snapshot.Settings
+		}
+		if update.AutoRefreshEnabled != nil {
+			settings.AutoRefreshEnabled = *update.AutoRefreshEnabled
+		}
+		if update.AutoRefreshIntervalSeconds != nil {
+			settings.AutoRefreshIntervalSeconds = *update.AutoRefreshIntervalSeconds
 		}
 		if update.AttributedFailureThreshold != nil {
 			settings.AttributedFailureThreshold = *update.AttributedFailureThreshold

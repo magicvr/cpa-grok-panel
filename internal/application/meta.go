@@ -13,7 +13,8 @@ import (
 type Settings = config.Settings
 
 func DefaultSettings() Settings {
-	return Settings{Revision: 1, OperationConcurrency: 1, AttributedFailureThreshold: 3,
+	return Settings{Revision: 1, AutoRefreshEnabled: true, AutoRefreshIntervalSeconds: 5,
+		OperationConcurrency: 1, AttributedFailureThreshold: 3,
 		// 401/403 are always immediate; this list is for documentation / future extras.
 		AttributedFailureStatuses: []int{401, 403}, DemotionPriority: -100, ProtectionLevel: "strict",
 		DefaultRestorePriority: 0,

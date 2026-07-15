@@ -18,7 +18,7 @@ import (
 const (
 	SchemaVersion = 1
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.2.5"
+	PluginVersion = "0.2.6"
 )
 
 type DedupeState struct {
@@ -94,9 +94,9 @@ func (store *Store) load() error {
 		return fmt.Errorf("read state: %w", err)
 	}
 	var snapshot Snapshot
-	if err := json.Unmarshal(data, &snapshot); err != nil {
+	if err := decodeSnapshot(data, &snapshot); err != nil {
 		backupData, backupErr := os.ReadFile(store.path + ".bak")
-		if backupErr != nil || json.Unmarshal(backupData, &snapshot) != nil {
+		if backupErr != nil || decodeSnapshot(backupData, &snapshot) != nil {
 			return fmt.Errorf("decode state and backup: %w", err)
 		}
 	}
@@ -108,6 +108,28 @@ func (store *Store) load() error {
 	}
 	normalizeSnapshot(&snapshot)
 	store.snapshot = snapshot
+	return nil
+}
+
+func decodeSnapshot(data []byte, snapshot *Snapshot) error {
+	if err := json.Unmarshal(data, snapshot); err != nil {
+		return err
+	}
+	if snapshot.Settings == nil {
+		return nil
+	}
+	var raw struct {
+		Settings map[string]json.RawMessage `json:"settings"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if _, exists := raw.Settings["auto_refresh_enabled"]; !exists {
+		snapshot.Settings.AutoRefreshEnabled = true
+	}
+	if _, exists := raw.Settings["auto_refresh_interval_seconds"]; !exists {
+		snapshot.Settings.AutoRefreshIntervalSeconds = 5
+	}
 	return nil
 }
 

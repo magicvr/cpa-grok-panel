@@ -140,7 +140,7 @@ func TestRouterUpdateSettingsThenGet(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := management.NewRouter(application.NewAccountsService(fakeLister{}, store, time.Now, defaults), store, defaults)
-	body := []byte(`{"attributed_failure_threshold":7,"count_status_429":true,"count_status_5xx":true,"demotion_priority":-250,"default_restore_priority":12}`)
+	body := []byte(`{"auto_refresh_enabled":false,"auto_refresh_interval_seconds":12,"attributed_failure_threshold":7,"count_status_429":true,"count_status_5xx":true,"demotion_priority":-250,"default_restore_priority":12}`)
 	response := router.Handle(management.Request{Method: "PUT", Path: "/v0/management/cpa-grok-panel/api/v1/settings", Body: body})
 	if response.StatusCode != 200 {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
@@ -157,7 +157,7 @@ func TestRouterUpdateSettingsThenGet(t *testing.T) {
 	if err := json.Unmarshal(response.Body, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.AttributedFailureThreshold != 7 || !got.CountStatus429 || !got.CountStatus5XX || got.DemotionPriority != -250 || got.DefaultRestorePriority != 12 {
+	if got.AutoRefreshEnabled || got.AutoRefreshIntervalSeconds != 12 || got.AttributedFailureThreshold != 7 || !got.CountStatus429 || !got.CountStatus5XX || got.DemotionPriority != -250 || got.DefaultRestorePriority != 12 {
 		t.Fatalf("settings=%+v", got.Settings)
 	}
 	if got.Revision != defaults.Revision+1 || got.Source != "state" {
@@ -171,6 +171,17 @@ func TestRouterRejectsInvalidSettings(t *testing.T) {
 	response := router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"attributed_failure_threshold":0}`)})
 	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "1..100") {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
+	response = router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"auto_refresh_interval_seconds":1}`)})
+	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "2..60") {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
+}
+
+func TestDefaultAutoRefreshSettings(t *testing.T) {
+	settings := application.DefaultSettings()
+	if !settings.AutoRefreshEnabled || settings.AutoRefreshIntervalSeconds != 5 {
+		t.Fatalf("auto refresh defaults=%+v", settings)
 	}
 }
 
