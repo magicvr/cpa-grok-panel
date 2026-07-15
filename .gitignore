@@ -1,0 +1,22 @@
+# Binaries
+*.so
+*.dylib
+*.dll
+*.zip
+dist/
+bin/
+
+# State / local
+*.json.bak
+.state.json
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Dependencies / build
+node_modules/
+web/dist/
+/tmp/
