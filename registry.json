@@ -6,7 +6,7 @@
       "name": "Grok 账号面板",
       "description": "clean-room xAI OAuth 账号与真实 token 用量只读面板（M1）",
       "author": "magicvr",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "repository": "https://github.com/magicvr/cpa-grok-panel",
       "homepage": "https://github.com/magicvr/cpa-grok-panel",
       "license": "MIT",
