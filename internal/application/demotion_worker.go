@@ -10,18 +10,18 @@ import (
 const demotionQueueSize = 256
 
 type DemotionWorker struct {
-	accounts *AccountsService
-	store    *stateinfra.Store
-	settings Settings
-	queue    chan string
-	stop     chan struct{}
-	done     chan struct{}
-	once     sync.Once
+	accounts         *AccountsService
+	store            *stateinfra.Store
+	settingsFallback Settings
+	queue            chan string
+	stop             chan struct{}
+	done             chan struct{}
+	once             sync.Once
 }
 
 func NewDemotionWorker(accounts *AccountsService, store *stateinfra.Store, settings Settings) *DemotionWorker {
 	return &DemotionWorker{
-		accounts: accounts, store: store, settings: settings,
+		accounts: accounts, store: store, settingsFallback: settings,
 		queue: make(chan string, demotionQueueSize), stop: make(chan struct{}), done: make(chan struct{}),
 	}
 }
@@ -51,7 +51,7 @@ func (worker *DemotionWorker) run() {
 	for {
 		select {
 		case authIndex := <-worker.queue:
-			_ = worker.accounts.ApplyRequestedDemotion(authIndex, worker.settings.DemotionPriority)
+			_ = worker.accounts.ApplyRequestedDemotion(authIndex, worker.settings().DemotionPriority)
 		case <-ticker.C:
 			worker.processRequested()
 		case <-worker.stop:
@@ -63,7 +63,14 @@ func (worker *DemotionWorker) run() {
 func (worker *DemotionWorker) processRequested() {
 	for authIndex, account := range worker.store.View().Accounts {
 		if account.Demotion.Normalized().State == "requested" {
-			_ = worker.accounts.ApplyRequestedDemotion(authIndex, worker.settings.DemotionPriority)
+			_ = worker.accounts.ApplyRequestedDemotion(authIndex, worker.settings().DemotionPriority)
 		}
 	}
+}
+
+func (worker *DemotionWorker) settings() Settings {
+	if settings := worker.store.View().Settings; settings != nil {
+		return *settings
+	}
+	return worker.settingsFallback
 }

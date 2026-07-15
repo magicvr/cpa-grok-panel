@@ -5,286 +5,166 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Grok 账号面板</title>
   <style>
-    :root{color-scheme:dark;--bg:#101214;--surface:#181b1f;--surface-2:#20242a;--line:#343a42;--text:#f2f4f7;--muted:#a5adb8;--accent:#62d4e8;--good:#72d69b;--warn:#f3c969;--bad:#f28b95}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,sans-serif}.wrap{max-width:1380px;margin:auto;padding:24px 18px 36px}header{display:flex;justify-content:space-between;align-items:center;gap:16px}h1{margin:0;font-size:25px;letter-spacing:0}.sub{color:var(--muted);margin-top:3px}.actions,.modal-actions,.row-actions{display:flex;align-items:center;gap:8px}button{min-height:36px;border:1px solid transparent;border-radius:7px;padding:7px 14px;background:var(--accent);color:#071114;font:inherit;font-weight:700;cursor:pointer;white-space:nowrap}button:hover:not(:disabled){filter:brightness(1.08)}button:disabled{opacity:.5;cursor:wait}button.secondary{background:var(--surface-2);color:var(--text);border-color:var(--line)}button.enable,button.restore{background:#276a46;color:#effff5;border-color:#3d9364}button.disable{background:#71353e;color:#fff4f5;border-color:#a9505d}button.demote{background:#7b4825;color:#fff7ed;border-color:#b66a35}button.danger{margin-right:auto;background:transparent;color:var(--bad);border-color:#74404a}button.small{min-height:30px;padding:4px 9px;font-size:12px}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0}.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px}.label{color:var(--muted);font-size:12px}.value{font-size:21px;font-weight:750;margin-top:3px}.panel{overflow:hidden;background:var(--surface);border:1px solid var(--line);border-radius:8px}.toolbar{display:flex;align-items:end;gap:12px;flex-wrap:wrap;padding:13px;border-bottom:1px solid var(--line);background:#14171a}.field{display:grid;gap:5px;color:var(--muted);font-size:12px}.field.search{min-width:min(340px,100%);flex:1}.field input,.field select,.modal input{min-height:38px;border:1px solid var(--line);border-radius:7px;outline:0;background:#0e1012;color:var(--text);font:inherit}.field input{width:100%;padding:8px 11px}.field select{padding:7px 32px 7px 10px}.field input:focus,.field select:focus,.modal input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(98,212,232,.12)}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;min-width:900px}th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}th{padding:0;color:var(--muted);font-size:12px}.sort-button{display:flex;width:100%;align-items:center;gap:6px;min-height:40px;padding:9px 12px;border:0;border-radius:0;background:transparent;color:inherit;font:inherit;font-weight:700}.sort-button:hover:not(:disabled){background:var(--surface-2);color:var(--text);filter:none}th.sorted .sort-button{color:var(--accent);background:#172329}.sort-indicator{width:12px;color:var(--accent);font-size:10px}.ok{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}.file{max-width:240px}.file-main{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}.file-exact{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:11px}.empty{text-align:center;color:var(--muted);padding:32px 16px}.pagination{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 13px;background:#14171a}.pagination.top{border-bottom:1px solid var(--line)}.pagination.bottom{border-top:1px solid var(--line)}.page-size{display:flex;align-items:center;gap:8px;color:var(--muted)}select{padding:7px 28px 7px 9px;border:1px solid var(--line);border-radius:7px;background:#0e1012;color:var(--text);font:inherit}.page-nav{display:flex;align-items:center;gap:9px}.page-nav button{min-height:32px;padding:5px 10px}.page-info{min-width:205px;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums}.notice{min-height:21px;margin:11px 0;color:var(--muted)}.notice.error{color:var(--bad)}.modal-backdrop{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.72)}.modal-backdrop[hidden]{display:none}.modal{width:min(460px,100%);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:20px;box-shadow:0 24px 80px rgba(0,0,0,.5)}.modal h2{margin:0 0 6px;font-size:20px}.modal p{margin:0 0 16px;color:var(--muted)}.modal label{display:block;margin-bottom:6px;font-weight:700}.modal input{width:100%;padding:10px 11px}.key-status{min-height:21px;margin:8px 0 18px;color:var(--muted);font-size:12px}
-    @media(max-width:760px){.wrap{padding:18px 12px 28px}.cards{grid-template-columns:repeat(2,1fr)}header{align-items:flex-start}.actions{flex-wrap:wrap;justify-content:flex-end}.toolbar{align-items:stretch}.field.search,.field{width:100%}.pagination{align-items:flex-start;flex-direction:column}.page-nav{width:100%;justify-content:space-between}.page-info{min-width:0}.page-nav button{padding:5px 9px}}
+    :root{color-scheme:dark;--bg:#0b0d0f;--surface:#15191d;--surface-2:#101316;--line:#30363c;--line-soft:#242a2f;--text:#f1f4f6;--muted:#9ba6ae;--accent:#4fd1a5;--accent-dark:#183b32;--good:#6ee7b7;--bad:#fb7185;--warn:#fbbf24;--focus:#7dd3fc}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}button,input,select{font:inherit}button{min-height:36px;padding:7px 12px;border:1px solid #397b68;border-radius:7px;background:#205c4b;color:#f7fffc;font-weight:700;cursor:pointer}button:hover:not(:disabled){background:#286f5b}button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--focus);outline-offset:2px}button:disabled{cursor:not-allowed;opacity:.5}.secondary{border-color:var(--line);background:#1a1f23;color:var(--text)}.secondary:hover:not(:disabled){background:#23292e}.danger{border-color:#7f3341;background:#51242d}.danger:hover:not(:disabled){background:#672d39}.wrap{width:min(1240px,100%);margin:0 auto;padding:24px 18px 36px}header{display:flex;align-items:center;justify-content:space-between;gap:20px}h1{margin:0;font-size:25px;letter-spacing:0}.sub{margin-top:3px;color:var(--muted)}.actions{display:flex;gap:8px}.tabs{display:flex;gap:24px;margin-top:20px;border-bottom:1px solid var(--line)}.tab{min-height:42px;padding:9px 2px;border:0;border-bottom:2px solid transparent;border-radius:0;background:transparent;color:var(--muted)}.tab:hover:not(:disabled){background:transparent;color:var(--text)}.tab[aria-selected="true"]{border-bottom-color:var(--accent);color:var(--text)}.view{padding-top:18px}.view[hidden]{display:none}.cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.card{min-width:0;padding:15px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.label{color:var(--muted);font-size:12px}.value{margin-top:4px;overflow:hidden;text-overflow:ellipsis;font-size:25px;font-weight:800;font-variant-numeric:tabular-nums}.notice{min-height:22px;margin:12px 0;color:var(--muted)}.notice.error,.form-status.error{color:var(--bad)}.notice.success,.form-status.success{color:var(--good)}.panel{overflow:hidden;border:1px solid var(--line);border-radius:8px;background:var(--surface)}.toolbar{display:flex;align-items:end;gap:12px;padding:13px;border-bottom:1px solid var(--line)}.field{display:flex;flex-direction:column;gap:5px;min-width:150px;color:var(--muted);font-size:12px}.field.search{flex:1}.field input,.setting-row input,.key-row input{width:100%;min-height:38px;padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:#0d1012;color:var(--text)}select{min-height:38px;padding:7px 28px 7px 9px;border:1px solid var(--line);border-radius:7px;background:#0d1012;color:var(--text)}.pagination{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 13px;background:#111518}.pagination.top{border-bottom:1px solid var(--line)}.pagination.bottom{border-top:1px solid var(--line)}.page-size{display:flex;align-items:center;gap:8px;color:var(--muted)}.page-nav{display:flex;align-items:center;gap:9px}.page-nav button{min-height:32px;padding:5px 10px}.page-info{min-width:205px;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;white-space:nowrap}th,td{padding:11px 13px;border-bottom:1px solid var(--line-soft);text-align:left;font-variant-numeric:tabular-nums}tbody tr:last-child td{border-bottom:0}tbody tr:hover{background:#181d21}th{position:sticky;top:0;z-index:1;background:#111518;color:var(--muted);font-size:12px}.sort-button{display:inline-flex;align-items:center;gap:4px;min-height:0;padding:0;border:0;background:transparent;color:inherit;font-weight:700}.sort-button:hover:not(:disabled){background:transparent;color:var(--text)}th.sorted{color:var(--accent)}.sort-indicator{width:12px;font-size:10px}.ok{color:var(--good)}.bad{color:var(--bad)}.file{max-width:260px}.file-main{overflow:hidden;text-overflow:ellipsis;font-weight:700}.row-actions{display:flex;gap:6px}.small{min-height:30px;padding:4px 8px;font-size:12px}.enable,.restore{border-color:#397b68;background:#1b4d40}.disable,.demote{border-color:#72505a;background:#3b272d}.empty{text-align:center;color:var(--muted);padding:32px 16px}.settings-layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(280px,1fr);gap:28px}.settings-section{padding:0 0 24px;border-bottom:1px solid var(--line)}.settings-section+.settings-section{padding-top:24px}.settings-section h2{margin:0 0 4px;font-size:18px}.section-copy{margin:0 0 18px;color:var(--muted)}.settings-form{display:grid;gap:0}.setting-row{display:grid;grid-template-columns:minmax(230px,1fr) minmax(180px,240px);gap:22px;align-items:center;padding:16px 0;border-top:1px solid var(--line-soft)}.setting-row:first-child{border-top:0}.setting-title{font-weight:750}.help{margin-top:4px;color:var(--muted);font-size:12px}.checkbox-control{display:flex;align-items:center;justify-content:flex-start;gap:9px;min-height:38px}.checkbox-control input{width:17px;height:17px;accent-color:var(--accent)}.settings-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding-top:18px}.form-status{flex:1;min-height:21px;color:var(--muted)}.key-row{display:flex;gap:8px;align-items:end}.key-row label{flex:1;color:var(--muted);font-size:12px}.key-row label span{display:block;margin-bottom:5px}.key-actions{display:flex;gap:8px}.key-status{min-height:21px;margin-top:8px;color:var(--muted);font-size:12px}.facts{margin:0;padding:0;list-style:none;border-top:1px solid var(--line-soft)}.facts li{display:flex;justify-content:space-between;gap:20px;padding:12px 0;border-bottom:1px solid var(--line-soft)}.facts span:first-child{color:var(--muted)}.facts span:last-child{text-align:right;font-variant-numeric:tabular-nums}.callout{padding:14px;border-left:3px solid var(--warn);background:#201c12;color:#ddd6bd}.callout strong{color:#fff4c2}
+    @media(max-width:820px){.wrap{padding:18px 12px 28px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}header{align-items:flex-start}.actions{flex-wrap:wrap;justify-content:flex-end}.toolbar{align-items:stretch;flex-direction:column}.field.search,.field{width:100%}.pagination{align-items:flex-start;flex-direction:column}.page-nav{width:100%;justify-content:space-between}.page-info{min-width:0}.settings-layout{grid-template-columns:1fr}.setting-row{grid-template-columns:1fr;gap:9px}.key-row{align-items:stretch;flex-direction:column}.key-actions{justify-content:flex-end}}
+    @media(max-width:480px){header{flex-direction:column}.actions{width:100%}.actions button{flex:1}.cards{grid-template-columns:1fr 1fr}.tabs{gap:18px}.page-nav{gap:5px}.page-nav button{padding:5px 8px}.settings-actions{align-items:stretch;flex-direction:column}.settings-actions button{width:100%}}
   </style>
 </head>
-<body><main class="wrap">
-  <header><div><h1>Grok 账号面板</h1><div class="sub">CPA xAI OAuth 账号管理 · v0.2.4</div></div><div class="actions"><button id="refresh" type="button">刷新</button><button id="settings" class="secondary" type="button">设置</button></div></header>
-  <section class="cards"><div class="card"><div class="label">账号数</div><div id="accounts" class="value">—</div></div><div class="card"><div class="label">成功请求</div><div id="success" class="value">—</div></div><div class="card"><div class="label">失败请求</div><div id="failed" class="value">—</div></div><div class="card"><div class="label">累计 Token</div><div id="tokens" class="value">—</div></div></section>
-  <div id="notice" class="notice" role="status">正在读取数据…</div>
-  <section class="panel">
-    <div class="toolbar">
-      <label class="field search" for="search"><span>搜索文件名</span><input id="search" type="search" placeholder="输入部分文件名" autocomplete="off"></label>
-      <label class="field" for="status-filter"><span>状态</span><select id="status-filter"><option value="all">全部</option><option value="enabled">启用</option><option value="disabled">停用</option></select></label>
-      <label class="field" for="demotion-filter"><span>降权</span><select id="demotion-filter"><option value="all">全部</option><option value="applied">已降权</option><option value="not-applied">未降权</option></select></label>
-    </div>
-    <div class="pagination top">
-      <label class="page-size" for="page-size-top">每页 <select id="page-size-top" class="page-size-select"><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option></select> 条</label>
-      <div class="page-nav"><button class="secondary previous-page" type="button">上一页</button><span class="page-info">第 1/1 页 · 共 0 条</span><button class="secondary next-page" type="button">下一页</button></div>
-    </div>
-    <div class="table-scroll"><table><thead><tr>
-      <th data-sort="file"><button class="sort-button" type="button">账号文件 <span class="sort-indicator"></span></button></th>
-      <th data-sort="status"><button class="sort-button" type="button">状态 <span class="sort-indicator"></span></button></th>
-      <th data-sort="priority"><button class="sort-button" type="button">优先级 <span class="sort-indicator"></span></button></th>
-      <th data-sort="total"><button class="sort-button" type="button">总 Token <span class="sort-indicator"></span></button></th>
-      <th data-sort="success"><button class="sort-button" type="button">成功 <span class="sort-indicator"></span></button></th>
-      <th data-sort="failed"><button class="sort-button" type="button">失败 <span class="sort-indicator"></span></button></th>
-      <th>操作</th>
-    </tr></thead><tbody id="rows"></tbody></table></div>
-    <div class="pagination bottom">
-      <label class="page-size" for="page-size-bottom">每页 <select id="page-size-bottom" class="page-size-select"><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option></select> 条</label>
-      <div class="page-nav"><button class="secondary previous-page" type="button">上一页</button><span class="page-info">第 1/1 页 · 共 0 条</span><button class="secondary next-page" type="button">下一页</button></div>
+<body>
+<main class="wrap">
+  <header>
+    <div><h1>Grok 账号面板</h1><div class="sub">CPA xAI OAuth 账号管理 · v0.2.5</div></div>
+    <div class="actions"><button id="refresh" type="button">刷新</button></div>
+  </header>
+
+  <nav class="tabs" aria-label="主视图">
+    <button class="tab" type="button" role="tab" aria-selected="true" aria-controls="accounts-view" data-view="accounts-view">账号列表</button>
+    <button class="tab" type="button" role="tab" aria-selected="false" aria-controls="settings-view" data-view="settings-view">设置</button>
+  </nav>
+
+  <section id="accounts-view" class="view" role="tabpanel">
+    <section class="cards">
+      <div class="card"><div class="label">账号数</div><div id="accounts" class="value">—</div></div>
+      <div class="card"><div class="label">成功请求</div><div id="success" class="value">—</div></div>
+      <div class="card"><div class="label">失败请求</div><div id="failed" class="value">—</div></div>
+      <div class="card"><div class="label">累计 Token</div><div id="tokens" class="value">—</div></div>
+    </section>
+    <div id="notice" class="notice" role="status">正在读取数据…</div>
+    <section class="panel">
+      <div class="toolbar">
+        <label class="field search" for="search"><span>搜索文件名</span><input id="search" type="search" placeholder="输入部分文件名" autocomplete="off"></label>
+        <label class="field" for="status-filter"><span>状态</span><select id="status-filter"><option value="all">全部</option><option value="enabled">启用</option><option value="disabled">停用</option></select></label>
+        <label class="field" for="demotion-filter"><span>降权</span><select id="demotion-filter"><option value="all">全部</option><option value="applied">已降权</option><option value="not-applied">未降权</option></select></label>
+      </div>
+      <div class="pagination top">
+        <label class="page-size" for="page-size-top">每页 <select id="page-size-top" class="page-size-select"><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option></select> 条</label>
+        <div class="page-nav"><button class="secondary previous-page" type="button">上一页</button><span class="page-info">第 1/1 页 · 共 0 条</span><button class="secondary next-page" type="button">下一页</button></div>
+      </div>
+      <div class="table-scroll"><table><thead><tr>
+        <th data-sort="file"><button class="sort-button" type="button">账号文件 <span class="sort-indicator"></span></button></th>
+        <th data-sort="status"><button class="sort-button" type="button">状态 <span class="sort-indicator"></span></button></th>
+        <th data-sort="priority"><button class="sort-button" type="button">优先级 <span class="sort-indicator"></span></button></th>
+        <th data-sort="total"><button class="sort-button" type="button">总 Token <span class="sort-indicator"></span></button></th>
+        <th data-sort="success"><button class="sort-button" type="button">成功 <span class="sort-indicator"></span></button></th>
+        <th data-sort="failed"><button class="sort-button" type="button">失败 <span class="sort-indicator"></span></button></th>
+        <th>操作</th>
+      </tr></thead><tbody id="rows"></tbody></table></div>
+      <div class="pagination bottom">
+        <label class="page-size" for="page-size-bottom">每页 <select id="page-size-bottom" class="page-size-select"><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option></select> 条</label>
+        <div class="page-nav"><button class="secondary previous-page" type="button">上一页</button><span class="page-info">第 1/1 页 · 共 0 条</span><button class="secondary next-page" type="button">下一页</button></div>
+      </div>
+    </section>
+  </section>
+
+  <section id="settings-view" class="view" role="tabpanel" hidden>
+    <div class="settings-layout">
+      <div>
+        <section class="settings-section">
+          <h2>业务设置</h2>
+          <p class="section-copy">保存后立即作用于新的用量事件和降权任务，无需重启插件。</p>
+          <form id="settings-form" class="settings-form">
+            <div class="setting-row">
+              <div><div class="setting-title">非 401/403 连败阈值</div><div class="help">仅对已启用计数的状态生效；401/403 始终立即降权。</div></div>
+              <input id="failure-threshold" name="attributed_failure_threshold" type="number" min="1" max="100" step="1" required>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-title">429 计入阈值路径</div><div class="help">启用后，连续 HTTP 429 达到阈值时请求降权。</div></div>
+              <label class="checkbox-control"><input id="count-429" name="count_status_429" type="checkbox"><span>计入连续失败</span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-title">5xx 计入阈值路径</div><div class="help">启用后，连续 HTTP 500–599 达到阈值时请求降权。</div></div>
+              <label class="checkbox-control"><input id="count-5xx" name="count_status_5xx" type="checkbox"><span>计入连续失败</span></label>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-title">降权目标优先级</div><div class="help">自动或手动降权时写入账号文件的 priority。</div></div>
+              <input id="demotion-priority" name="demotion_priority" type="number" min="-1000000" max="1000000" step="1" required>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-title">默认恢复优先级</div><div class="help">没有可靠 baseline 时，“解除降权”回写的 priority。</div></div>
+              <input id="restore-priority" name="default_restore_priority" type="number" min="-1000000" max="1000000" step="1" required>
+            </div>
+            <div class="settings-actions"><div id="settings-status" class="form-status" role="status"></div><button id="save-settings" type="submit">保存设置</button></div>
+          </form>
+        </section>
+
+        <section class="settings-section">
+          <h2>Management key</h2>
+          <p class="section-copy">密钥只保存在当前浏览器的 localStorage，不写入插件 state。</p>
+          <div class="key-row">
+            <label for="management-key"><span>管理密钥</span><input id="management-key" type="password" autocomplete="off" spellcheck="false"></label>
+            <div class="key-actions"><button id="clear-key" class="danger" type="button">清除</button><button id="save-key" class="secondary" type="button">保存密钥</button></div>
+          </div>
+          <div id="key-status" class="key-status"></div>
+        </section>
+      </div>
+
+      <aside>
+        <section class="settings-section">
+          <h2>当前运行信息</h2>
+          <p class="section-copy">以下项目只读。</p>
+          <ul class="facts">
+            <li><span>插件版本</span><span id="fact-version">0.2.5</span></li>
+            <li><span>write_mode</span><span id="fact-write-mode">—</span></li>
+            <li><span>立即降权状态</span><span>401 / 403</span></li>
+            <li><span>设置 revision</span><span id="fact-revision">—</span></li>
+            <li><span>设置来源</span><span id="fact-source">—</span></li>
+          </ul>
+        </section>
+        <div class="callout"><strong>优先级规则</strong><br>环境变量 CPA_GROK_* 只在首次没有持久化设置时作为默认值；之后以 state 中的 settings 为准。</div>
+      </aside>
     </div>
   </section>
 </main>
-<div id="settings-modal" class="modal-backdrop" hidden>
-  <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-    <h2 id="settings-title">设置管理密钥</h2>
-    <p>密钥仅保存在当前浏览器，用于访问 CPA management API。</p>
-    <label for="management-key">Management key</label>
-    <input id="management-key" type="password" autocomplete="off" spellcheck="false">
-    <div id="key-status" class="key-status"></div>
-    <div class="modal-actions"><button id="clear-key" class="danger" type="button">清除</button><button id="cancel-settings" class="secondary" type="button">取消</button><button id="save-key" type="button">保存</button></div>
-  </section>
-</div>
+
 <script>
 const base='/v0/management/cpa-grok-panel/api/v1';
 const storageKey='cpa-grok-panel.management_key';
 const fmt=n=>new Intl.NumberFormat('zh-CN').format(n||0);
-const fmtCompact=n=>{
-  const value=Number(n)||0;
-  const absolute=Math.abs(value);
-  if(absolute<1000) return String(Math.round(value));
-  const divisor=absolute<1000000?1000:1000000;
-  const suffix=absolute<1000000?'k':'m';
-  return new Intl.NumberFormat('en-US',{maximumFractionDigits:2,useGrouping:false}).format(value/divisor)+suffix;
-};
+const fmtCompact=n=>{const value=Number(n)||0,absolute=Math.abs(value);if(absolute<1000)return String(Math.round(value));const divisor=absolute<1000000?1000:1000000,suffix=absolute<1000000?'k':'m';return new Intl.NumberFormat('en-US',{maximumFractionDigits:2,useGrouping:false}).format(value/divisor)+suffix};
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const displayName=name=>String(name||'').replace(/^xai-/i,'').replace(/\.json$/i,'');
-const sortColumns={
-  file:{direction:'asc',value:x=>x.exact_file_name||''},
-  status:{direction:'asc',value:x=>`${x.enabled?'启用':'停用'}${x.unavailable?' / 不可用':''}`},
-  priority:{direction:'desc',value:x=>Number(x.priority)||0},
-  total:{direction:'desc',value:x=>Number(x.usage?.total_tokens)||0},
-  success:{direction:'desc',value:x=>Number(x.usage?.successful_requests)||0},
-  failed:{direction:'desc',value:x=>Number(x.usage?.failed_requests)||0}
-};
-const modal=document.querySelector('#settings-modal');
-const keyInput=document.querySelector('#management-key');
-let allItems=[];
-let currentMeta=null;
-let currentPage=1;
-let pageSize=50;
-let sortKey='file';
-let sortDirection='asc';
-let actionPending=false;
+const sortColumns={file:{direction:'asc',value:x=>x.exact_file_name||''},status:{direction:'asc',value:x=>`${x.enabled?'启用':'停用'}${x.unavailable?' / 不可用':''}`},priority:{direction:'desc',value:x=>Number(x.priority)||0},total:{direction:'desc',value:x=>Number(x.usage?.total_tokens)||0},success:{direction:'desc',value:x=>Number(x.usage?.successful_requests)||0},failed:{direction:'desc',value:x=>Number(x.usage?.failed_requests)||0}};
+let allItems=[],currentMeta=null,currentSettings=null,currentPage=1,pageSize=50,sortKey='file',sortDirection='asc',actionPending=false;
 
-function compareValues(left,right){
-  if(typeof left==='number'&&typeof right==='number') return left-right;
-  return String(left).localeCompare(String(right),'zh-CN',{numeric:true,sensitivity:'base'});
-}
-function filteredItems(){
-  const search=document.querySelector('#search').value.trim().toLocaleLowerCase('zh-CN');
-  const status=document.querySelector('#status-filter').value;
-  const demotion=document.querySelector('#demotion-filter').value;
-  return allItems.filter(item=>{
-    const matchesSearch=!search||String(item.exact_file_name||'').toLocaleLowerCase('zh-CN').includes(search)||displayName(item.exact_file_name).toLocaleLowerCase('zh-CN').includes(search);
-    const matchesStatus=status==='all'||status==='enabled'&&item.enabled||status==='disabled'&&!item.enabled;
-    const matchesDemotion=demotion==='all'||demotion==='applied'&&item.is_demoted||demotion==='not-applied'&&!item.is_demoted;
-    return matchesSearch&&matchesStatus&&matchesDemotion;
-  });
-}
-function sortedItems(items){
-  if(!sortKey) return items.slice();
-  const column=sortColumns[sortKey];
-  return items.map((item,index)=>({item,index})).sort((left,right)=>{
-    const compared=compareValues(column.value(left.item),column.value(right.item));
-    if(compared!==0) return sortDirection==='asc'?compared:-compared;
-    const fileCompared=compareValues(left.item.exact_file_name||'',right.item.exact_file_name||'');
-    return fileCompared||left.index-right.index;
-  }).map(entry=>entry.item);
-}
-function rowActions(item){
-  const identity=`data-auth-index="${esc(item.auth_index)}" data-file-name="${esc(item.exact_file_name)}"`;
-  const enabled=String(!item.enabled);
-  const toggle=`<button class="small ${item.enabled?'disable':'enable'} row-action" type="button" data-action="set-enabled" data-enabled="${enabled}" ${identity}>${item.enabled?'停用':'启用'}</button>`;
-  const priorityAction=item.is_demoted
-    ?`<button class="small restore row-action" type="button" data-action="restore" data-allowed="${item.can_restore}" title="${item.can_restore?'解除降权':'缺少可靠的恢复目标'}" ${identity}>解除降权</button>`
-    :`<button class="small demote row-action" type="button" data-action="demote" ${identity}>降权</button>`;
-  return `<div class="row-actions">${toggle}${priorityAction}</div>`;
-}
-function renderSummary(){
-  const sum=allItems.reduce((total,item)=>{total.s+=item.usage?.successful_requests||0;total.f+=item.usage?.failed_requests||0;total.t+=item.usage?.total_tokens||0;return total},{s:0,f:0,t:0});
-  document.querySelector('#accounts').textContent=fmt(allItems.length);
-  document.querySelector('#success').textContent=fmt(sum.s);
-  document.querySelector('#failed').textContent=fmt(sum.f);
-  const tokens=document.querySelector('#tokens');
-  tokens.textContent=fmtCompact(sum.t);
-  tokens.title=fmt(sum.t);
-}
-function renderTable(){
-  const filtered=filteredItems();
-  const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
-  currentPage=Math.min(Math.max(1,currentPage),totalPages);
-  const items=sortedItems(filtered).slice((currentPage-1)*pageSize,currentPage*pageSize);
-  document.querySelector('#rows').innerHTML=items.length?items.map(item=>{
-    const totalTokens=item.usage?.total_tokens||0;
-    return `<tr><td class="file" title="${esc(item.exact_file_name)}"><div class="file-main">${esc(displayName(item.exact_file_name))}</div></td><td class="${item.enabled?'ok':'bad'}">${item.enabled?'启用':'停用'}${item.unavailable?' / 不可用':''}</td><td>${fmt(item.priority)}</td><td title="${fmt(totalTokens)}">${fmtCompact(totalTokens)}</td><td class="ok">${fmt(item.usage?.successful_requests)}</td><td class="bad">${fmt(item.usage?.failed_requests)}</td><td>${rowActions(item)}</td></tr>`;
-  }).join(''):'<tr><td class="empty" colspan="7">没有符合当前条件的账号</td></tr>';
-  const suffix=filtered.length===allItems.length?'':` · 全量 ${fmt(allItems.length)} 条`;
-  const info=`第 ${currentPage}/${totalPages} 页 · 共 ${fmt(filtered.length)} 条${suffix}`;
-  document.querySelectorAll('.page-info').forEach(el=>{el.textContent=info});
-  document.querySelectorAll('.previous-page').forEach(btn=>{btn.disabled=actionPending||currentPage<=1});
-  document.querySelectorAll('.next-page').forEach(btn=>{btn.disabled=actionPending||currentPage>=totalPages});
-  document.querySelectorAll('.page-size-select').forEach(sel=>{sel.value=String(pageSize);sel.disabled=actionPending});
-  document.querySelectorAll('.row-action').forEach(btn=>{btn.disabled=actionPending||btn.dataset.allowed==='false'});
-  document.querySelectorAll('th[data-sort]').forEach(header=>{
-    const active=header.dataset.sort===sortKey;
-    header.classList.toggle('sorted',active);
-    header.setAttribute('aria-sort',active?(sortDirection==='asc'?'ascending':'descending'):'none');
-    header.querySelector('.sort-indicator').textContent=active?(sortDirection==='asc'?'▲':'▼'):'';
-  });
-}
+function getManagementKey(){try{return localStorage.getItem(storageKey)?.trim()||''}catch{return ''}}
+function setStatus(element,message,type=''){element.textContent=message;element.classList.toggle('error',type==='error');element.classList.toggle('success',type==='success')}
+function setNotice(message,type=''){setStatus(document.querySelector('#notice'),message,type)}
+function compareValues(left,right){if(typeof left==='number'&&typeof right==='number')return left-right;return String(left).localeCompare(String(right),'zh-CN',{numeric:true,sensitivity:'base'})}
+function filteredItems(){const search=document.querySelector('#search').value.trim().toLocaleLowerCase('zh-CN'),status=document.querySelector('#status-filter').value,demotion=document.querySelector('#demotion-filter').value;return allItems.filter(item=>{const matchesSearch=!search||String(item.exact_file_name||'').toLocaleLowerCase('zh-CN').includes(search)||displayName(item.exact_file_name).toLocaleLowerCase('zh-CN').includes(search);const matchesStatus=status==='all'||status==='enabled'&&item.enabled||status==='disabled'&&!item.enabled;const matchesDemotion=demotion==='all'||demotion==='applied'&&item.is_demoted||demotion==='not-applied'&&!item.is_demoted;return matchesSearch&&matchesStatus&&matchesDemotion})}
+function sortedItems(items){if(!sortKey)return items.slice();const column=sortColumns[sortKey];return items.map((item,index)=>({item,index})).sort((left,right)=>{const compared=compareValues(column.value(left.item),column.value(right.item));if(compared!==0)return sortDirection==='asc'?compared:-compared;const fileCompared=compareValues(left.item.exact_file_name||'',right.item.exact_file_name||'');return fileCompared||left.index-right.index}).map(entry=>entry.item)}
+function rowActions(item){const identity=`data-auth-index="${esc(item.auth_index)}" data-file-name="${esc(item.exact_file_name)}"`;const enabled=String(!item.enabled);const toggle=`<button class="small ${item.enabled?'disable':'enable'} row-action" type="button" data-action="set-enabled" data-enabled="${enabled}" ${identity}>${item.enabled?'停用':'启用'}</button>`;const priorityAction=item.is_demoted?`<button class="small restore row-action" type="button" data-action="restore" data-allowed="${item.can_restore}" title="${item.can_restore?'解除降权':'缺少可靠的恢复目标'}" ${identity}>解除降权</button>`:`<button class="small demote row-action" type="button" data-action="demote" ${identity}>降权</button>`;return `<div class="row-actions">${toggle}${priorityAction}</div>`}
+function renderSummary(){const sum=allItems.reduce((total,item)=>{total.s+=item.usage?.successful_requests||0;total.f+=item.usage?.failed_requests||0;total.t+=item.usage?.total_tokens||0;return total},{s:0,f:0,t:0});document.querySelector('#accounts').textContent=fmt(allItems.length);document.querySelector('#success').textContent=fmt(sum.s);document.querySelector('#failed').textContent=fmt(sum.f);const tokens=document.querySelector('#tokens');tokens.textContent=fmtCompact(sum.t);tokens.title=fmt(sum.t)}
+function renderTable(){const filtered=filteredItems(),totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));currentPage=Math.min(Math.max(1,currentPage),totalPages);const items=sortedItems(filtered).slice((currentPage-1)*pageSize,currentPage*pageSize);document.querySelector('#rows').innerHTML=items.length?items.map(item=>{const totalTokens=item.usage?.total_tokens||0;return `<tr><td class="file" title="${esc(item.exact_file_name)}"><div class="file-main">${esc(displayName(item.exact_file_name))}</div></td><td class="${item.enabled?'ok':'bad'}">${item.enabled?'启用':'停用'}${item.unavailable?' / 不可用':''}</td><td>${fmt(item.priority)}</td><td title="${fmt(totalTokens)}">${fmtCompact(totalTokens)}</td><td class="ok">${fmt(item.usage?.successful_requests)}</td><td class="bad">${fmt(item.usage?.failed_requests)}</td><td>${rowActions(item)}</td></tr>`}).join(''):'<tr><td class="empty" colspan="7">没有符合当前条件的账号</td></tr>';const suffix=filtered.length===allItems.length?'':` · 全量 ${fmt(allItems.length)} 条`;const info=`第 ${currentPage}/${totalPages} 页 · 共 ${fmt(filtered.length)} 条${suffix}`;document.querySelectorAll('.page-info').forEach(el=>{el.textContent=info});document.querySelectorAll('.previous-page').forEach(btn=>{btn.disabled=actionPending||currentPage<=1});document.querySelectorAll('.next-page').forEach(btn=>{btn.disabled=actionPending||currentPage>=totalPages});document.querySelectorAll('.page-size-select').forEach(sel=>{sel.value=String(pageSize);sel.disabled=actionPending});document.querySelectorAll('.row-action').forEach(btn=>{btn.disabled=actionPending||btn.dataset.allowed==='false'});document.querySelectorAll('th[data-sort]').forEach(header=>{const active=header.dataset.sort===sortKey;header.classList.toggle('sorted',active);header.setAttribute('aria-sort',active?(sortDirection==='asc'?'ascending':'descending'):'none');header.querySelector('.sort-indicator').textContent=active?(sortDirection==='asc'?'▲':'▼'):''})}
 function resetPageAndRender(){currentPage=1;renderTable()}
-function changeSort(key){
-  if(sortKey===key) sortDirection=sortDirection==='asc'?'desc':'asc';
-  else{sortKey=key;sortDirection=sortColumns[key].direction}
-  resetPageAndRender();
-}
-function setNotice(message,isError=false){
-  const notice=document.querySelector('#notice');
-  notice.textContent=message;
-  notice.classList.toggle('error',isError);
-}
-function getManagementKey(){
-  try{return localStorage.getItem(storageKey)?.trim()||''}catch{return ''}
-}
-function openSettings(){
-  const saved=Boolean(getManagementKey());
-  keyInput.value='';
-  keyInput.placeholder=saved?'已保存（留空则保持不变）':'请输入 management key';
-  document.querySelector('#key-status').textContent=saved?'当前浏览器已保存管理密钥。':'当前浏览器尚未保存管理密钥。';
-  document.querySelector('#clear-key').hidden=!saved;
-  modal.hidden=false;
-  requestAnimationFrame(()=>keyInput.focus());
-}
-function closeSettings(){modal.hidden=true;keyInput.value=''}
-function saveManagementKey(){
-  const key=keyInput.value.trim();
-  if(!key){
-    if(getManagementKey()){closeSettings();return}
-    document.querySelector('#key-status').textContent='请输入 management key。';
-    keyInput.focus();
-    return;
-  }
-  try{localStorage.setItem(storageKey,key)}catch{
-    document.querySelector('#key-status').textContent='保存失败：浏览器不允许使用 localStorage。';
-    return;
-  }
-  closeSettings();
-  refresh();
-}
-function clearManagementKey(){
-  try{localStorage.removeItem(storageKey)}catch{}
-  closeSettings();
-  setNotice('管理密钥已清除，请点“设置”重新填写。');
-}
-async function api(path,options={}){
-  const key=getManagementKey();
-  if(!key) throw new Error('尚未设置管理密钥，请点“设置”填写');
-  const headers={Authorization:'Bearer '+key,...options.headers};
-  const response=await fetch(base+path,{cache:'no-store',credentials:'include',...options,headers});
-  let data=null;
-  try{data=await response.json()}catch{}
-  if(response.status===401) throw new Error('管理密钥无效或已失效，请点“设置”更新');
-  if(!response.ok) throw new Error(data?.error?.message||data?.error||`接口返回异常 HTTP ${response.status}`);
-  return data;
-}
-// CPA host.auth.save writes disabled into the JSON file but buildAuthFromFileData does NOT
-// map metadata.disabled → auth.Disabled (runtime stays active). Official path:
-// PATCH /v0/management/auth-files/status {name, disabled}.
-async function setEnabledViaManagement(exactFileName,enabled){
-  const key=getManagementKey();
-  if(!key) throw new Error('尚未设置管理密钥，请点“设置”填写');
-  const response=await fetch('/v0/management/auth-files/status',{
-    method:'PATCH',
-    cache:'no-store',
-    credentials:'include',
-    headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},
-    body:JSON.stringify({name:exactFileName,disabled:!enabled})
-  });
-  let data=null;
-  try{data=await response.json()}catch{}
-  if(response.status===401) throw new Error('管理密钥无效或已失效，请点“设置”更新');
-  if(!response.ok) throw new Error(data?.error||data?.message||`启停失败 HTTP ${response.status}`);
-  return data;
-}
-async function refresh(){
-  if(!getManagementKey()){
-    setNotice('尚未设置管理密钥，请点“设置”填写后再刷新。');
-    return false;
-  }
-  const btn=document.querySelector('#refresh');
-  btn.disabled=true;
-  setNotice('正在刷新…');
-  try{
-    const [meta,data,settings]=await Promise.all([api('/meta'),api('/accounts'),api('/settings')]);
-    currentMeta=meta;
-    allItems=Array.isArray(data.items)?data.items:[];
-    renderSummary();
-    renderTable();
-    setNotice(`统计起点：${new Date(meta.statistics_started_at).toLocaleString()} · 全局去重：${meta.dedupe_mode} · write_mode=${meta.write_mode} · failure_threshold=${settings.attributed_failure_threshold} · count_429=${settings.count_status_429} · count_5xx=${settings.count_status_5xx}`);
-    return true;
-  }catch(error){
-    setNotice('刷新失败：'+error.message,true);
-    return false;
-  }finally{btn.disabled=false}
-}
-async function performAction(button){
-  if(actionPending) return;
-  const target={auth_index:button.dataset.authIndex,exact_file_name:button.dataset.fileName};
-  const action=button.dataset.action;
-  const isRestore=action==='restore';
-  const isDemote=action==='demote';
-  const isToggle=action==='set-enabled';
-  const enabled=button.dataset.enabled==='true';
-  actionPending=true;
-  renderTable();
-  setNotice(isRestore?'正在解除降权…':isDemote?'正在降权…':`正在${enabled?'启用':'停用'}账号…`);
-  try{
-    if(isToggle){
-      await setEnabledViaManagement(target.exact_file_name,enabled);
-    }else{
-      const endpoint=isRestore?'/accounts/restore-priority':'/accounts/demote';
-      await api(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(target)});
-    }
-    // brief wait so CPA incremental auth reload settles before list
-    await new Promise(r=>setTimeout(r,250));
-    const refreshed=await refresh();
-    if(refreshed) setNotice(isRestore?'已解除降权，列表已刷新。':isDemote?'账号已降权，列表已刷新。':`账号已${enabled?'启用':'停用'}，列表已刷新。`);
-  }catch(error){setNotice('操作失败：'+error.message,true)}
-  finally{actionPending=false;renderTable()}
-}
+function changeSort(key){if(sortKey===key)sortDirection=sortDirection==='asc'?'desc':'asc';else{sortKey=key;sortDirection=sortColumns[key].direction}resetPageAndRender()}
+function renderSettings(settings){currentSettings=settings;document.querySelector('#failure-threshold').value=settings.attributed_failure_threshold;document.querySelector('#count-429').checked=Boolean(settings.count_status_429);document.querySelector('#count-5xx').checked=Boolean(settings.count_status_5xx);document.querySelector('#demotion-priority').value=settings.demotion_priority;document.querySelector('#restore-priority').value=settings.default_restore_priority;document.querySelector('#fact-revision').textContent=fmt(settings.revision);document.querySelector('#fact-source').textContent=settings.source||'state';if(currentMeta){document.querySelector('#fact-version').textContent=currentMeta.plugin_version||'0.2.5';document.querySelector('#fact-write-mode').textContent=currentMeta.write_mode||settings.write_mode||'—'}}
+function renderKeyState(){const saved=Boolean(getManagementKey());const input=document.querySelector('#management-key');input.value='';input.placeholder=saved?'已保存（输入新值可替换）':'请输入 management key';document.querySelector('#clear-key').disabled=!saved;setStatus(document.querySelector('#key-status'),saved?'当前浏览器已保存管理密钥。':'当前浏览器尚未保存管理密钥。')}
+async function api(path,options={}){const key=getManagementKey();if(!key)throw new Error('尚未设置管理密钥，请到“设置”页填写');const headers={Authorization:'Bearer '+key,...options.headers};const response=await fetch(base+path,{cache:'no-store',credentials:'include',...options,headers});let data=null;try{data=await response.json()}catch{}if(response.status===401)throw new Error('管理密钥无效或已失效，请到“设置”页更新');if(!response.ok)throw new Error(data?.error?.message||data?.error||`接口返回异常 HTTP ${response.status}`);return data}
+async function setEnabledViaManagement(exactFileName,enabled){const key=getManagementKey();if(!key)throw new Error('尚未设置管理密钥，请到“设置”页填写');const response=await fetch('/v0/management/auth-files/status',{method:'PATCH',cache:'no-store',credentials:'include',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({name:exactFileName,disabled:!enabled})});let data=null;try{data=await response.json()}catch{}if(response.status===401)throw new Error('管理密钥无效或已失效，请到“设置”页更新');if(!response.ok)throw new Error(data?.error||data?.message||`启停失败 HTTP ${response.status}`);return data}
+function effectiveSummary(meta,settings){return `统计起点：${new Date(meta.statistics_started_at).toLocaleString()} · 全局去重：${meta.dedupe_mode} · write_mode=${meta.write_mode} · failure_threshold=${settings.attributed_failure_threshold} · count_429=${settings.count_status_429} · count_5xx=${settings.count_status_5xx} · demotion_priority=${settings.demotion_priority}`}
+async function refresh(){if(!getManagementKey()){setNotice('尚未设置管理密钥，请到“设置”页填写后再刷新。');return false}const btn=document.querySelector('#refresh');btn.disabled=true;setNotice('正在刷新…');try{const [meta,data,settings]=await Promise.all([api('/meta'),api('/accounts'),api('/settings')]);currentMeta=meta;allItems=Array.isArray(data.items)?data.items:[];renderSummary();renderTable();renderSettings(settings);setNotice(effectiveSummary(meta,settings));return true}catch(error){setNotice('刷新失败：'+error.message,'error');setStatus(document.querySelector('#settings-status'),'读取设置失败：'+error.message,'error');return false}finally{btn.disabled=false}}
+async function performAction(button){if(actionPending)return;const target={auth_index:button.dataset.authIndex,exact_file_name:button.dataset.fileName},action=button.dataset.action,isRestore=action==='restore',isDemote=action==='demote',isToggle=action==='set-enabled',enabled=button.dataset.enabled==='true';actionPending=true;renderTable();setNotice(isRestore?'正在解除降权…':isDemote?'正在降权…':`正在${enabled?'启用':'停用'}账号…`);try{if(isToggle)await setEnabledViaManagement(target.exact_file_name,enabled);else await api(isRestore?'/accounts/restore-priority':'/accounts/demote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(target)});await new Promise(resolve=>setTimeout(resolve,250));const refreshed=await refresh();if(refreshed)setNotice(isRestore?'已解除降权，列表已刷新。':isDemote?'账号已降权，列表已刷新。':`账号已${enabled?'启用':'停用'}，列表已刷新。`,'success')}catch(error){setNotice('操作失败：'+error.message,'error')}finally{actionPending=false;renderTable()}}
+function switchView(viewID){document.querySelectorAll('.tab').forEach(tab=>tab.setAttribute('aria-selected',String(tab.dataset.view===viewID)));document.querySelectorAll('.view').forEach(view=>{view.hidden=view.id!==viewID});document.querySelector('#refresh').hidden=viewID!=='accounts-view';if(viewID==='settings-view'&&getManagementKey()&&!currentSettings)refresh()}
+function saveManagementKey(){const input=document.querySelector('#management-key'),key=input.value.trim();if(!key){setStatus(document.querySelector('#key-status'),'请输入 management key。','error');input.focus();return}try{localStorage.setItem(storageKey,key)}catch{setStatus(document.querySelector('#key-status'),'保存失败：浏览器不允许使用 localStorage。','error');return}renderKeyState();setStatus(document.querySelector('#key-status'),'管理密钥已保存到当前浏览器。','success');refresh()}
+function clearManagementKey(){try{localStorage.removeItem(storageKey)}catch{}currentSettings=null;renderKeyState();setNotice('管理密钥已清除，请到“设置”页重新填写。');setStatus(document.querySelector('#settings-status'),'')}
+async function saveSettings(event){event.preventDefault();const form=event.currentTarget,status=document.querySelector('#settings-status'),button=document.querySelector('#save-settings');if(!form.reportValidity())return;const payload={attributed_failure_threshold:Number(document.querySelector('#failure-threshold').value),count_status_429:document.querySelector('#count-429').checked,count_status_5xx:document.querySelector('#count-5xx').checked,demotion_priority:Number(document.querySelector('#demotion-priority').value),default_restore_priority:Number(document.querySelector('#restore-priority').value)};button.disabled=true;setStatus(status,'正在保存…');try{const settings=await api('/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});renderSettings(settings);setStatus(status,`设置已保存，revision ${settings.revision} 已热生效。`,'success');if(currentMeta)setNotice(effectiveSummary(currentMeta,settings))}catch(error){setStatus(status,'保存失败：'+error.message,'error')}finally{button.disabled=false}}
 
+document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>switchView(tab.dataset.view)));
 document.querySelector('#refresh').addEventListener('click',refresh);
-document.querySelector('#settings').addEventListener('click',openSettings);
+document.querySelector('#settings-form').addEventListener('submit',saveSettings);
 document.querySelector('#save-key').addEventListener('click',saveManagementKey);
-document.querySelector('#cancel-settings').addEventListener('click',closeSettings);
 document.querySelector('#clear-key').addEventListener('click',clearManagementKey);
+document.querySelector('#management-key').addEventListener('keydown',event=>{if(event.key==='Enter')saveManagementKey()});
 document.querySelector('#search').addEventListener('input',resetPageAndRender);
 document.querySelector('#status-filter').addEventListener('change',resetPageAndRender);
 document.querySelector('#demotion-filter').addEventListener('change',resetPageAndRender);
 document.querySelector('#rows').addEventListener('click',event=>{const button=event.target.closest('.row-action');if(button)performAction(button)});
 document.querySelectorAll('th[data-sort] .sort-button').forEach(button=>button.addEventListener('click',()=>changeSort(button.parentElement.dataset.sort)));
-document.querySelectorAll('.page-size-select').forEach(sel=>sel.addEventListener('change',event=>{pageSize=Number(event.target.value)||50;resetPageAndRender()}));
-document.querySelectorAll('.previous-page').forEach(btn=>btn.addEventListener('click',()=>{if(currentPage>1){currentPage--;renderTable()}}));
-document.querySelectorAll('.next-page').forEach(btn=>btn.addEventListener('click',()=>{if(currentPage*pageSize<filteredItems().length){currentPage++;renderTable()}}));
-keyInput.addEventListener('keydown',event=>{if(event.key==='Enter')saveManagementKey()});
-modal.addEventListener('click',event=>{if(event.target===modal)closeSettings()});
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!modal.hidden)closeSettings()});
-renderSummary();
-renderTable();
-refresh();
-</script></body></html>
+document.querySelectorAll('.page-size-select').forEach(select=>select.addEventListener('change',event=>{pageSize=Number(event.target.value)||50;resetPageAndRender()}));
+document.querySelectorAll('.previous-page').forEach(button=>button.addEventListener('click',()=>{if(currentPage>1){currentPage--;renderTable()}}));
+document.querySelectorAll('.next-page').forEach(button=>button.addEventListener('click',()=>{if(currentPage*pageSize<filteredItems().length){currentPage++;renderTable()}}));
+renderKeyState();renderSummary();renderTable();refresh();
+</script>
+</body>
+</html>

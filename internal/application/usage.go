@@ -29,10 +29,10 @@ type DemotionEnqueuer interface {
 }
 
 type UsageService struct {
-	store     *stateinfra.Store
-	now       func() time.Time
-	settings  Settings
-	demotions DemotionEnqueuer
+	store            *stateinfra.Store
+	now              func() time.Time
+	settingsFallback Settings
+	demotions        DemotionEnqueuer
 }
 
 func NewUsageService(store *stateinfra.Store, now func() time.Time) *UsageService {
@@ -41,13 +41,14 @@ func NewUsageService(store *stateinfra.Store, now func() time.Time) *UsageServic
 }
 
 func NewUsageServiceWithDemotion(store *stateinfra.Store, now func() time.Time, settings Settings, demotions DemotionEnqueuer) *UsageService {
-	return &UsageService{store: store, now: now, settings: settings, demotions: demotions}
+	return &UsageService{store: store, now: now, settingsFallback: settings, demotions: demotions}
 }
 
 func (service *UsageService) Handle(event domain.UsageEvent) (UsageResult, error) {
 	if event.OccurredAt.IsZero() {
 		event.OccurredAt = service.now().UTC()
 	}
+	settings := service.settings()
 	result := UsageResult{Accepted: true, DedupeMode: "weak"}
 	err := service.store.Update(func(snapshot *stateinfra.Snapshot) error {
 		now := service.now().UTC()
@@ -69,7 +70,7 @@ func (service *UsageService) Handle(event domain.UsageEvent) (UsageResult, error
 		if err := domain.ApplyUsage(&account.Usage, event); err != nil {
 			return err
 		}
-		result.DemotionRequested = service.applyFailurePolicy(&account, event, now)
+		result.DemotionRequested = service.applyFailurePolicy(&account, event, now, settings)
 		snapshot.Accounts[event.AuthIndex] = account
 		if mode == "exact" {
 			snapshot.EventDedupe.ExactIDs[key] = now
@@ -86,7 +87,7 @@ func (service *UsageService) Handle(event domain.UsageEvent) (UsageResult, error
 	return result, err
 }
 
-func (service *UsageService) applyFailurePolicy(account *domain.AccountState, event domain.UsageEvent, now time.Time) bool {
+func (service *UsageService) applyFailurePolicy(account *domain.AccountState, event domain.UsageEvent, now time.Time, settings Settings) bool {
 	if isSuccessfulOutcome(event.Outcome) {
 		account.Failure.ConsecutiveAttributedFailures = 0
 		return false
@@ -96,7 +97,7 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 		return false
 	}
 	immediate := isImmediateDemotionStatus(event.StatusCode)
-	countable := immediate || service.countsThresholdStatus(event.StatusCode)
+	countable := immediate || countsThresholdStatus(settings, event.StatusCode)
 	if !countable {
 		// Non-attributed failure: clear streak (same as success-side hygiene).
 		account.Failure.ConsecutiveAttributedFailures = 0
@@ -111,7 +112,7 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 	account.Failure.LastFailureCode = fmt.Sprintf("http_%d", event.StatusCode)
 
 	account.Failure.ConsecutiveAttributedFailures++
-	if !immediate && account.Failure.ConsecutiveAttributedFailures < service.settings.AttributedFailureThreshold {
+	if !immediate && account.Failure.ConsecutiveAttributedFailures < settings.AttributedFailureThreshold {
 		return false
 	}
 
@@ -120,7 +121,7 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 		return false
 	}
 	triggeredAt := now.UTC()
-	target := service.settings.DemotionPriority
+	target := settings.DemotionPriority
 	account.Demotion = domain.DemotionState{
 		State: "requested", TargetPriority: &target, TriggeredAt: &triggeredAt,
 		FailureCode: account.Failure.LastFailureCode,
@@ -134,19 +135,19 @@ func isImmediateDemotionStatus(status int) bool {
 }
 
 // Other statuses enter the consecutive-threshold path (default threshold=3).
-func (service *UsageService) countsThresholdStatus(status int) bool {
+func countsThresholdStatus(settings Settings, status int) bool {
 	if status == 401 || status == 403 {
 		return false
 	}
-	for _, allowed := range service.settings.AttributedFailureStatuses {
+	for _, allowed := range settings.AttributedFailureStatuses {
 		if status == allowed && status != 401 && status != 403 {
 			return true
 		}
 	}
-	if status == 429 && service.settings.CountStatus429 {
+	if status == 429 && settings.CountStatus429 {
 		return true
 	}
-	if status >= 500 && status <= 599 && service.settings.CountStatus5XX {
+	if status >= 500 && status <= 599 && settings.CountStatus5XX {
 		return true
 	}
 	return false
@@ -154,7 +155,14 @@ func (service *UsageService) countsThresholdStatus(status int) bool {
 
 // countsStatus is kept for diagnostics / tests: any status that can contribute to demotion.
 func (service *UsageService) countsStatus(status int) bool {
-	return isImmediateDemotionStatus(status) || service.countsThresholdStatus(status)
+	return isImmediateDemotionStatus(status) || countsThresholdStatus(service.settings(), status)
+}
+
+func (service *UsageService) settings() Settings {
+	if settings := service.store.View().Settings; settings != nil {
+		return *settings
+	}
+	return service.settingsFallback
 }
 
 func isSuccessfulOutcome(outcome string) bool {

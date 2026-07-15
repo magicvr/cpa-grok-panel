@@ -106,6 +106,45 @@ func TestUsageDemotion429NeedsThreshold(t *testing.T) {
 	}
 }
 
+func TestUsageDemotionUsesUpdatedSettings(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	initial := application.DefaultSettings()
+	initial.AttributedFailureThreshold = 10
+	initial.CountStatus429 = false
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Settings = &initial
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	svc := application.NewUsageServiceWithDemotion(store, time.Now, initial, nil)
+	first := domain.UsageEvent{AuthIndex: "hot", EventID: "before", Outcome: "failure", StatusCode: 429, Provider: "xai", OccurredAt: time.Now().UTC()}
+	if result, err := svc.Handle(first); err != nil || result.DemotionRequested {
+		t.Fatalf("before update result=%+v err=%v", result, err)
+	}
+
+	updated := initial
+	updated.Revision++
+	updated.AttributedFailureThreshold = 2
+	updated.CountStatus429 = true
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Settings = &updated
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for index := 1; index <= 2; index++ {
+		event := domain.UsageEvent{AuthIndex: "hot", EventID: fmt.Sprintf("after-%d", index), Outcome: "failure", StatusCode: 429, Provider: "xai", OccurredAt: time.Now().UTC()}
+		result, err := svc.Handle(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (index == 2) != result.DemotionRequested {
+			t.Fatalf("hit=%d result=%+v state=%+v", index, result, store.View().Accounts["hot"])
+		}
+	}
+}
+
 func TestUsageDemotionSuccessClearsStreak(t *testing.T) {
 	dir := t.TempDir()
 	store, err := stateinfra.Open(dir, time.Now().UTC())

@@ -103,6 +103,16 @@ func (runtime *Runtime) ensureReady(dataDir string) error {
 		_ = lastErr
 	}
 	settings := application.LoadSettings()
+	if persisted := store.View().Settings; persisted != nil {
+		settings = *persisted
+	} else if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		initial := settings
+		snapshot.Settings = &initial
+		return nil
+	}); err != nil {
+		_ = store.Close()
+		return fmt.Errorf("initialize settings: %w", err)
+	}
 	accounts := application.NewAccountsService(runtime.host, store, time.Now, settings)
 	worker := application.NewDemotionWorker(accounts, store, settings)
 	runtime.store = store

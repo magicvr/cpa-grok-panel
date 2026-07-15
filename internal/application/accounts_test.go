@@ -106,6 +106,66 @@ func TestDemoteRecordsBaselineAndUsesConfiguredTarget(t *testing.T) {
 	}
 }
 
+func TestDemoteUsesUpdatedTarget(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	host := &accountHost{
+		files:     []domain.AuthFile{xaiFile("idx-hot", "xai-hot.json", 12)},
+		documents: map[string]cpaabi.AuthDocument{"idx-hot": {"priority": 12, "disabled": false}},
+	}
+	initial := application.DefaultSettings()
+	service := application.NewAccountsService(host, store, time.Now, initial)
+	updated := initial
+	updated.Revision++
+	updated.DemotionPriority = -250
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Settings = &updated
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	account, err := service.Demote("idx-hot", "xai-hot.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if account.Priority != -250 {
+		t.Fatalf("priority=%d", account.Priority)
+	}
+}
+
+func TestDemotionWorkerUsesUpdatedTarget(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	host := &accountHost{
+		files:     []domain.AuthFile{xaiFile("idx-worker", "xai-worker.json", 10)},
+		documents: map[string]cpaabi.AuthDocument{"idx-worker": {"priority": 10, "disabled": false}},
+	}
+	initial := application.DefaultSettings()
+	accounts := application.NewAccountsService(host, store, time.Now, initial)
+	worker := application.NewDemotionWorker(accounts, store, initial)
+	updated := initial
+	updated.Revision++
+	updated.DemotionPriority = -300
+	baseline := 10
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Settings = &updated
+		snapshot.Accounts["idx-worker"] = domain.AccountState{ExactFileName: "xai-worker.json", Demotion: domain.DemotionState{State: "requested", BaselinePriority: &baseline}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	worker.Start()
+	defer worker.Stop()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if host.files[0].Priority == -300 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("priority=%d state=%+v", host.files[0].Priority, store.View().Accounts["idx-worker"].Demotion)
+}
+
 func TestRestorePriorityWithoutPluginRecordUsesConfiguredDefault(t *testing.T) {
 	store := stateinfra.OpenMemory(time.Now().UTC())
 	host := &accountHost{
