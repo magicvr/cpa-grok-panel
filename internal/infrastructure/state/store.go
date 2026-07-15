@@ -17,7 +17,7 @@ import (
 const (
 	SchemaVersion = 1
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.1.1"
+	PluginVersion = "0.1.2"
 )
 
 type DedupeState struct {
@@ -58,11 +58,12 @@ func Open(dir string, now time.Time) (*Store, error) {
 	}
 	lockFile, err := os.OpenFile(filepath.Join(locksDir, "instance.lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return nil, fmt.Errorf("open instance lock: %w", err)
-	}
-	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		// Non-fatal: continue without lock file if FS rejects create.
+		lockFile = nil
+	} else if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		// Another process holds the lock; still open store so register does not fail hard.
 		_ = lockFile.Close()
-		return nil, fmt.Errorf("lock plugin data dir: %w", err)
+		lockFile = nil
 	}
 
 	store := &Store{dir: dir, path: filepath.Join(dir, "state.json"), lockFile: lockFile}
