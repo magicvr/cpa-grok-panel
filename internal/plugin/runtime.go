@@ -16,14 +16,15 @@ import (
 )
 
 type Runtime struct {
-	mu      sync.RWMutex
-	host    *cpaabi.Host
-	store   *stateinfra.Store
-	usage   *application.UsageService
-	worker  *application.DemotionWorker
-	router  *management.Router
-	dataDir string
-	ready   bool
+	mu               sync.RWMutex
+	host             *cpaabi.Host
+	store            *stateinfra.Store
+	usage            *application.UsageService
+	worker           *application.DemotionWorker
+	usageResetWorker *application.UsageResetWorker
+	router           *management.Router
+	dataDir          string
+	ready            bool
 }
 
 func NewRuntime(host *cpaabi.Host) *Runtime {
@@ -115,13 +116,16 @@ func (runtime *Runtime) ensureReady(dataDir string) error {
 	}
 	accounts := application.NewAccountsService(runtime.host, store, time.Now, settings)
 	worker := application.NewDemotionWorker(accounts, store, settings)
+	usageResetWorker := application.NewUsageResetWorker(store, settings)
 	runtime.store = store
 	runtime.worker = worker
+	runtime.usageResetWorker = usageResetWorker
 	runtime.usage = application.NewUsageServiceWithDemotion(store, time.Now, settings, worker)
 	runtime.router = management.NewRouter(accounts, store, settings)
 	runtime.dataDir = used
 	runtime.ready = true
 	worker.Start()
+	usageResetWorker.Start()
 	return nil
 }
 
@@ -201,6 +205,10 @@ func (runtime *Runtime) Shutdown() error {
 	if runtime.worker != nil {
 		runtime.worker.Stop()
 		runtime.worker = nil
+	}
+	if runtime.usageResetWorker != nil {
+		runtime.usageResetWorker.Stop()
+		runtime.usageResetWorker = nil
 	}
 	err := runtime.store.Close()
 	runtime.store = nil

@@ -4,6 +4,8 @@ type Settings struct {
 	Revision                   int               `json:"revision"`
 	AutoRefreshEnabled         bool              `json:"auto_refresh_enabled"`
 	AutoRefreshIntervalSeconds int               `json:"auto_refresh_interval_seconds"`
+	DailyUsageResetEnabled     bool              `json:"daily_usage_reset_enabled"`
+	DailyUsageResetTime        string            `json:"daily_usage_reset_time"`
 	OperationConcurrency       int               `json:"operation_concurrency"`
 	AttributedFailureThreshold int               `json:"attributed_failure_threshold"`
 	AttributedFailureStatuses  []int             `json:"attributed_failure_statuses"`

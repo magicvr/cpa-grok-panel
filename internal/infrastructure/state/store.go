@@ -18,7 +18,7 @@ import (
 const (
 	SchemaVersion = 1
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.2.8"
+	PluginVersion = "0.3.0"
 )
 
 type DedupeState struct {
@@ -34,6 +34,7 @@ type Snapshot struct {
 	PluginVersion       string                         `json:"plugin_version"`
 	SavedAt             time.Time                      `json:"saved_at"`
 	StatisticsStartedAt time.Time                      `json:"statistics_started_at"`
+	LastUsageResetDate  string                         `json:"last_usage_reset_date,omitempty"`
 	Settings            *config.Settings               `json:"settings,omitempty"`
 	Accounts            map[string]domain.AccountState `json:"accounts"`
 	EventDedupe         DedupeState                    `json:"event_dedupe"`
@@ -129,6 +130,9 @@ func decodeSnapshot(data []byte, snapshot *Snapshot) error {
 	}
 	if _, exists := raw.Settings["auto_refresh_interval_seconds"]; !exists {
 		snapshot.Settings.AutoRefreshIntervalSeconds = 5
+	}
+	if _, exists := raw.Settings["daily_usage_reset_time"]; !exists {
+		snapshot.Settings.DailyUsageResetTime = "00:00"
 	}
 	return nil
 }

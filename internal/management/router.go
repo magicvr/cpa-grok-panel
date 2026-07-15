@@ -55,6 +55,7 @@ func Registration() map[string]any {
 		{"Method": "POST", "Path": APIPrefix + "/accounts/demote", "Description": "手动降低账号优先级"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/restore-priority", "Description": "恢复账号优先级"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/set-enabled", "Description": "启用或停用账号"},
+		{"Method": "POST", "Path": APIPrefix + "/accounts/clear-state", "Description": "删除账号后清理插件本地状态"},
 	}
 	resources := []map[string]any{
 		{"Path": ResourcePanelPath, "Menu": "Grok 账号", "Description": "Grok 账号管理面板"},
@@ -127,6 +128,15 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 			return accountErrorResponse(err)
 		}
 		return jsonResponse(200, map[string]any{"account": account})
+	case method == "POST" && matchesPath(path, "/accounts/clear-state"):
+		var body accountTargetRequest
+		if err := decodeStrictBody(request.Body, &body); err != nil {
+			return apiError(400, "invalid_argument", err.Error(), false)
+		}
+		if err := router.accounts.ClearState(body.AuthIndex, body.ExactFileName); err != nil {
+			return accountErrorResponse(err)
+		}
+		return jsonResponse(200, map[string]any{"cleared": true})
 	case method != "GET" && method != "POST" && method != "PUT" && method != "PATCH":
 		return apiError(405, "method_not_allowed", "请求方法不受支持", false)
 	case method == "POST" || method == "PUT" || method == "PATCH":
@@ -148,13 +158,15 @@ type setEnabledRequest struct {
 }
 
 type settingsUpdateRequest struct {
-	AutoRefreshEnabled         *bool `json:"auto_refresh_enabled"`
-	AutoRefreshIntervalSeconds *int  `json:"auto_refresh_interval_seconds"`
-	AttributedFailureThreshold *int  `json:"attributed_failure_threshold"`
-	CountStatus429             *bool `json:"count_status_429"`
-	CountStatus5XX             *bool `json:"count_status_5xx"`
-	DemotionPriority           *int  `json:"demotion_priority"`
-	DefaultRestorePriority     *int  `json:"default_restore_priority"`
+	AutoRefreshEnabled         *bool   `json:"auto_refresh_enabled"`
+	AutoRefreshIntervalSeconds *int    `json:"auto_refresh_interval_seconds"`
+	DailyUsageResetEnabled     *bool   `json:"daily_usage_reset_enabled"`
+	DailyUsageResetTime        *string `json:"daily_usage_reset_time"`
+	AttributedFailureThreshold *int    `json:"attributed_failure_threshold"`
+	CountStatus429             *bool   `json:"count_status_429"`
+	CountStatus5XX             *bool   `json:"count_status_5xx"`
+	DemotionPriority           *int    `json:"demotion_priority"`
+	DefaultRestorePriority     *int    `json:"default_restore_priority"`
 }
 
 type settingsResponse struct {
@@ -173,13 +185,18 @@ func (router *Router) settingsResponse() settingsResponse {
 }
 
 func (router *Router) updateSettings(update settingsUpdateRequest) (application.Settings, error) {
-	if update.AutoRefreshEnabled == nil && update.AutoRefreshIntervalSeconds == nil &&
+	if update.AutoRefreshEnabled == nil && update.AutoRefreshIntervalSeconds == nil && update.DailyUsageResetEnabled == nil && update.DailyUsageResetTime == nil &&
 		update.AttributedFailureThreshold == nil && update.CountStatus429 == nil && update.CountStatus5XX == nil &&
 		update.DemotionPriority == nil && update.DefaultRestorePriority == nil {
 		return application.Settings{}, fmt.Errorf("至少提供一个可配置字段")
 	}
 	if update.AutoRefreshIntervalSeconds != nil && (*update.AutoRefreshIntervalSeconds < 2 || *update.AutoRefreshIntervalSeconds > 60) {
 		return application.Settings{}, fmt.Errorf("auto_refresh_interval_seconds 必须在 2..60 范围内")
+	}
+	if update.DailyUsageResetTime != nil {
+		if err := application.ValidateDailyUsageResetTime(*update.DailyUsageResetTime); err != nil {
+			return application.Settings{}, err
+		}
 	}
 	if update.AttributedFailureThreshold != nil && (*update.AttributedFailureThreshold < 1 || *update.AttributedFailureThreshold > 100) {
 		return application.Settings{}, fmt.Errorf("attributed_failure_threshold 必须在 1..100 范围内")
@@ -203,6 +220,12 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		}
 		if update.AutoRefreshIntervalSeconds != nil {
 			settings.AutoRefreshIntervalSeconds = *update.AutoRefreshIntervalSeconds
+		}
+		if update.DailyUsageResetEnabled != nil {
+			settings.DailyUsageResetEnabled = *update.DailyUsageResetEnabled
+		}
+		if update.DailyUsageResetTime != nil {
+			settings.DailyUsageResetTime = *update.DailyUsageResetTime
 		}
 		if update.AttributedFailureThreshold != nil {
 			settings.AttributedFailureThreshold = *update.AttributedFailureThreshold

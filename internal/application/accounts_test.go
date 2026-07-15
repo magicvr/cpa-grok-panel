@@ -78,6 +78,26 @@ func TestSetEnabledPreservesDocumentAndVerifiesDisabled(t *testing.T) {
 	}
 }
 
+func TestClearStateRequiresMatchingStoredFileName(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-1"] = domain.AccountState{ExactFileName: "xai-a.json"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := application.NewAccountsService(&accountHost{}, store, time.Now)
+	if err := service.ClearState("idx-1", "xai-other.json"); application.AsAccountError(err).Code != "account_mapping_changed" {
+		t.Fatalf("error=%v", err)
+	}
+	if err := service.ClearState("idx-1", "xai-a.json"); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := store.View().Accounts["idx-1"]; exists {
+		t.Fatal("account state was not removed")
+	}
+}
+
 func TestDemoteRecordsBaselineAndUsesConfiguredTarget(t *testing.T) {
 	store := stateinfra.OpenMemory(time.Now().UTC())
 	host := &accountHost{
