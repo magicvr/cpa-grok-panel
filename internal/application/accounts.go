@@ -76,6 +76,9 @@ func (service *AccountsService) List(search string) ([]domain.AccountView, time.
 	return items, now, nil
 }
 
+// SetEnabled is kept for API completeness, but CPA host.auth.save does not apply
+// metadata.disabled onto runtime auth.Disabled (buildAuthFromFileData always
+// leaves StatusActive). The panel uses PATCH /v0/management/auth-files/status.
 func (service *AccountsService) SetEnabled(authIndex, exactFileName string, enabled bool) (domain.AccountView, error) {
 	service.write.Lock()
 	defer service.write.Unlock()
@@ -95,12 +98,18 @@ func (service *AccountsService) SetEnabled(authIndex, exactFileName string, enab
 	if err := service.host.SaveAuthFile(exactFileName, document); err != nil {
 		return domain.AccountView{}, hostError("auth_save_failed", err)
 	}
+	// Prefer runtime list; if CPA ignored disabled, surface a clear error so UI
+	// can fall back to Management status (panel already uses that path).
 	verified, err := service.resolveExact(authIndex, exactFileName)
 	if err != nil {
 		return domain.AccountView{}, err
 	}
 	if verified.Disabled != !enabled {
-		return domain.AccountView{}, &AccountError{Code: "write_verification_failed", Message: "启停写后校验不一致", HTTPStatus: 502, Retryable: true}
+		return domain.AccountView{}, &AccountError{
+			Code: "host_disabled_not_applied",
+			Message: "host.auth.save 已写文件但运行时未应用 disabled；请使用 Management PATCH /auth-files/status",
+			HTTPStatus: 502, Retryable: true,
+		}
 	}
 	return service.project(verified), nil
 }
