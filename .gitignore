@@ -20,3 +20,4 @@ bin/
 node_modules/
 web/dist/
 /tmp/
+dist/

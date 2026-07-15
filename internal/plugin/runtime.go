@@ -1,0 +1,176 @@
+package plugin
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/magicvr/cpa-grok-panel/internal/application"
+	"github.com/magicvr/cpa-grok-panel/internal/cpaabi"
+	stateinfra "github.com/magicvr/cpa-grok-panel/internal/infrastructure/state"
+	"github.com/magicvr/cpa-grok-panel/internal/management"
+)
+
+type Runtime struct {
+	mu      sync.RWMutex
+	host    *cpaabi.Host
+	store   *stateinfra.Store
+	usage   *application.UsageService
+	router  *management.Router
+	dataDir string
+	ready   bool
+}
+
+func NewRuntime(host *cpaabi.Host) *Runtime {
+	return &Runtime{host: host}
+}
+
+func (runtime *Runtime) Call(method string, payload []byte) []byte {
+	switch strings.TrimSpace(method) {
+	case "plugin.register":
+		return runtime.register(payload)
+	case "plugin.reconfigure":
+		return runtime.reconfigure(payload)
+	case "usage.handle":
+		return runtime.handleUsage(payload)
+	case "management.register":
+		return cpaabi.Success(management.Registration())
+	case "management.http":
+		return runtime.handleManagement(payload)
+	default:
+		return cpaabi.Failure("method_not_found", "unsupported plugin method: "+method, false)
+	}
+}
+
+func (runtime *Runtime) register(payload []byte) []byte {
+	dataDir := discoverDataDir(payload)
+	if err := runtime.ensureReady(dataDir); err != nil {
+		return cpaabi.Failure("state_unavailable", err.Error(), false)
+	}
+	return cpaabi.Success(cpaabi.PluginRegistration())
+}
+
+func (runtime *Runtime) reconfigure(payload []byte) []byte {
+	dataDir := discoverDataDir(payload)
+	if err := runtime.ensureReady(dataDir); err != nil {
+		return cpaabi.Failure("state_unavailable", err.Error(), false)
+	}
+	return cpaabi.Success(map[string]any{"applied": true, "settings": application.ReadOnlySettings(), "write_mode": "read_only"})
+}
+
+func (runtime *Runtime) ensureReady(dataDir string) error {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.ready {
+		if dataDir != "" && filepath.Clean(dataDir) != filepath.Clean(runtime.dataDir) {
+			return errors.New("plugin is already registered with a different data dir")
+		}
+		return nil
+	}
+	if dataDir == "" {
+		dataDir = filepath.Join("plugins", cpaabi.PluginID)
+	}
+	store, err := stateinfra.Open(dataDir, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	accounts := application.NewAccountsService(runtime.host, store, time.Now)
+	runtime.store = store
+	runtime.usage = application.NewUsageService(store, time.Now)
+	runtime.router = management.NewRouter(accounts, store)
+	runtime.dataDir = dataDir
+	runtime.ready = true
+	return nil
+}
+
+func (runtime *Runtime) handleUsage(payload []byte) []byte {
+	runtime.mu.RLock()
+	service := runtime.usage
+	ready := runtime.ready
+	runtime.mu.RUnlock()
+	if !ready || service == nil {
+		return cpaabi.Failure("not_registered", "plugin.register must be called first", true)
+	}
+	event, err := application.ParseUsageEvent(payload)
+	if err != nil {
+		return cpaabi.Failure("invalid_argument", err.Error(), false)
+	}
+	result, err := service.Handle(event)
+	if err != nil {
+		return cpaabi.Failure("usage_rejected", err.Error(), false)
+	}
+	return cpaabi.Success(result)
+}
+
+func (runtime *Runtime) handleManagement(payload []byte) []byte {
+	runtime.mu.RLock()
+	router := runtime.router
+	ready := runtime.ready
+	runtime.mu.RUnlock()
+	if !ready || router == nil {
+		return cpaabi.Failure("not_registered", "plugin.register must be called first", true)
+	}
+	request, err := management.DecodeRequest(payload)
+	if err != nil {
+		return cpaabi.Failure("invalid_argument", err.Error(), false)
+	}
+	return cpaabi.Success(router.Handle(request))
+}
+
+func discoverDataDir(payload []byte) string {
+	if value := strings.TrimSpace(os.Getenv("CPA_PLUGIN_DATA_DIR")); value != "" {
+		return value
+	}
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(payload, &raw) != nil {
+		return ""
+	}
+	return findString(raw, "plugin_data_dir", "PluginDataDir", "data_dir", "DataDir")
+}
+
+func findString(raw map[string]json.RawMessage, keys ...string) string {
+	for _, key := range keys {
+		if value, ok := raw[key]; ok {
+			var text string
+			if json.Unmarshal(value, &text) == nil && strings.TrimSpace(text) != "" {
+				return strings.TrimSpace(text)
+			}
+		}
+	}
+	for _, key := range []string{"config", "Config", "host", "Host", "context", "Context", "params", "Params"} {
+		if value, ok := raw[key]; ok {
+			var nested map[string]json.RawMessage
+			if json.Unmarshal(value, &nested) == nil {
+				if found := findString(nested, keys...); found != "" {
+					return found
+				}
+			}
+		}
+	}
+	return ""
+}
+
+func (runtime *Runtime) Shutdown() error {
+	runtime.mu.Lock()
+	defer runtime.mu.Unlock()
+	if runtime.store == nil {
+		return nil
+	}
+	err := runtime.store.Close()
+	runtime.store = nil
+	runtime.usage = nil
+	runtime.router = nil
+	runtime.ready = false
+	return err
+}
+
+func (runtime *Runtime) String() string {
+	runtime.mu.RLock()
+	defer runtime.mu.RUnlock()
+	return fmt.Sprintf("%s@%s ready=%t", cpaabi.PluginID, cpaabi.PluginVersion, runtime.ready)
+}
