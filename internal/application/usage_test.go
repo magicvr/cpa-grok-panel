@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/magicvr/cpa-grok-panel/internal/application"
+	"github.com/magicvr/cpa-grok-panel/internal/cpaabi"
 	"github.com/magicvr/cpa-grok-panel/internal/domain"
 	stateinfra "github.com/magicvr/cpa-grok-panel/internal/infrastructure/state"
 )
@@ -77,3 +78,7 @@ func TestAccountsFilterNonXAI(t *testing.T) {
 type fakeLister struct{ files []domain.AuthFile }
 
 func (f fakeLister) ListAuthFiles() ([]domain.AuthFile, error) { return f.files, nil }
+func (fakeLister) GetAuthFile(string) (cpaabi.AuthDocument, error) {
+	return cpaabi.AuthDocument{}, nil
+}
+func (fakeLister) SaveAuthFile(string, cpaabi.AuthDocument) error { return nil }

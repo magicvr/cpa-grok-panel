@@ -23,8 +23,31 @@ type AuthFile struct {
 type AccountState struct {
 	ExactFileName string        `json:"exact_file_name,omitempty"`
 	Usage         UsageCounters `json:"usage"`
+	Failure       FailureState  `json:"failure"`
+	Demotion      DemotionState `json:"demotion"`
 	FirstSeenAt   time.Time     `json:"first_seen_at,omitempty"`
 	LastSeenAt    time.Time     `json:"last_seen_at,omitempty"`
+}
+
+type FailureState struct {
+	ConsecutiveAttributedFailures int        `json:"consecutive_attributed_failures"`
+	LastFailureAt                 *time.Time `json:"last_failure_at,omitempty"`
+	LastFailureCode               string     `json:"last_failure_code,omitempty"`
+}
+
+type DemotionState struct {
+	State            string     `json:"state"`
+	BaselinePriority *int       `json:"baseline_priority,omitempty"`
+	TargetPriority   *int       `json:"target_priority,omitempty"`
+	TriggeredAt      *time.Time `json:"triggered_at,omitempty"`
+	FailureCode      string     `json:"failure_code,omitempty"`
+}
+
+func (state DemotionState) Normalized() DemotionState {
+	if state.State == "" {
+		state.State = "none"
+	}
+	return state
 }
 
 type AccountView struct {
@@ -39,6 +62,8 @@ type AccountView struct {
 	Provider      string        `json:"provider"`
 	AuthType      string        `json:"auth_type"`
 	Usage         UsageCounters `json:"usage"`
+	Failure       FailureState  `json:"failure"`
+	Demotion      DemotionState `json:"demotion"`
 	LastSeenAt    time.Time     `json:"last_seen_at"`
 	WriteMode     string        `json:"write_mode"`
 }
@@ -71,6 +96,7 @@ func ProjectAccount(file AuthFile, state AccountState, now time.Time) AccountVie
 		AuthIndex: file.AuthIndex, ExactFileName: file.Name, Email: file.Email,
 		Enabled: !file.Disabled, Unavailable: file.Unavailable, Status: file.Status,
 		StatusMessage: file.StatusMessage, Priority: file.Priority, Provider: "xai",
-		AuthType: "oauth", Usage: usage, LastSeenAt: now.UTC(), WriteMode: "read_only",
+		AuthType: "oauth", Usage: usage, Failure: state.Failure, Demotion: state.Demotion.Normalized(),
+		LastSeenAt: now.UTC(), WriteMode: "managed",
 	}
 }

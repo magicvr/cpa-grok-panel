@@ -1,6 +1,9 @@
 package application
 
 import (
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	stateinfra "github.com/magicvr/cpa-grok-panel/internal/infrastructure/state"
@@ -11,6 +14,8 @@ type Settings struct {
 	OperationConcurrency       int               `json:"operation_concurrency"`
 	AttributedFailureThreshold int               `json:"attributed_failure_threshold"`
 	AttributedFailureStatuses  []int             `json:"attributed_failure_statuses"`
+	CountStatus429             bool              `json:"count_status_429"`
+	CountStatus5XX             bool              `json:"count_status_5xx"`
 	DemotionPriority           int               `json:"demotion_priority"`
 	ProtectionLevel            string            `json:"protection_level"`
 	DefaultTokenCapacity       uint64            `json:"default_token_capacity"`
@@ -20,11 +25,40 @@ type Settings struct {
 	WriteMode                  string            `json:"write_mode"`
 }
 
-func ReadOnlySettings() Settings {
-	return Settings{Revision: 1, OperationConcurrency: 3, AttributedFailureThreshold: 3,
+func DefaultSettings() Settings {
+	return Settings{Revision: 1, OperationConcurrency: 1, AttributedFailureThreshold: 3,
 		AttributedFailureStatuses: []int{401, 403}, DemotionPriority: -100, ProtectionLevel: "strict",
 		DefaultTokenCapacity: 1_000_000, PerAccountTokenCapacity: map[string]uint64{},
-		HealthStaleAfterSeconds: 86400, OperationTimeoutSeconds: 60, WriteMode: "read_only"}
+		HealthStaleAfterSeconds: 86400, OperationTimeoutSeconds: 60, WriteMode: "managed"}
+}
+
+func LoadSettings() Settings {
+	settings := DefaultSettings()
+	settings.AttributedFailureThreshold = envInt("CPA_GROK_FAILURE_THRESHOLD", settings.AttributedFailureThreshold, 1, 100)
+	settings.DemotionPriority = envInt("CPA_GROK_DEMOTION_PRIORITY", settings.DemotionPriority, -1_000_000, 1_000_000)
+	settings.CountStatus429 = envBool("CPA_GROK_COUNT_429", false)
+	settings.CountStatus5XX = envBool("CPA_GROK_COUNT_5XX", false)
+	return settings
+}
+
+func envInt(name string, fallback, minimum, maximum int) int {
+	value, err := strconv.Atoi(strings.TrimSpace(os.Getenv(name)))
+	if err != nil || value < minimum || value > maximum {
+		return fallback
+	}
+	return value
+}
+
+func envBool(name string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
 
 type Meta struct {
@@ -52,8 +86,8 @@ func BuildMeta(snapshot stateinfra.Snapshot) Meta {
 		dedupeMode = "weak"
 	}
 	return Meta{PluginID: stateinfra.PluginID, PluginVersion: stateinfra.PluginVersion, APIVersion: 1,
-		WriteMode: "read_only", Status: "ready", StateStatus: "healthy",
+		WriteMode: "managed", Status: "ready", StateStatus: "healthy",
 		StatisticsStartedAt: snapshot.StatisticsStartedAt, DedupeMode: dedupeMode, ConditionalWrite: false,
-		Capabilities:        []string{"usage", "auth_list", "management_routes"},
-		UnavailableFeatures: []Unavailable{{Feature: "auth_writes", Reason: "M1 固定为 read_only"}, {Feature: "checks", Reason: "host.auth.invoke 未提供"}, {Feature: "cleanup", Reason: "M3 功能未启用"}}}
+		Capabilities:        []string{"usage", "auth_list", "auth_get", "auth_save", "management_routes", "set_enabled", "restore_priority", "auto_demotion"},
+		UnavailableFeatures: []Unavailable{{Feature: "checks", Reason: "host.auth.invoke 未提供"}, {Feature: "cleanup", Reason: "M3 功能未启用"}}}
 }

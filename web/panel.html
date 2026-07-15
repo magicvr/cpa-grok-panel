@@ -5,14 +5,21 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Grok 账号面板</title>
   <style>
-    :root{color-scheme:dark;--bg:#0b1020;--card:#151c31;--line:#293450;--text:#eaf0ff;--muted:#98a6c7;--accent:#70d7ff;--good:#69e6a6;--bad:#ff8b9b}*{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#0b1020,#111932);color:var(--text);font:14px/1.5 system-ui,sans-serif}.wrap{max-width:1180px;margin:auto;padding:28px 18px}header{display:flex;justify-content:space-between;align-items:center;gap:16px}h1{margin:0;font-size:26px}.sub{color:var(--muted);margin-top:4px}.actions,.modal-actions{display:flex;align-items:center;gap:9px}button{border:0;border-radius:9px;padding:9px 16px;background:var(--accent);color:#07111c;font-weight:700;cursor:pointer}button:disabled{opacity:.55;cursor:wait}button.secondary{background:#202b46;color:var(--text);border:1px solid var(--line)}button.danger{margin-right:auto;background:transparent;color:var(--bad);border:1px solid #653444}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px}.label{color:var(--muted);font-size:12px}.value{font-size:22px;font-weight:750;margin-top:4px}.panel{overflow:hidden;background:var(--card);border:1px solid var(--line);border-radius:12px}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;min-width:980px}th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line)}th{padding:0;color:var(--muted);font-size:12px}.sort-button{display:flex;width:100%;align-items:center;gap:6px;padding:11px 13px;border:0;border-radius:0;background:transparent;color:inherit;font:inherit;font-weight:700;white-space:nowrap}.sort-button:hover{background:#1b2540;color:var(--text)}th.sorted .sort-button{color:var(--accent);background:#19253e}.sort-indicator{width:12px;color:var(--accent);font-size:10px}.ok{color:var(--good)}.bad{color:var(--bad)}.file{max-width:270px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.empty{text-align:center;color:var(--muted);padding:32px 16px}.pagination{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 13px;background:#11182b}.pagination.top{border-bottom:1px solid var(--line)}.pagination.bottom{border-top:1px solid var(--line)}.page-size{display:flex;align-items:center;gap:8px;color:var(--muted)}select{padding:7px 28px 7px 9px;border:1px solid var(--line);border-radius:7px;background:#0d1426;color:var(--text);font:inherit}.page-nav{display:flex;align-items:center;gap:10px}.page-nav button{padding:7px 12px}.page-info{min-width:150px;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums}.notice{margin:12px 0;color:var(--muted)}.modal-backdrop{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(3,7,17,.72);backdrop-filter:blur(3px)}.modal-backdrop[hidden]{display:none}.modal{width:min(460px,100%);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:0 24px 80px rgba(0,0,0,.45)}.modal h2{margin:0 0 6px;font-size:20px}.modal p{margin:0 0 16px;color:var(--muted)}.modal label{display:block;margin-bottom:6px;font-weight:700}.modal input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;outline:0;background:#0d1426;color:var(--text);font:inherit}.modal input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(112,215,255,.12)}.key-status{min-height:21px;margin:8px 0 18px;color:var(--muted);font-size:12px}@media(max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}header{align-items:flex-start}.actions{flex-wrap:wrap;justify-content:flex-end}.pagination{align-items:flex-start;flex-direction:column}.page-nav{width:100%;justify-content:space-between}.page-info{min-width:0}.page-nav button{padding:7px 10px}}
+    :root{color-scheme:dark;--bg:#101214;--surface:#181b1f;--surface-2:#20242a;--line:#343a42;--text:#f2f4f7;--muted:#a5adb8;--accent:#62d4e8;--good:#72d69b;--warn:#f3c969;--bad:#f28b95}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,sans-serif}.wrap{max-width:1380px;margin:auto;padding:24px 18px 36px}header{display:flex;justify-content:space-between;align-items:center;gap:16px}h1{margin:0;font-size:25px;letter-spacing:0}.sub{color:var(--muted);margin-top:3px}.actions,.modal-actions,.row-actions{display:flex;align-items:center;gap:8px}button{min-height:36px;border:1px solid transparent;border-radius:7px;padding:7px 14px;background:var(--accent);color:#071114;font:inherit;font-weight:700;cursor:pointer;white-space:nowrap}button:hover:not(:disabled){filter:brightness(1.08)}button:disabled{opacity:.5;cursor:wait}button.secondary{background:var(--surface-2);color:var(--text);border-color:var(--line)}button.warning{background:transparent;color:var(--warn);border-color:#76642f}button.danger{margin-right:auto;background:transparent;color:var(--bad);border-color:#74404a}button.small{min-height:30px;padding:4px 9px;font-size:12px}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:20px 0}.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px}.label{color:var(--muted);font-size:12px}.value{font-size:21px;font-weight:750;margin-top:3px}.panel{overflow:hidden;background:var(--surface);border:1px solid var(--line);border-radius:8px}.toolbar{display:flex;align-items:end;gap:12px;flex-wrap:wrap;padding:13px;border-bottom:1px solid var(--line);background:#14171a}.field{display:grid;gap:5px;color:var(--muted);font-size:12px}.field.search{min-width:min(340px,100%);flex:1}.field input,.field select,.modal input{min-height:38px;border:1px solid var(--line);border-radius:7px;outline:0;background:#0e1012;color:var(--text);font:inherit}.field input{width:100%;padding:8px 11px}.field select{padding:7px 32px 7px 10px}.field input:focus,.field select:focus,.modal input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(98,212,232,.12)}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;min-width:1240px}th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle}th{padding:0;color:var(--muted);font-size:12px}.sort-button{display:flex;width:100%;align-items:center;gap:6px;min-height:40px;padding:9px 12px;border:0;border-radius:0;background:transparent;color:inherit;font:inherit;font-weight:700}.sort-button:hover:not(:disabled){background:var(--surface-2);color:var(--text);filter:none}th.sorted .sort-button{color:var(--accent);background:#172329}.sort-indicator{width:12px;color:var(--accent);font-size:10px}.ok{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}.file{max-width:240px}.file-main{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:700}.file-exact{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-size:11px}.empty{text-align:center;color:var(--muted);padding:32px 16px}.pagination{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:11px 13px;background:#14171a}.pagination.top{border-bottom:1px solid var(--line)}.pagination.bottom{border-top:1px solid var(--line)}.page-size{display:flex;align-items:center;gap:8px;color:var(--muted)}select{padding:7px 28px 7px 9px;border:1px solid var(--line);border-radius:7px;background:#0e1012;color:var(--text);font:inherit}.page-nav{display:flex;align-items:center;gap:9px}.page-nav button{min-height:32px;padding:5px 10px}.page-info{min-width:205px;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums}.notice{min-height:21px;margin:11px 0;color:var(--muted)}.notice.error{color:var(--bad)}.modal-backdrop{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.72)}.modal-backdrop[hidden]{display:none}.modal{width:min(460px,100%);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:20px;box-shadow:0 24px 80px rgba(0,0,0,.5)}.modal h2{margin:0 0 6px;font-size:20px}.modal p{margin:0 0 16px;color:var(--muted)}.modal label{display:block;margin-bottom:6px;font-weight:700}.modal input{width:100%;padding:10px 11px}.key-status{min-height:21px;margin:8px 0 18px;color:var(--muted);font-size:12px}
+    @media(max-width:760px){.wrap{padding:18px 12px 28px}.cards{grid-template-columns:repeat(2,1fr)}header{align-items:flex-start}.actions{flex-wrap:wrap;justify-content:flex-end}.toolbar{align-items:stretch}.field.search,.field{width:100%}.pagination{align-items:flex-start;flex-direction:column}.page-nav{width:100%;justify-content:space-between}.page-info{min-width:0}.page-nav button{padding:5px 9px}}
   </style>
 </head>
 <body><main class="wrap">
-  <header><div><h1>Grok 账号面板</h1><div class="sub">CPA xAI OAuth 账号 · M1 只读模式 · v0.1.7</div></div><div class="actions"><button id="refresh">刷新</button><button id="settings" class="secondary">设置</button></div></header>
+  <header><div><h1>Grok 账号面板</h1><div class="sub">CPA xAI OAuth 账号管理 · v0.2.0</div></div><div class="actions"><button id="refresh" type="button">刷新</button><button id="settings" class="secondary" type="button">设置</button></div></header>
   <section class="cards"><div class="card"><div class="label">账号数</div><div id="accounts" class="value">—</div></div><div class="card"><div class="label">成功请求</div><div id="success" class="value">—</div></div><div class="card"><div class="label">失败请求</div><div id="failed" class="value">—</div></div><div class="card"><div class="label">累计 Token</div><div id="tokens" class="value">—</div></div></section>
-  <div id="notice" class="notice">正在读取数据…</div>
+  <div id="notice" class="notice" role="status">正在读取数据…</div>
   <section class="panel">
+    <div class="toolbar">
+      <label class="field search" for="search"><span>搜索文件名</span><input id="search" type="search" placeholder="输入部分文件名" autocomplete="off"></label>
+      <label class="field" for="status-filter"><span>状态</span><select id="status-filter"><option value="all">全部</option><option value="enabled">启用</option><option value="disabled">停用</option></select></label>
+      <label class="field" for="demotion-filter"><span>降权</span><select id="demotion-filter"><option value="all">全部</option><option value="applied">已降权</option><option value="not-applied">未降权</option></select></label>
+    </div>
     <div class="pagination top">
       <label class="page-size" for="page-size-top">每页 <select id="page-size-top" class="page-size-select"><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option></select> 条</label>
       <div class="page-nav"><button class="secondary previous-page" type="button">上一页</button><span class="page-info">第 1/1 页 · 共 0 条</span><button class="secondary next-page" type="button">下一页</button></div>
@@ -20,6 +27,7 @@
     <div class="table-scroll"><table><thead><tr>
       <th data-sort="file"><button class="sort-button" type="button">账号文件 <span class="sort-indicator"></span></button></th>
       <th data-sort="status"><button class="sort-button" type="button">状态 <span class="sort-indicator"></span></button></th>
+      <th data-sort="demotion"><button class="sort-button" type="button">降权 <span class="sort-indicator"></span></button></th>
       <th data-sort="priority"><button class="sort-button" type="button">优先级 <span class="sort-indicator"></span></button></th>
       <th data-sort="input"><button class="sort-button" type="button">输入 Token <span class="sort-indicator"></span></button></th>
       <th data-sort="output"><button class="sort-button" type="button">输出 Token <span class="sort-indicator"></span></button></th>
@@ -27,6 +35,7 @@
       <th data-sort="success"><button class="sort-button" type="button">成功 <span class="sort-indicator"></span></button></th>
       <th data-sort="failed"><button class="sort-button" type="button">失败 <span class="sort-indicator"></span></button></th>
       <th data-sort="dedupe"><button class="sort-button" type="button">去重 <span class="sort-indicator"></span></button></th>
+      <th>操作</th>
     </tr></thead><tbody id="rows"></tbody></table></div>
     <div class="pagination bottom">
       <label class="page-size" for="page-size-bottom">每页 <select id="page-size-bottom" class="page-size-select"><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option></select> 条</label>
@@ -45,14 +54,15 @@
   </section>
 </div>
 <script>
-// Management API under /v0/management; CPA validates its Bearer management key.
 const base='/v0/management/cpa-grok-panel/api/v1';
 const storageKey='cpa-grok-panel.management_key';
 const fmt=n=>new Intl.NumberFormat('zh-CN').format(n||0);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const displayName=name=>String(name||'').replace(/^xai-/i,'').replace(/\.json$/i,'');
 const sortColumns={
   file:{direction:'asc',value:x=>x.exact_file_name||''},
   status:{direction:'asc',value:x=>`${x.enabled?'启用':'停用'}${x.unavailable?' / 不可用':''}`},
+  demotion:{direction:'asc',value:x=>x.demotion?.state||'none'},
   priority:{direction:'desc',value:x=>Number(x.priority)||0},
   input:{direction:'desc',value:x=>Number(x.usage?.input_tokens)||0},
   output:{direction:'desc',value:x=>Number(x.usage?.output_tokens)||0},
@@ -67,33 +77,75 @@ let allItems=[];
 let currentMeta=null;
 let currentPage=1;
 let pageSize=50;
-let sortKey=null;
+let sortKey='file';
 let sortDirection='asc';
+let actionPending=false;
 
 function compareValues(left,right){
   if(typeof left==='number'&&typeof right==='number') return left-right;
   return String(left).localeCompare(String(right),'zh-CN',{numeric:true,sensitivity:'base'});
 }
-function sortedItems(){
-  if(!sortKey) return allItems.slice();
+function filteredItems(){
+  const search=document.querySelector('#search').value.trim().toLocaleLowerCase('zh-CN');
+  const status=document.querySelector('#status-filter').value;
+  const demotion=document.querySelector('#demotion-filter').value;
+  return allItems.filter(item=>{
+    const matchesSearch=!search||String(item.exact_file_name||'').toLocaleLowerCase('zh-CN').includes(search)||displayName(item.exact_file_name).toLocaleLowerCase('zh-CN').includes(search);
+    const matchesStatus=status==='all'||status==='enabled'&&item.enabled||status==='disabled'&&!item.enabled;
+    const isApplied=item.demotion?.state==='applied';
+    const matchesDemotion=demotion==='all'||demotion==='applied'&&isApplied||demotion==='not-applied'&&!isApplied;
+    return matchesSearch&&matchesStatus&&matchesDemotion;
+  });
+}
+function sortedItems(items){
+  if(!sortKey) return items.slice();
   const column=sortColumns[sortKey];
-  return allItems.map((item,index)=>({item,index})).sort((left,right)=>{
+  return items.map((item,index)=>({item,index})).sort((left,right)=>{
     const compared=compareValues(column.value(left.item),column.value(right.item));
     if(compared!==0) return sortDirection==='asc'?compared:-compared;
     const fileCompared=compareValues(left.item.exact_file_name||'',right.item.exact_file_name||'');
     return fileCompared||left.index-right.index;
   }).map(entry=>entry.item);
 }
+function demotionLabel(item){
+  switch(item.demotion?.state){
+    case 'applied': return ['已降权','warn'];
+    case 'requested': return ['处理中','warn'];
+    case 'failed': return ['降权失败','bad'];
+    case 'restored': return ['已恢复','ok'];
+    default: return ['未降权',''];
+  }
+}
+function rowActions(item){
+  const identity=`data-auth-index="${esc(item.auth_index)}" data-file-name="${esc(item.exact_file_name)}"`;
+  const restore=item.demotion?.state==='applied'?`<button class="small warning row-action" type="button" data-action="restore" ${identity}>恢复优先级</button>`:'';
+  const enabled=String(!item.enabled);
+  const toggle=`<button class="small secondary row-action" type="button" data-action="set-enabled" data-enabled="${enabled}" ${identity}>${item.enabled?'停用':'启用'}</button>`;
+  return `<div class="row-actions">${restore}${toggle}</div>`;
+}
+function renderSummary(){
+  const sum=allItems.reduce((total,item)=>{total.s+=item.usage?.successful_requests||0;total.f+=item.usage?.failed_requests||0;total.t+=item.usage?.total_tokens||0;return total},{s:0,f:0,t:0});
+  document.querySelector('#accounts').textContent=fmt(allItems.length);
+  document.querySelector('#success').textContent=fmt(sum.s);
+  document.querySelector('#failed').textContent=fmt(sum.f);
+  document.querySelector('#tokens').textContent=fmt(sum.t);
+}
 function renderTable(){
-  const totalPages=Math.max(1,Math.ceil(allItems.length/pageSize));
+  const filtered=filteredItems();
+  const totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));
   currentPage=Math.min(Math.max(1,currentPage),totalPages);
-  const items=sortedItems().slice((currentPage-1)*pageSize,currentPage*pageSize);
-  document.querySelector('#rows').innerHTML=items.length?items.map(x=>`<tr><td class="file" title="${esc(x.exact_file_name)}">${esc(x.exact_file_name)}</td><td class="${x.enabled?'ok':'bad'}">${x.enabled?'启用':'停用'}${x.unavailable?' / 不可用':''}</td><td>${fmt(x.priority)}</td><td>${fmt(x.usage?.input_tokens)}</td><td>${fmt(x.usage?.output_tokens)}</td><td>${fmt(x.usage?.total_tokens)}</td><td class="ok">${fmt(x.usage?.successful_requests)}</td><td class="bad">${fmt(x.usage?.failed_requests)}</td><td>${esc(x.usage?.dedupe_mode||currentMeta?.dedupe_mode)}</td></tr>`).join(''):'<tr><td class="empty" colspan="9">暂无账号数据</td></tr>';
-  const info=`第 ${currentPage}/${totalPages} 页 · 共 ${fmt(allItems.length)} 条`;
+  const items=sortedItems(filtered).slice((currentPage-1)*pageSize,currentPage*pageSize);
+  document.querySelector('#rows').innerHTML=items.length?items.map(item=>{
+    const demotion=demotionLabel(item);
+    return `<tr><td class="file" title="${esc(item.exact_file_name)}"><div class="file-main">${esc(displayName(item.exact_file_name))}</div></td><td class="${item.enabled?'ok':'bad'}">${item.enabled?'启用':'停用'}${item.unavailable?' / 不可用':''}</td><td class="${demotion[1]}">${demotion[0]}</td><td>${fmt(item.priority)}</td><td>${fmt(item.usage?.input_tokens)}</td><td>${fmt(item.usage?.output_tokens)}</td><td>${fmt(item.usage?.total_tokens)}</td><td class="ok">${fmt(item.usage?.successful_requests)}</td><td class="bad">${fmt(item.usage?.failed_requests)}</td><td>${esc(item.usage?.dedupe_mode||currentMeta?.dedupe_mode)}</td><td>${rowActions(item)}</td></tr>`;
+  }).join(''):'<tr><td class="empty" colspan="11">没有符合当前条件的账号</td></tr>';
+  const suffix=filtered.length===allItems.length?'':` · 全量 ${fmt(allItems.length)} 条`;
+  const info=`第 ${currentPage}/${totalPages} 页 · 共 ${fmt(filtered.length)} 条${suffix}`;
   document.querySelectorAll('.page-info').forEach(el=>{el.textContent=info});
-  document.querySelectorAll('.previous-page').forEach(btn=>{btn.disabled=currentPage<=1});
-  document.querySelectorAll('.next-page').forEach(btn=>{btn.disabled=currentPage>=totalPages});
-  document.querySelectorAll('.page-size-select').forEach(sel=>{sel.value=String(pageSize)});
+  document.querySelectorAll('.previous-page').forEach(btn=>{btn.disabled=actionPending||currentPage<=1});
+  document.querySelectorAll('.next-page').forEach(btn=>{btn.disabled=actionPending||currentPage>=totalPages});
+  document.querySelectorAll('.page-size-select').forEach(sel=>{sel.value=String(pageSize);sel.disabled=actionPending});
+  document.querySelectorAll('.row-action').forEach(btn=>{btn.disabled=actionPending});
   document.querySelectorAll('th[data-sort]').forEach(header=>{
     const active=header.dataset.sort===sortKey;
     header.classList.toggle('sorted',active);
@@ -101,16 +153,17 @@ function renderTable(){
     header.querySelector('.sort-indicator').textContent=active?(sortDirection==='asc'?'▲':'▼'):'';
   });
 }
+function resetPageAndRender(){currentPage=1;renderTable()}
 function changeSort(key){
   if(sortKey===key) sortDirection=sortDirection==='asc'?'desc':'asc';
-  else{
-    sortKey=key;
-    sortDirection=sortColumns[key].direction;
-  }
-  currentPage=1;
-  renderTable();
+  else{sortKey=key;sortDirection=sortColumns[key].direction}
+  resetPageAndRender();
 }
-
+function setNotice(message,isError=false){
+  const notice=document.querySelector('#notice');
+  notice.textContent=message;
+  notice.classList.toggle('error',isError);
+}
 function getManagementKey(){
   try{return localStorage.getItem(storageKey)?.trim()||''}catch{return ''}
 }
@@ -123,10 +176,7 @@ function openSettings(){
   modal.hidden=false;
   requestAnimationFrame(()=>keyInput.focus());
 }
-function closeSettings(){
-  modal.hidden=true;
-  keyInput.value='';
-}
+function closeSettings(){modal.hidden=true;keyInput.value=''}
 function saveManagementKey(){
   const key=keyInput.value.trim();
   if(!key){
@@ -145,53 +195,75 @@ function saveManagementKey(){
 function clearManagementKey(){
   try{localStorage.removeItem(storageKey)}catch{}
   closeSettings();
-  document.querySelector('#notice').textContent='管理密钥已清除，请点“设置”重新填写。';
+  setNotice('管理密钥已清除，请点“设置”重新填写。');
+}
+async function api(path,options={}){
+  const key=getManagementKey();
+  if(!key) throw new Error('尚未设置管理密钥，请点“设置”填写');
+  const headers={Authorization:'Bearer '+key,...options.headers};
+  const response=await fetch(base+path,{cache:'no-store',credentials:'include',...options,headers});
+  let data=null;
+  try{data=await response.json()}catch{}
+  if(response.status===401) throw new Error('管理密钥无效或已失效，请点“设置”更新');
+  if(!response.ok) throw new Error(data?.error?.message||`接口返回异常 HTTP ${response.status}`);
+  return data;
 }
 async function refresh(){
-  const key=getManagementKey();
-  if(!key){
-    document.querySelector('#notice').textContent='尚未设置管理密钥，请点“设置”填写后再刷新。';
-    return;
+  if(!getManagementKey()){
+    setNotice('尚未设置管理密钥，请点“设置”填写后再刷新。');
+    return false;
   }
   const btn=document.querySelector('#refresh');
   btn.disabled=true;
-  document.querySelector('#notice').textContent='正在刷新…';
+  setNotice('正在刷新…');
   try{
-    const opts={cache:'no-store',credentials:'include',headers:{Authorization:'Bearer '+key}};
-    const [metaRes,accountsRes]=await Promise.all([
-      fetch(base+'/meta',opts),
-      fetch(base+'/accounts',opts)
-    ]);
-    if(metaRes.status===401||accountsRes.status===401) throw new Error('管理密钥无效或已失效，请点“设置”更新');
-    if(!metaRes.ok||!accountsRes.ok) throw new Error('接口返回异常 HTTP '+(metaRes.ok?accountsRes.status:metaRes.status));
-    const meta=await metaRes.json(),data=await accountsRes.json();
+    const [meta,data]=await Promise.all([api('/meta'),api('/accounts')]);
     currentMeta=meta;
     allItems=Array.isArray(data.items)?data.items:[];
-    const sum=allItems.reduce((a,x)=>{a.s+=(x.usage?.successful_requests||0);a.f+=(x.usage?.failed_requests||0);a.t+=(x.usage?.total_tokens||0);return a},{s:0,f:0,t:0});
-    document.querySelector('#accounts').textContent=fmt(allItems.length);
-    document.querySelector('#success').textContent=fmt(sum.s);
-    document.querySelector('#failed').textContent=fmt(sum.f);
-    document.querySelector('#tokens').textContent=fmt(sum.t);
+    renderSummary();
     renderTable();
-    document.querySelector('#notice').textContent=`统计起点：${new Date(meta.statistics_started_at).toLocaleString()} · 全局去重：${meta.dedupe_mode} · write_mode=${meta.write_mode}`;
-  }catch(e){
-    document.querySelector('#notice').textContent='刷新失败：'+e.message;
-  }finally{
-    btn.disabled=false;
-  }
+    setNotice(`统计起点：${new Date(meta.statistics_started_at).toLocaleString()} · 全局去重：${meta.dedupe_mode} · write_mode=${meta.write_mode}`);
+    return true;
+  }catch(error){
+    setNotice('刷新失败：'+error.message,true);
+    return false;
+  }finally{btn.disabled=false}
 }
+async function performAction(button){
+  if(actionPending) return;
+  const target={auth_index:button.dataset.authIndex,exact_file_name:button.dataset.fileName};
+  const isRestore=button.dataset.action==='restore';
+  const enabled=button.dataset.enabled==='true';
+  const endpoint=isRestore?'/accounts/restore-priority':'/accounts/set-enabled';
+  const body=isRestore?target:{...target,enabled};
+  actionPending=true;
+  renderTable();
+  setNotice(isRestore?'正在恢复优先级…':`正在${enabled?'启用':'停用'}账号…`);
+  try{
+    await api(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const refreshed=await refresh();
+    if(refreshed) setNotice(isRestore?'优先级已恢复，列表已刷新。':`账号已${enabled?'启用':'停用'}，列表已刷新。`);
+  }catch(error){setNotice('操作失败：'+error.message,true)}
+  finally{actionPending=false;renderTable()}
+}
+
 document.querySelector('#refresh').addEventListener('click',refresh);
 document.querySelector('#settings').addEventListener('click',openSettings);
 document.querySelector('#save-key').addEventListener('click',saveManagementKey);
 document.querySelector('#cancel-settings').addEventListener('click',closeSettings);
 document.querySelector('#clear-key').addEventListener('click',clearManagementKey);
+document.querySelector('#search').addEventListener('input',resetPageAndRender);
+document.querySelector('#status-filter').addEventListener('change',resetPageAndRender);
+document.querySelector('#demotion-filter').addEventListener('change',resetPageAndRender);
+document.querySelector('#rows').addEventListener('click',event=>{const button=event.target.closest('.row-action');if(button)performAction(button)});
 document.querySelectorAll('th[data-sort] .sort-button').forEach(button=>button.addEventListener('click',()=>changeSort(button.parentElement.dataset.sort)));
-document.querySelectorAll('.page-size-select').forEach(sel=>sel.addEventListener('change',event=>{pageSize=Number(event.target.value)||50;currentPage=1;renderTable()}));
+document.querySelectorAll('.page-size-select').forEach(sel=>sel.addEventListener('change',event=>{pageSize=Number(event.target.value)||50;resetPageAndRender()}));
 document.querySelectorAll('.previous-page').forEach(btn=>btn.addEventListener('click',()=>{if(currentPage>1){currentPage--;renderTable()}}));
-document.querySelectorAll('.next-page').forEach(btn=>btn.addEventListener('click',()=>{if(currentPage*pageSize<allItems.length){currentPage++;renderTable()}}));
+document.querySelectorAll('.next-page').forEach(btn=>btn.addEventListener('click',()=>{if(currentPage*pageSize<filteredItems().length){currentPage++;renderTable()}}));
 keyInput.addEventListener('keydown',event=>{if(event.key==='Enter')saveManagementKey()});
 modal.addEventListener('click',event=>{if(event.target===modal)closeSettings()});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!modal.hidden)closeSettings()});
+renderSummary();
 renderTable();
 refresh();
 </script></body></html>
