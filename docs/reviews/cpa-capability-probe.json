@@ -1,0 +1,324 @@
+{
+  "base": "http://192.168.31.241:8317",
+  "probes": {
+    "auth_files_list": {
+      "method": "GET",
+      "path": "/v0/management/auth-files",
+      "status": 200,
+      "ok": true,
+      "sample": {
+        "files": [
+          {
+            "account": "tmp01lff57pl7@ishowy.fun",
+            "account_type": "oauth",
+            "auth_index": "cbcb8f52f412539c",
+            "created_at": "2026-07-15T08:05:47.615551182+08:00",
+            "disabled": false,
+            "email": "tmp01lff57pl7@ishowy.fun",
+            "failed": 0,
+            "id": "xai-tmp01lff57pl7@ishowy.fun.json",
+            "label": "tmp01lff57pl7@ishowy.fun",
+            "last_refresh": "2026-07-15T16:00:49.520729501+08:00",
+            "modtime": "2026-07-15T16:00:49.521165541+08:00",
+            "name": "xai-tmp01lff57pl7@ishowy.fun.json",
+            "path": "/root/.cli-proxy-api/xai-tmp01lff57pl7@ishowy.fun.json",
+            "priority": 0,
+            "provider": "xai",
+            "recent_requests": [
+              {
+                "time": "...",
+                "success": "...",
+                "failed": "..."
+              },
+              "... total=20"
+            ],
+            "runtime_only": false,
+            "size": 1984,
+            "source": "file",
+            "status": "active",
+            "status_message": "",
+            "success": 1,
+            "type": "xai",
+            "unavailable": false,
+            "updated_at": "2026-07-15T16:01:01.530956213+08:00"
+          },
+          "... total=598"
+        ]
+      }
+    },
+    "config": {
+      "method": "GET",
+      "path": "/v0/management/config",
+      "status": 200,
+      "ok": true,
+      "sample": {
+        "proxy-url": "socks5://192.168.31.12:10808",
+        "disable-image-generation": false,
+        "force-model-prefix": false,
+        "request-log": false,
+        "api-keys": [
+          "697d3ac6-a0c0-4c23-bd28-c4ab4895b4fe",
+          "... total=1"
+        ],
+        "passthrough-headers": false,
+        "streaming": {},
+        "tls": {
+          "enable": false,
+          "cert": "",
+          "key": ""
+        },
+        "plugins": {
+          "enabled": true,
+          "dir": "plugins",
+          "store-sources": [
+            "https://raw.githubusercontent.com/magicvr/cpa-plugin-grok-panel/main/registry.json",
+            "... total=1"
+          ],
+          "configs": {
+            "grok-panel": {
+              "enabled": true
+            }
+          }
+        },
+        "debug": false,
+        "pprof": {
+          "enable": false,
+          "addr": "127.0.0.1:8316"
+        },
+        "commercial-mode": false,
+        "logging-to-file": false,
+        "logs-max-total-size-mb": 0,
+        "error-logs-max-files": 10,
+        "usage-statistics-enabled": false,
+        "redis-usage-queue-retention-seconds": 60,
+        "disable-cooling": false,
+        "save-cooldown-status": false,
+        "transient-error-cooldown-seconds": 0,
+        "auth-auto-refresh-workers": 0,
+        "request-retry": 0,
+        "max-retry-credentials": 0,
+        "max-retry-interval": 0,
+        "quota-exceeded": {
+          "switch-project": false,
+          "switch-preview-model": false,
+          "antigravity-credits": false
+        },
+        "routing": {},
+        "ws-auth": true,
+        "gemini-api-key": null,
+        "interactions-api-key": null,
+        "codex-api-key": null,
+        "xai-api-key": null,
+        "codex": {
+          "identity-confuse": false
+        },
+        "codex-header-defaults": {
+          "user-agent": "",
+          "beta-features": ""
+        },
+        "claude-api-key": null,
+        "claude-header-defaults": {
+          "user-agent": "",
+          "package-version": "",
+          "runtime-version": "",
+          "os": "",
+          "arch": "",
+          "timeout": ""
+        },
+        "disable-claude-cloak-mode": false,
+        "openai-compatibility": null,
+        "vertex-api-key": null,
+        "oauth-excluded-models": {
+          "xai": [
+            "grok-build-0.1",
+            "... total=11"
+          ]
+        },
+        "payload": {
+          "default": null,
+          "default-raw": null,
+          "override": null,
+          "override-raw": null,
+          "filter": null
+        }
+      }
+    },
+    "version": {
+      "method": "GET",
+      "path": "/v0/management/version",
+      "status": 404,
+      "ok": false,
+      "sample": ""
+    },
+    "plugins_list": {
+      "method": "GET",
+      "path": "/v0/management/plugins",
+      "status": 200,
+      "ok": true,
+      "sample": {
+        "plugins_enabled": true,
+        "plugins_dir": "plugins",
+        "plugins": [
+          {
+            "id": "grok-panel",
+            "path": "plugins/linux/amd64/grok-panel-v1.1.33.so",
+            "configured": true,
+            "registered": true,
+            "enabled": true,
+            "effective_enabled": true,
+            "supports_oauth": false,
+            "oauth_provider": "",
+            "logo": "",
+            "config_fields": [],
+            "menus": [
+              {
+                "path": "...",
+                "menu": "...",
+                "description": "..."
+              },
+              "... total=1"
+            ],
+            "metadata": {
+              "name": "grok-panel",
+              "version": "1.1.33",
+              "author": "magicvr",
+              "github_repository": "https://github.com/magicvr/cpa-plugin-grok-panel",
+              "logo": "",
+              "config_fields": []
+            }
+          },
+          "... total=1"
+        ]
+      }
+    },
+    "usage_endpoint": {
+      "method": "GET",
+      "path": "/v0/management/usage",
+      "status": 404,
+      "ok": false,
+      "sample": ""
+    },
+    "error_logs": {
+      "method": "GET",
+      "path": "/v0/management/request-error-logs",
+      "status": 200,
+      "ok": true,
+      "sample": {
+        "files": [
+          {
+            "name": "error-api-show-2026-07-15T215111-28.log",
+            "size": 733,
+            "modified": 1784123471
+          },
+          "... total=10"
+        ]
+      }
+    },
+    "patch_status_route": {
+      "method": "PATCH",
+      "path": "/v0/management/auth-files/status",
+      "status": 404,
+      "route_exists": false,
+      "sample": {
+        "error": "auth file not found"
+      }
+    },
+    "patch_fields_route": {
+      "method": "PATCH",
+      "path": "/v0/management/auth-files/fields",
+      "status": 404,
+      "route_exists": false,
+      "sample": {
+        "error": "auth file not found"
+      }
+    },
+    "delete_auth_route": {
+      "method": "DELETE",
+      "path": "/v0/management/auth-files",
+      "status": 404,
+      "route_exists": false,
+      "sample": {
+        "error": "auth file not found"
+      }
+    }
+  },
+  "auth_analysis": {
+    "count": 598,
+    "fields": {
+      "auth_file_id": false,
+      "auth_index": true,
+      "disabled": true,
+      "email": true,
+      "file_name": false,
+      "id": true,
+      "label": true,
+      "name": true,
+      "path": true,
+      "priority": true,
+      "provider": true,
+      "revision": false,
+      "status": true,
+      "type": true,
+      "updated_at": true
+    },
+    "sample_redacted": {
+      "account": "tmp01lff57pl7@ishowy.fun",
+      "account_type": "oauth",
+      "auth_index": "cbcb8f52f412539c",
+      "created_at": "2026-07-15T08:05:47.615551182+08:00",
+      "disabled": false,
+      "email": "tmp01lff57pl7@ishowy.fun",
+      "failed": 0,
+      "id": "xai-tmp01lff57pl7@ishowy.fun.json",
+      "label": "tmp01lff57pl7@ishowy.fun",
+      "last_refresh": "2026-07-15T16:00:49.520729501+08:00",
+      "modtime": "2026-07-15T16:00:49.521165541+08:00",
+      "name": "xai-tmp01lff57pl7@ishowy.fun.json",
+      "path": "/root/.cli-proxy-api/xai-tmp01lff57pl7@ishowy.fun.json",
+      "priority": 0,
+      "provider": "xai",
+      "recent_requests": [
+        {
+          "time": "18:40-18:50",
+          "success": 0,
+          "failed": 0
+        },
+        "... total=20"
+      ],
+      "runtime_only": false,
+      "size": 1984,
+      "source": "file",
+      "status": "active",
+      "status_message": "",
+      "success": 1,
+      "type": "xai",
+      "unavailable": false,
+      "updated_at": "2026-07-15T16:01:01.530956213+08:00"
+    },
+    "identity_candidates": {
+      "auth_index": "cbcb8f52f412539c",
+      "id": "xai-tmp01lff57pl7@ishowy.fun.json",
+      "name": "xai-tmp01lff57pl7@ishowy.fun.json",
+      "provider": "xai",
+      "priority": 0,
+      "disabled": false,
+      "has_revision": true
+    }
+  },
+  "capability_heuristic": {
+    "auth_list": true,
+    "stable_auth_index_field": true,
+    "priority_field_present": true,
+    "revision_field_present": false,
+    "set_enabled_via_status": false,
+    "set_priority_via_fields": false,
+    "delete_auth": false,
+    "plugins_api": true,
+    "usage_mgmt_endpoint": false
+  },
+  "notes": [
+    "usage.handle / event_id / Failed attribution require a live plugin load + traffic; not fully provable by management REST alone.",
+    "host.auth.get/save are plugin-host callbacks; management PATCH/DELETE approximate write capabilities.",
+    "Do not treat 4xx on invalid probe names as 'unsupported' if status is 400/404/422 with JSON body — route exists."
+  ]
+}
