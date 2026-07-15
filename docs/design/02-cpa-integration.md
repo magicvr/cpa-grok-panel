@@ -212,7 +212,7 @@ SPA fallback 只应用于 UI 路由，不吞掉 `/api/v1` 的 404。
 
 ### 8.2 管理密钥
 
-浏览器可通过 CPA 已有管理认证机制建立会话；插件页面不提供 localStorage 保存密钥的功能。API 不回显密钥，日志对 Authorization、Cookie 和查询参数做脱敏。删除确认不能用管理密钥本身作为确认文本。
+插件页面由用户手动填写 management key，并仅保存在当前浏览器的 localStorage；请求 CPA management API 时通过 `Authorization: Bearer <key>` 发送。API 不回显密钥，日志对 Authorization、Cookie 和查询参数做脱敏。删除确认不能用管理密钥本身作为确认文本。
 
 ### 8.3 Web 安全
 

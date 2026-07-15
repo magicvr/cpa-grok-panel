@@ -5,31 +5,88 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Grok 账号面板</title>
   <style>
-    :root{color-scheme:dark;--bg:#0b1020;--card:#151c31;--line:#293450;--text:#eaf0ff;--muted:#98a6c7;--accent:#70d7ff;--good:#69e6a6;--bad:#ff8b9b}*{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#0b1020,#111932);color:var(--text);font:14px/1.5 system-ui,sans-serif}.wrap{max-width:1180px;margin:auto;padding:28px 18px}header{display:flex;justify-content:space-between;align-items:center;gap:16px}h1{margin:0;font-size:26px}.sub{color:var(--muted);margin-top:4px}button{border:0;border-radius:9px;padding:9px 16px;background:var(--accent);color:#07111c;font-weight:700;cursor:pointer}button:disabled{opacity:.55;cursor:wait}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px}.label{color:var(--muted);font-size:12px}.value{font-size:22px;font-weight:750;margin-top:4px}.panel{overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}table{width:100%;border-collapse:collapse;min-width:880px}th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-size:12px}.ok{color:var(--good)}.bad{color:var(--bad)}.file{max-width:270px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.notice{margin:12px 0;color:var(--muted)}@media(max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}header{align-items:flex-start}}
+    :root{color-scheme:dark;--bg:#0b1020;--card:#151c31;--line:#293450;--text:#eaf0ff;--muted:#98a6c7;--accent:#70d7ff;--good:#69e6a6;--bad:#ff8b9b}*{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#0b1020,#111932);color:var(--text);font:14px/1.5 system-ui,sans-serif}.wrap{max-width:1180px;margin:auto;padding:28px 18px}header{display:flex;justify-content:space-between;align-items:center;gap:16px}h1{margin:0;font-size:26px}.sub{color:var(--muted);margin-top:4px}.actions,.modal-actions{display:flex;align-items:center;gap:9px}button{border:0;border-radius:9px;padding:9px 16px;background:var(--accent);color:#07111c;font-weight:700;cursor:pointer}button:disabled{opacity:.55;cursor:wait}button.secondary{background:#202b46;color:var(--text);border:1px solid var(--line)}button.danger{margin-right:auto;background:transparent;color:var(--bad);border:1px solid #653444}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px}.label{color:var(--muted);font-size:12px}.value{font-size:22px;font-weight:750;margin-top:4px}.panel{overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}table{width:100%;border-collapse:collapse;min-width:880px}th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-size:12px}.ok{color:var(--good)}.bad{color:var(--bad)}.file{max-width:270px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.notice{margin:12px 0;color:var(--muted)}.modal-backdrop{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(3,7,17,.72);backdrop-filter:blur(3px)}.modal-backdrop[hidden]{display:none}.modal{width:min(460px,100%);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:0 24px 80px rgba(0,0,0,.45)}.modal h2{margin:0 0 6px;font-size:20px}.modal p{margin:0 0 16px;color:var(--muted)}.modal label{display:block;margin-bottom:6px;font-weight:700}.modal input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;outline:0;background:#0d1426;color:var(--text);font:inherit}.modal input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(112,215,255,.12)}.key-status{min-height:21px;margin:8px 0 18px;color:var(--muted);font-size:12px}@media(max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}header{align-items:flex-start}.actions{flex-wrap:wrap;justify-content:flex-end}}
   </style>
 </head>
 <body><main class="wrap">
-  <header><div><h1>Grok 账号面板</h1><div class="sub">CPA xAI OAuth 账号 · M1 只读模式</div></div><button id="refresh">刷新</button></header>
+  <header><div><h1>Grok 账号面板</h1><div class="sub">CPA xAI OAuth 账号 · M1 只读模式</div></div><div class="actions"><button id="refresh">刷新</button><button id="settings" class="secondary">设置</button></div></header>
   <section class="cards"><div class="card"><div class="label">账号数</div><div id="accounts" class="value">—</div></div><div class="card"><div class="label">成功请求</div><div id="success" class="value">—</div></div><div class="card"><div class="label">失败请求</div><div id="failed" class="value">—</div></div><div class="card"><div class="label">累计 Token</div><div id="tokens" class="value">—</div></div></section>
   <div id="notice" class="notice">正在读取数据…</div>
   <section class="panel"><table><thead><tr><th>账号文件</th><th>状态</th><th>优先级</th><th>输入 Token</th><th>输出 Token</th><th>总 Token</th><th>成功 / 失败</th><th>去重</th></tr></thead><tbody id="rows"></tbody></table></section>
-</main><script>
-// Management API under /v0/management (needs session/credentials from management UI)
+</main>
+<div id="settings-modal" class="modal-backdrop" hidden>
+  <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <h2 id="settings-title">设置管理密钥</h2>
+    <p>密钥仅保存在当前浏览器，用于访问 CPA management API。</p>
+    <label for="management-key">Management key</label>
+    <input id="management-key" type="password" autocomplete="off" spellcheck="false">
+    <div id="key-status" class="key-status"></div>
+    <div class="modal-actions"><button id="clear-key" class="danger" type="button">清除</button><button id="cancel-settings" class="secondary" type="button">取消</button><button id="save-key" type="button">保存</button></div>
+  </section>
+</div>
+<script>
+// Management API under /v0/management; CPA validates its Bearer management key.
 const base='/v0/management/cpa-grok-panel/api/v1';
+const storageKey='cpa-grok-panel.management_key';
 const fmt=n=>new Intl.NumberFormat('zh-CN').format(n||0);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const modal=document.querySelector('#settings-modal');
+const keyInput=document.querySelector('#management-key');
+
+function getManagementKey(){
+  try{return localStorage.getItem(storageKey)?.trim()||''}catch{return ''}
+}
+function openSettings(){
+  const saved=Boolean(getManagementKey());
+  keyInput.value='';
+  keyInput.placeholder=saved?'已保存（留空则保持不变）':'请输入 management key';
+  document.querySelector('#key-status').textContent=saved?'当前浏览器已保存管理密钥。':'当前浏览器尚未保存管理密钥。';
+  document.querySelector('#clear-key').hidden=!saved;
+  modal.hidden=false;
+  requestAnimationFrame(()=>keyInput.focus());
+}
+function closeSettings(){
+  modal.hidden=true;
+  keyInput.value='';
+}
+function saveManagementKey(){
+  const key=keyInput.value.trim();
+  if(!key){
+    if(getManagementKey()){closeSettings();return}
+    document.querySelector('#key-status').textContent='请输入 management key。';
+    keyInput.focus();
+    return;
+  }
+  try{localStorage.setItem(storageKey,key)}catch{
+    document.querySelector('#key-status').textContent='保存失败：浏览器不允许使用 localStorage。';
+    return;
+  }
+  closeSettings();
+  refresh();
+}
+function clearManagementKey(){
+  try{localStorage.removeItem(storageKey)}catch{}
+  closeSettings();
+  document.querySelector('#notice').textContent='管理密钥已清除，请点“设置”重新填写。';
+}
 async function refresh(){
+  const key=getManagementKey();
+  if(!key){
+    document.querySelector('#notice').textContent='尚未设置管理密钥，请点“设置”填写后再刷新。';
+    return;
+  }
   const btn=document.querySelector('#refresh');
   btn.disabled=true;
   document.querySelector('#notice').textContent='正在刷新…';
   try{
-    const opts={cache:'no-store',credentials:'include'};
+    const opts={cache:'no-store',credentials:'include',headers:{Authorization:'Bearer '+key}};
     const [metaRes,accountsRes]=await Promise.all([
       fetch(base+'/meta',opts),
       fetch(base+'/accounts',opts)
     ]);
+    if(metaRes.status===401||accountsRes.status===401) throw new Error('管理密钥无效或已失效，请点“设置”更新');
     if(!metaRes.ok||!accountsRes.ok) throw new Error('接口返回异常 HTTP '+(metaRes.ok?accountsRes.status:metaRes.status));
-    const meta=await metaRes.json(), data=await accountsRes.json(), items=data.items||[];
+    const meta=await metaRes.json(),data=await accountsRes.json(),items=data.items||[];
     const sum=items.reduce((a,x)=>{a.s+=(x.usage?.successful_requests||0);a.f+=(x.usage?.failed_requests||0);a.t+=(x.usage?.total_tokens||0);return a},{s:0,f:0,t:0});
     document.querySelector('#accounts').textContent=fmt(items.length);
     document.querySelector('#success').textContent=fmt(sum.s);
@@ -44,5 +101,12 @@ async function refresh(){
   }
 }
 document.querySelector('#refresh').addEventListener('click',refresh);
+document.querySelector('#settings').addEventListener('click',openSettings);
+document.querySelector('#save-key').addEventListener('click',saveManagementKey);
+document.querySelector('#cancel-settings').addEventListener('click',closeSettings);
+document.querySelector('#clear-key').addEventListener('click',clearManagementKey);
+keyInput.addEventListener('keydown',event=>{if(event.key==='Enter')saveManagementKey()});
+modal.addEventListener('click',event=>{if(event.target===modal)closeSettings()});
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!modal.hidden)closeSettings()});
 refresh();
 </script></body></html>
