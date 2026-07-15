@@ -17,6 +17,7 @@ type Settings struct {
 	CountStatus429             bool              `json:"count_status_429"`
 	CountStatus5XX             bool              `json:"count_status_5xx"`
 	DemotionPriority           int               `json:"demotion_priority"`
+	DefaultRestorePriority     int               `json:"default_restore_priority"`
 	ProtectionLevel            string            `json:"protection_level"`
 	DefaultTokenCapacity       uint64            `json:"default_token_capacity"`
 	PerAccountTokenCapacity    map[string]uint64 `json:"per_account_token_capacity"`
@@ -28,7 +29,8 @@ type Settings struct {
 func DefaultSettings() Settings {
 	return Settings{Revision: 1, OperationConcurrency: 1, AttributedFailureThreshold: 3,
 		AttributedFailureStatuses: []int{401, 403}, DemotionPriority: -100, ProtectionLevel: "strict",
-		DefaultTokenCapacity: 1_000_000, PerAccountTokenCapacity: map[string]uint64{},
+		DefaultRestorePriority: 0,
+		DefaultTokenCapacity:   1_000_000, PerAccountTokenCapacity: map[string]uint64{},
 		HealthStaleAfterSeconds: 86400, OperationTimeoutSeconds: 60, WriteMode: "managed"}
 }
 
@@ -36,6 +38,7 @@ func LoadSettings() Settings {
 	settings := DefaultSettings()
 	settings.AttributedFailureThreshold = envInt("CPA_GROK_FAILURE_THRESHOLD", settings.AttributedFailureThreshold, 1, 100)
 	settings.DemotionPriority = envInt("CPA_GROK_DEMOTION_PRIORITY", settings.DemotionPriority, -1_000_000, 1_000_000)
+	settings.DefaultRestorePriority = envInt("CPA_GROK_DEFAULT_RESTORE_PRIORITY", settings.DefaultRestorePriority, -1_000_000, 1_000_000)
 	settings.CountStatus429 = envBool("CPA_GROK_COUNT_429", false)
 	settings.CountStatus5XX = envBool("CPA_GROK_COUNT_5XX", false)
 	return settings
@@ -88,6 +91,6 @@ func BuildMeta(snapshot stateinfra.Snapshot) Meta {
 	return Meta{PluginID: stateinfra.PluginID, PluginVersion: stateinfra.PluginVersion, APIVersion: 1,
 		WriteMode: "managed", Status: "ready", StateStatus: "healthy",
 		StatisticsStartedAt: snapshot.StatisticsStartedAt, DedupeMode: dedupeMode, ConditionalWrite: false,
-		Capabilities:        []string{"usage", "auth_list", "auth_get", "auth_save", "management_routes", "set_enabled", "restore_priority", "auto_demotion"},
+		Capabilities:        []string{"usage", "auth_list", "auth_get", "auth_save", "management_routes", "set_enabled", "demote", "restore_priority", "auto_demotion"},
 		UnavailableFeatures: []Unavailable{{Feature: "checks", Reason: "host.auth.invoke 未提供"}, {Feature: "cleanup", Reason: "M3 功能未启用"}}}
 }

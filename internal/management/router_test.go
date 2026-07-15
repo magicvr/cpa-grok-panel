@@ -102,6 +102,30 @@ func TestRouterRestorePriority(t *testing.T) {
 	}
 }
 
+func TestRouterDemote(t *testing.T) {
+	store, err := stateinfra.Open(t.TempDir(), time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	host := &writableHost{files: []domain.AuthFile{{
+		AuthIndex: "idx-1", Name: "xai-a.json", Provider: "xai", Type: "xai", AccountType: "oauth", Priority: 10,
+	}}}
+	router := management.NewRouter(application.NewAccountsService(host, store, time.Now), store)
+	body := []byte(`{"auth_index":"idx-1","exact_file_name":"xai-a.json"}`)
+	response := router.Handle(management.Request{Method: "POST", Path: "/v0/management/cpa-grok-panel/api/v1/accounts/demote", Body: body})
+	if response.StatusCode != 200 {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
+	if host.files[0].Priority != -100 {
+		t.Fatalf("priority=%d", host.files[0].Priority)
+	}
+	state := store.View().Accounts["idx-1"].Demotion
+	if state.State != "applied" || state.BaselinePriority == nil || *state.BaselinePriority != 10 {
+		t.Fatalf("demotion=%+v", state)
+	}
+}
+
 type fakeLister struct{}
 
 func (fakeLister) ListAuthFiles() ([]domain.AuthFile, error) { return nil, nil }

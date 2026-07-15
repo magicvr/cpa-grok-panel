@@ -50,6 +50,7 @@ func Registration() map[string]any {
 		{"Method": "GET", "Path": APIPrefix + "/meta", "Description": "插件元信息"},
 		{"Method": "GET", "Path": APIPrefix + "/accounts", "Description": "账号列表"},
 		{"Method": "GET", "Path": APIPrefix + "/settings", "Description": "只读设置"},
+		{"Method": "POST", "Path": APIPrefix + "/accounts/demote", "Description": "手动降低账号优先级"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/restore-priority", "Description": "恢复账号优先级"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/set-enabled", "Description": "启用或停用账号"},
 	}
@@ -87,6 +88,16 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 			return apiError(400, "invalid_argument", err.Error(), false)
 		}
 		account, err := router.accounts.RestorePriority(body.AuthIndex, body.ExactFileName)
+		if err != nil {
+			return accountErrorResponse(err)
+		}
+		return jsonResponse(200, map[string]any{"account": account})
+	case method == "POST" && matchesPath(path, "/accounts/demote"):
+		var body accountTargetRequest
+		if err := decodeStrictBody(request.Body, &body); err != nil {
+			return apiError(400, "invalid_argument", err.Error(), false)
+		}
+		account, err := router.accounts.Demote(body.AuthIndex, body.ExactFileName)
 		if err != nil {
 			return accountErrorResponse(err)
 		}

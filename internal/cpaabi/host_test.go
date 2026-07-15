@@ -23,7 +23,7 @@ func TestHostGetAuthFileReadsJSONField(t *testing.T) {
 		return json.Marshal(map[string]any{
 			"auth_index": "idx-1",
 			"name":       "xai-a.json",
-			"json":       map[string]any{"priority": -10, "disabled": false},
+			"json":       map[string]any{"priority": -10, "disabled": false, "refresh_token": "keep-me"},
 		})
 	})
 
@@ -31,7 +31,7 @@ func TestHostGetAuthFileReadsJSONField(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(document, cpaabi.AuthDocument{"priority": float64(-10), "disabled": false}) {
+	if !reflect.DeepEqual(document, cpaabi.AuthDocument{"priority": float64(-10), "disabled": false, "refresh_token": "keep-me"}) {
 		t.Fatalf("document=%#v", document)
 	}
 }

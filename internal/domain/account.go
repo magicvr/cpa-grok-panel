@@ -64,6 +64,8 @@ type AccountView struct {
 	Usage         UsageCounters `json:"usage"`
 	Failure       FailureState  `json:"failure"`
 	Demotion      DemotionState `json:"demotion"`
+	IsDemoted     bool          `json:"is_demoted"`
+	CanRestore    bool          `json:"can_restore"`
 	LastSeenAt    time.Time     `json:"last_seen_at"`
 	WriteMode     string        `json:"write_mode"`
 }
@@ -84,7 +86,7 @@ func IsXAIOAuth(file AuthFile) bool {
 	return accountType == "oauth" || authType == "oauth"
 }
 
-func ProjectAccount(file AuthFile, state AccountState, now time.Time) AccountView {
+func ProjectAccount(file AuthFile, state AccountState, now time.Time, demotionPriority int) AccountView {
 	usage := state.Usage
 	if usage.DedupeMode == "" {
 		usage.DedupeMode = "weak"
@@ -92,11 +94,16 @@ func ProjectAccount(file AuthFile, state AccountState, now time.Time) AccountVie
 	if usage.PeriodStartedAt.IsZero() {
 		usage.PeriodStartedAt = now.UTC()
 	}
+	demotion := state.Demotion.Normalized()
+	recordedTargetMatch := demotion.State == "applied" && demotion.TargetPriority != nil && file.Priority == *demotion.TargetPriority
+	isDemoted := recordedTargetMatch || file.Priority == demotionPriority
+	canRestore := (recordedTargetMatch && demotion.BaselinePriority != nil) || file.Priority == demotionPriority
 	return AccountView{
 		AuthIndex: file.AuthIndex, ExactFileName: file.Name, Email: file.Email,
 		Enabled: !file.Disabled, Unavailable: file.Unavailable, Status: file.Status,
 		StatusMessage: file.StatusMessage, Priority: file.Priority, Provider: "xai",
-		AuthType: "oauth", Usage: usage, Failure: state.Failure, Demotion: state.Demotion.Normalized(),
+		AuthType: "oauth", Usage: usage, Failure: state.Failure, Demotion: demotion,
+		IsDemoted: isDemoted, CanRestore: canRestore,
 		LastSeenAt: now.UTC(), WriteMode: "managed",
 	}
 }
