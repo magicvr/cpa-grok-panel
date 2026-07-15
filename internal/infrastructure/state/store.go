@@ -17,7 +17,7 @@ import (
 const (
 	SchemaVersion = 1
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.1.2"
+	PluginVersion = "0.1.3"
 )
 
 type DedupeState struct {
@@ -130,6 +130,12 @@ func (store *Store) View() Snapshot {
 	return cloneSnapshot(store.snapshot)
 }
 
+func OpenMemory(now time.Time) *Store {
+	store := &Store{dir: "memory", path: "", lockFile: nil}
+	store.snapshot = newSnapshot(now)
+	return store
+}
+
 func (store *Store) Update(update func(*Snapshot) error) error {
 	store.mu.Lock()
 	defer store.mu.Unlock()
@@ -139,8 +145,10 @@ func (store *Store) Update(update func(*Snapshot) error) error {
 	}
 	next.SavedAt = time.Now().UTC()
 	next.PluginVersion = PluginVersion
-	if err := store.save(next); err != nil {
-		return err
+	if store.path != "" {
+		if err := store.save(next); err != nil {
+			return err
+		}
 	}
 	store.snapshot = next
 	return nil

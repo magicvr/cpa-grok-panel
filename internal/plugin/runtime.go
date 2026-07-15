@@ -2,7 +2,6 @@ package plugin
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -67,29 +66,41 @@ func (runtime *Runtime) ensureReady(dataDir string) error {
 	runtime.mu.Lock()
 	defer runtime.mu.Unlock()
 	if runtime.ready {
-		if dataDir != "" && filepath.Clean(dataDir) != filepath.Clean(runtime.dataDir) {
-			return errors.New("plugin is already registered with a different data dir")
-		}
 		return nil
 	}
-	if dataDir == "" {
-		// Match CPA host cwd layout used by other plugins: <cwd>/plugins/<id>
-		cwd, err := os.Getwd()
-		if err != nil || cwd == "" {
-			dataDir = filepath.Join("plugins", cpaabi.PluginID)
-		} else {
-			dataDir = filepath.Join(cwd, "plugins", cpaabi.PluginID)
-		}
+	candidates := make([]string, 0, 4)
+	if strings.TrimSpace(dataDir) != "" {
+		candidates = append(candidates, dataDir)
 	}
-	store, err := stateinfra.Open(dataDir, time.Now().UTC())
-	if err != nil {
-		return err
+	if cwd, err := os.Getwd(); err == nil && cwd != "" {
+		candidates = append(candidates, filepath.Join(cwd, "plugins", cpaabi.PluginID))
+		candidates = append(candidates, filepath.Join(cwd, "plugins", "data", cpaabi.PluginID))
+	}
+	candidates = append(candidates, filepath.Join(os.TempDir(), "cpa-grok-panel"))
+
+	var store *stateinfra.Store
+	var lastErr error
+	var used string
+	for _, dir := range candidates {
+		s, err := stateinfra.Open(dir, time.Now().UTC())
+		if err == nil {
+			store = s
+			used = dir
+			break
+		}
+		lastErr = err
+	}
+	if store == nil {
+		// Last resort: in-memory only so plugin still registers.
+		store = stateinfra.OpenMemory(time.Now().UTC())
+		used = "memory"
+		_ = lastErr
 	}
 	accounts := application.NewAccountsService(runtime.host, store, time.Now)
 	runtime.store = store
 	runtime.usage = application.NewUsageService(store, time.Now)
 	runtime.router = management.NewRouter(accounts, store)
-	runtime.dataDir = dataDir
+	runtime.dataDir = used
 	runtime.ready = true
 	return nil
 }
