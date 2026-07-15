@@ -1,8 +1,10 @@
 package management
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"strings"
 
@@ -30,10 +32,15 @@ type Request struct {
 type Router struct {
 	accounts *application.AccountsService
 	store    *stateinfra.Store
+	settings application.Settings
 }
 
-func NewRouter(accounts *application.AccountsService, store *stateinfra.Store) *Router {
-	return &Router{accounts: accounts, store: store}
+func NewRouter(accounts *application.AccountsService, store *stateinfra.Store, configured ...application.Settings) *Router {
+	settings := application.DefaultSettings()
+	if len(configured) > 0 {
+		settings = configured[0]
+	}
+	return &Router{accounts: accounts, store: store, settings: settings}
 }
 
 func Registration() map[string]any {
@@ -43,9 +50,11 @@ func Registration() map[string]any {
 		{"Method": "GET", "Path": APIPrefix + "/meta", "Description": "插件元信息"},
 		{"Method": "GET", "Path": APIPrefix + "/accounts", "Description": "账号列表"},
 		{"Method": "GET", "Path": APIPrefix + "/settings", "Description": "只读设置"},
+		{"Method": "POST", "Path": APIPrefix + "/accounts/restore-priority", "Description": "恢复账号优先级"},
+		{"Method": "POST", "Path": APIPrefix + "/accounts/set-enabled", "Description": "启用或停用账号"},
 	}
 	resources := []map[string]any{
-		{"Path": ResourcePanelPath, "Menu": "Grok 账号", "Description": "Grok 账号只读面板"},
+		{"Path": ResourcePanelPath, "Menu": "Grok 账号", "Description": "Grok 账号管理面板"},
 	}
 	return map[string]any{"routes": routes, "resources": resources}
 }
@@ -56,18 +65,14 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 		method = "GET"
 	}
 	path, query := normalizePath(request.Path, request.Query)
-	if method != "GET" {
-		return jsonResponse(405, map[string]any{"error": map[string]any{"code": "read_only", "message": "M1 仅支持只读 GET 请求"}})
-	}
-
 	switch {
-	case isPanelPath(path):
+	case method == "GET" && isPanelPath(path):
 		return htmlResponse(web.PanelHTML)
-	case strings.HasSuffix(path, "/meta") || path == APIPrefix+"/meta" || path == "/v0/management"+APIPrefix+"/meta":
+	case method == "GET" && matchesPath(path, "/meta"):
 		return jsonResponse(200, application.BuildMeta(router.store.View()))
-	case strings.HasSuffix(path, "/settings") || path == APIPrefix+"/settings" || path == "/v0/management"+APIPrefix+"/settings":
-		return jsonResponse(200, application.ReadOnlySettings())
-	case strings.HasSuffix(path, "/accounts") || path == APIPrefix+"/accounts" || path == "/v0/management"+APIPrefix+"/accounts":
+	case method == "GET" && matchesPath(path, "/settings"):
+		return jsonResponse(200, router.settings)
+	case method == "GET" && matchesPath(path, "/accounts"):
 		items, snapshotAt, err := router.accounts.List(firstQuery(query, "search"))
 		if err != nil {
 			return jsonResponse(503, map[string]any{"error": map[string]any{"code": "host_unavailable", "message": err.Error(), "retryable": true}})
@@ -76,9 +81,75 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 			"items": items, "next_cursor": nil, "snapshot_at": snapshotAt,
 			"host_snapshot_revision": nil, "stale": false,
 		})
+	case method == "POST" && matchesPath(path, "/accounts/restore-priority"):
+		var body accountTargetRequest
+		if err := decodeStrictBody(request.Body, &body); err != nil {
+			return apiError(400, "invalid_argument", err.Error(), false)
+		}
+		account, err := router.accounts.RestorePriority(body.AuthIndex, body.ExactFileName)
+		if err != nil {
+			return accountErrorResponse(err)
+		}
+		return jsonResponse(200, map[string]any{"account": account})
+	case method == "POST" && matchesPath(path, "/accounts/set-enabled"):
+		var body setEnabledRequest
+		if err := decodeStrictBody(request.Body, &body); err != nil {
+			return apiError(400, "invalid_argument", err.Error(), false)
+		}
+		if body.Enabled == nil {
+			return apiError(400, "invalid_argument", "enabled 为必填布尔值", false)
+		}
+		account, err := router.accounts.SetEnabled(body.AuthIndex, body.ExactFileName, *body.Enabled)
+		if err != nil {
+			return accountErrorResponse(err)
+		}
+		return jsonResponse(200, map[string]any{"account": account})
+	case method != "GET" && method != "POST":
+		return apiError(405, "method_not_allowed", "请求方法不受支持", false)
+	case method == "POST":
+		return apiError(404, "not_found", "接口不存在: "+path, false)
 	default:
 		return jsonResponse(404, map[string]any{"error": map[string]any{"code": "not_found", "message": "接口不存在: " + path}})
 	}
+}
+
+type accountTargetRequest struct {
+	AuthIndex     string `json:"auth_index"`
+	ExactFileName string `json:"exact_file_name"`
+}
+
+type setEnabledRequest struct {
+	AuthIndex     string `json:"auth_index"`
+	ExactFileName string `json:"exact_file_name"`
+	Enabled       *bool  `json:"enabled"`
+}
+
+func matchesPath(path, endpoint string) bool {
+	return path == APIPrefix+endpoint || path == "/v0/management"+APIPrefix+endpoint || strings.HasSuffix(path, APIPrefix+endpoint)
+}
+
+func decodeStrictBody(body []byte, target any) error {
+	if len(bytes.TrimSpace(body)) == 0 {
+		return fmt.Errorf("请求体不能为空")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return fmt.Errorf("请求 JSON 无效: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return fmt.Errorf("请求体只能包含一个 JSON 对象")
+	}
+	return nil
+}
+
+func accountErrorResponse(err error) cpaabi.ManagementResponse {
+	accountErr := application.AsAccountError(err)
+	return apiError(accountErr.HTTPStatus, accountErr.Code, accountErr.Message, accountErr.Retryable)
+}
+
+func apiError(status int, code, message string, retryable bool) cpaabi.ManagementResponse {
+	return jsonResponse(status, map[string]any{"error": map[string]any{"code": code, "message": message, "retryable": retryable}})
 }
 
 func isPanelPath(path string) bool {

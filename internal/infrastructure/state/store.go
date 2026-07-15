@@ -17,7 +17,7 @@ import (
 const (
 	SchemaVersion = 1
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.1.7"
+	PluginVersion = "0.2.0"
 )
 
 type DedupeState struct {
@@ -121,6 +121,10 @@ func normalizeSnapshot(snapshot *Snapshot) {
 	}
 	if snapshot.EventDedupe.PolicyVersion == 0 {
 		snapshot.EventDedupe.PolicyVersion = 1
+	}
+	for authIndex, account := range snapshot.Accounts {
+		account.Demotion = account.Demotion.Normalized()
+		snapshot.Accounts[authIndex] = account
 	}
 }
 

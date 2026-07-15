@@ -18,18 +18,30 @@ const (
 )
 
 type UsageResult struct {
-	Accepted   bool   `json:"accepted"`
-	Duplicate  bool   `json:"duplicate"`
-	DedupeMode string `json:"dedupe_mode"`
+	Accepted          bool   `json:"accepted"`
+	Duplicate         bool   `json:"duplicate"`
+	DedupeMode        string `json:"dedupe_mode"`
+	DemotionRequested bool   `json:"demotion_requested"`
+}
+
+type DemotionEnqueuer interface {
+	Enqueue(authIndex string)
 }
 
 type UsageService struct {
-	store *stateinfra.Store
-	now   func() time.Time
+	store     *stateinfra.Store
+	now       func() time.Time
+	settings  Settings
+	demotions DemotionEnqueuer
 }
 
 func NewUsageService(store *stateinfra.Store, now func() time.Time) *UsageService {
-	return &UsageService{store: store, now: now}
+	return NewUsageServiceWithDemotion(store, now, DefaultSettings(), nil)
+
+}
+
+func NewUsageServiceWithDemotion(store *stateinfra.Store, now func() time.Time, settings Settings, demotions DemotionEnqueuer) *UsageService {
+	return &UsageService{store: store, now: now, settings: settings, demotions: demotions}
 }
 
 func (service *UsageService) Handle(event domain.UsageEvent) (UsageResult, error) {
@@ -57,6 +69,7 @@ func (service *UsageService) Handle(event domain.UsageEvent) (UsageResult, error
 		if err := domain.ApplyUsage(&account.Usage, event); err != nil {
 			return err
 		}
+		result.DemotionRequested = service.applyFailurePolicy(&account, event, now)
 		snapshot.Accounts[event.AuthIndex] = account
 		if mode == "exact" {
 			snapshot.EventDedupe.ExactIDs[key] = now
@@ -67,7 +80,71 @@ func (service *UsageService) Handle(event domain.UsageEvent) (UsageResult, error
 		trimDedupe(snapshot)
 		return nil
 	})
+	if err == nil && result.DemotionRequested && service.demotions != nil {
+		service.demotions.Enqueue(event.AuthIndex)
+	}
 	return result, err
+}
+
+func (service *UsageService) applyFailurePolicy(account *domain.AccountState, event domain.UsageEvent, now time.Time) bool {
+	if isSuccessfulOutcome(event.Outcome) {
+		account.Failure.ConsecutiveAttributedFailures = 0
+		return false
+	}
+	if !isPotentialXAIOAuth(event) || !service.countsStatus(event.StatusCode) {
+		account.Failure.ConsecutiveAttributedFailures = 0
+		return false
+	}
+	account.Failure.ConsecutiveAttributedFailures++
+	failedAt := event.OccurredAt.UTC()
+	if failedAt.IsZero() {
+		failedAt = now
+	}
+	account.Failure.LastFailureAt = &failedAt
+	account.Failure.LastFailureCode = fmt.Sprintf("http_%d", event.StatusCode)
+	if account.Failure.ConsecutiveAttributedFailures < service.settings.AttributedFailureThreshold {
+		return false
+	}
+	demotion := account.Demotion.Normalized()
+	if demotion.State == "requested" || demotion.State == "applied" {
+		return false
+	}
+	triggeredAt := now.UTC()
+	target := service.settings.DemotionPriority
+	account.Demotion = domain.DemotionState{
+		State: "requested", TargetPriority: &target, TriggeredAt: &triggeredAt,
+	}
+	return true
+}
+
+func (service *UsageService) countsStatus(status int) bool {
+	for _, allowed := range service.settings.AttributedFailureStatuses {
+		if status == allowed {
+			return true
+		}
+	}
+	return status == 429 && service.settings.CountStatus429 || status >= 500 && status <= 599 && service.settings.CountStatus5XX
+}
+
+func isSuccessfulOutcome(outcome string) bool {
+	switch strings.ToLower(strings.TrimSpace(outcome)) {
+	case "success", "succeeded", "ok":
+		return true
+	default:
+		return false
+	}
+}
+
+func isPotentialXAIOAuth(event domain.UsageEvent) bool {
+	provider := strings.ToLower(strings.TrimSpace(event.Provider))
+	authType := strings.ToLower(strings.TrimSpace(event.AuthType))
+	if provider != "" && !strings.Contains(provider, "xai") && !strings.Contains(provider, "grok") {
+		return false
+	}
+	if authType != "" && authType != "oauth" && !strings.Contains(authType, "xai") && !strings.Contains(authType, "grok") {
+		return false
+	}
+	return true
 }
 
 func dedupe(snapshot *stateinfra.Snapshot, event domain.UsageEvent, now time.Time) (string, string, bool) {
@@ -153,6 +230,17 @@ func ParseUsageEvent(data []byte) (domain.UsageEvent, error) {
 			event.Outcome = "failure"
 		} else {
 			event.Outcome = "success"
+		}
+	}
+	if failureRaw, ok := firstRaw(raw, "failure", "Failure", "error", "Error"); ok {
+		var failure map[string]json.RawMessage
+		if json.Unmarshal(failureRaw, &failure) == nil {
+			if event.StatusCode == 0 {
+				decodeFirst(failure, &event.StatusCode, "status_code", "StatusCode", "statusCode")
+			}
+			if event.Outcome == "" {
+				event.Outcome = "failure"
+			}
 		}
 	}
 	if event.Outcome == "" {

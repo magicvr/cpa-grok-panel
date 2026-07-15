@@ -20,6 +20,7 @@ type Runtime struct {
 	host    *cpaabi.Host
 	store   *stateinfra.Store
 	usage   *application.UsageService
+	worker  *application.DemotionWorker
 	router  *management.Router
 	dataDir string
 	ready   bool
@@ -102,11 +103,15 @@ func (runtime *Runtime) ensureReady(dataDir string) error {
 		_ = lastErr
 	}
 	accounts := application.NewAccountsService(runtime.host, store, time.Now)
+	settings := application.LoadSettings()
+	worker := application.NewDemotionWorker(accounts, store, settings)
 	runtime.store = store
-	runtime.usage = application.NewUsageService(store, time.Now)
-	runtime.router = management.NewRouter(accounts, store)
+	runtime.worker = worker
+	runtime.usage = application.NewUsageServiceWithDemotion(store, time.Now, settings, worker)
+	runtime.router = management.NewRouter(accounts, store, settings)
 	runtime.dataDir = used
 	runtime.ready = true
+	worker.Start()
 	return nil
 }
 
@@ -182,6 +187,10 @@ func (runtime *Runtime) Shutdown() error {
 	defer runtime.mu.Unlock()
 	if runtime.store == nil {
 		return nil
+	}
+	if runtime.worker != nil {
+		runtime.worker.Stop()
+		runtime.worker = nil
 	}
 	err := runtime.store.Close()
 	runtime.store = nil

@@ -34,12 +34,12 @@ func TestIsXAIOAuth(t *testing.T) {
 	}
 }
 
-func TestProjectAccountReadOnly(t *testing.T) {
+func TestProjectAccountManaged(t *testing.T) {
 	view := domain.ProjectAccount(domain.AuthFile{
 		AuthIndex: "idx", Name: "xai-a.json", Provider: "xai", Type: "xai",
 		AccountType: "oauth", Priority: 0, Disabled: false,
 	}, domain.AccountState{}, time.Now().UTC())
-	if view.WriteMode != "read_only" || view.ExactFileName != "xai-a.json" || view.AuthIndex != "idx" {
+	if view.WriteMode != "managed" || view.ExactFileName != "xai-a.json" || view.AuthIndex != "idx" {
 		t.Fatalf("%+v", view)
 	}
 }
