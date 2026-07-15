@@ -28,7 +28,7 @@ func TestOpenLegacyStateWithoutSettings(t *testing.T) {
 	if strings.Contains(string(data), `"settings"`) {
 		t.Fatalf("fixture unexpectedly contains settings: %s", data)
 	}
-	data = bytes.ReplaceAll(data, []byte(`"plugin_version": "0.2.7"`), []byte(`"plugin_version": "0.2.6"`))
+	data = bytes.ReplaceAll(data, []byte(`"plugin_version": "0.2.8"`), []byte(`"plugin_version": "0.2.7"`))
 	if err := os.WriteFile(filepath.Join(dir, "state.json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}

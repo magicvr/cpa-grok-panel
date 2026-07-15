@@ -49,7 +49,7 @@ func TestRouterPanelPath(t *testing.T) {
 	if !strings.Contains(body, "Grok") {
 		t.Fatalf("not html panel: %s", string(resp.Body)[:80])
 	}
-	for _, marker := range []string{"v0.2.7", ">诊断<", "批量启用", "批量停用", "批量降权", "批量解除降权"} {
+	for _, marker := range []string{"v0.2.8", ">诊断<", "清除选中", "全部选中", "批量启用", "批量停用", "批量降权", "批量解除降权"} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("panel missing %q", marker)
 		}
