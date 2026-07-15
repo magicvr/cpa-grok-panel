@@ -1,6 +1,6 @@
 # 04. 功能规格
 
-每项均说明触发条件、行为、边界和失败表现。所有写功能受 `write_mode`、host capability、角色和 revision 条件约束。
+每项均说明触发条件、行为、边界和失败表现。所有 auth 写功能受 `write_mode`、Management 能力、角色和双键校验约束；host revision/条件写只是可选增强，当前实测不支持。
 
 ## 1. 账号列表
 
@@ -12,16 +12,16 @@
 ## 2. 真实 token 用量累计
 
 - **触发条件**：CPA 调用 `usage.handle`。
-- **行为**：按 `auth_file_id`、`event_id` 去重后累计真实字段，更新请求计数、最后活动时间和数据质量。
+- **行为**：按 `auth_index` 累计真实字段；有稳定 `event_id` 时精确去重，否则使用 `weak_dedupe` 并更新请求计数、最后活动时间和数据质量。
 - **边界**：不估算缺失 token；不把本地上限当实际供应商额度；不跨插件迁移历史。
 - **失败表现**：非法事件拒绝并计指标；state 不可写时向 CPA 返回可重试错误；无可信身份时不归到账号且不降权。
 
 ## 3. 失败自动降权
 
 - **触发条件**：某账号连续、可信、auth 可归责失败达到配置阈值，且 `write_mode=managed`。
-- **行为**：保存当前 priority 基线，以条件写调用 host 将该 auth 优先级设为 `-100`，记录审计。
-- **边界**：只以实际 `auth_file_id` 归因；成功、取消、全局错误按规则处理；不禁用或删除账号；不替代 CPA 调度。
-- **失败表现**：能力缺失时显示 unsupported；revision 冲突时不覆盖并标记 superseded/conflict；host 失败时保留失败操作供查看，不伪称已降权。
+- **行为**：usage 热路径只记账并把唯一降权意图加入有界队列；worker 重新 list，以 `auth_index` 取得当前精确 name 和 priority，保存基线后串行 PATCH fields 至配置的 `demotion_priority`，再 re-list 校验并记录审计。
+- **边界**：只以实际 `auth_index` 归因；默认只将 401/403 纳入版本化 allowlist，429/5xx 可配置；不禁用或删除账号；不替代 CPA 调度；不在 handler 内同步 PATCH。
+- **失败表现**：能力缺失时显示 unsupported；身份映射变化则拒绝；无 revision 时接受 LWW 并以写后校验报告结果；host 失败时保留 queued/failed/unknown outcome，不伪称已降权。
 
 ## 4. 人工健康检查
 
@@ -47,29 +47,29 @@
 ## 7. 批量启用
 
 - **触发条件**：operator 勾选账号并确认。
-- **行为**：按有界并发逐项调用 `host.auth.set_enabled(true)`，返回 before/after 与新 revision。
+- **行为**：每项携带 `auth_index` 与 `exact_file_name`，按账号串行调用 Management status PATCH，返回 before/after 与写后校验结果；若未来有 revision 再返回新 revision。
 - **边界**：不恢复 priority；已启用项为幂等成功/跳过；墓碑账号拒绝。
-- **失败表现**：部分失败返回 `partially_succeeded`；revision 冲突要求刷新，不回滚已成功的其他账号。
+- **失败表现**：部分失败返回 `partially_succeeded`；映射变化或写后不一致要求刷新，不回滚已成功的其他账号。
 
 ## 8. 批量停用
 
 - **触发条件**：operator 勾选账号并确认影响。
-- **行为**：逐项条件写停用，保留账号和统计。
+- **行为**：逐项以精确 name 写入 `disabled=true` 并 re-list 验证，保留账号和统计。
 - **边界**：不删除、不改变 priority；保护规则可阻止停用最后一个可用账号（是否启用此规则待确认）。
 - **失败表现**：与批量启用相同；UI 保持逐项结果可见。
 
 ## 9. 恢复优先级
 
 - **触发条件**：operator 选择由本插件成功降权且存在 baseline 的账号。
-- **行为**：确认 host 当前 priority 仍为降权值后，条件写恢复 baseline，降权状态置为 none/已恢复并审计。
+- **行为**：确认当前 priority 仍等于 DemotionState 保存的 `targetPriority` 后，以精确 name 串行 PATCH fields 恢复 baseline，写后 re-list，并把状态置为 restored 后审计。
 - **边界**：不自动启用账号；没有 baseline 不猜值；外部已修改则不覆盖。
-- **失败表现**：current priority 不符返回 `revision_conflict`/`priority_superseded`；批量时逐项处理。
+- **失败表现**：current priority 不符返回 `priority_superseded`；映射变化或写后不一致安全失败；宿主未来支持 revision 时才可能返回 `revision_conflict`。
 
 ## 10. 安全清理无效账号
 
 - **触发条件**：admin 从单账号危险区发起预检，或对小批量账号逐项确认；提供精确文件名。
-- **行为**：两阶段预检/确认，重新读取 host 状态，执行保护档位规则，以短期令牌绑定 id、文件名、revision 和 principal，最终调用精确删除。
-- **边界**：必须有 CPA 管理鉴权；禁止通配符、路径、模糊匹配；不自动删除；不绕过 host API；建议 MVP 只支持单账号删除。
+- **行为**：两阶段预检/确认，重新 list 并验证 `auth_index` 与精确 name，执行保护档位规则，以短期令牌绑定双键、状态摘要和 principal，最终调用 Management 精确删除并 re-list。
+- **边界**：必须有 CPA 管理鉴权；禁止通配符、路径、模糊匹配；不自动删除；不绕过 Management API；仅 M3，MVP 可不实现，首版建议只支持单账号删除。
 - **失败表现**：任何身份变化、保护命中、令牌过期、能力缺失均安全拒绝；删除结果不确定时标记 `unknown_outcome` 并刷新 host，不自动重试。
 
 ## 11. 设置管理

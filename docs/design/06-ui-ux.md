@@ -2,7 +2,7 @@
 
 ## 1. 目标
 
-管理面板让运维人员在 CPA 管理鉴权上下文中完成观察、人工检查和受控写操作。UI 只消费本插件管理 API，不直接调用 CPA host auth 接口，不在浏览器保存管理密钥。
+管理面板让运维人员在 CPA 管理鉴权上下文中完成观察，并在后续里程碑开放人工检查和受控写操作。UI 只消费本插件管理 API，不直接调用 CPA Management auth 接口，不在浏览器保存管理密钥。
 
 ## 2. 信息架构
 
@@ -21,22 +21,24 @@
 | 列 | 说明 |
 | --- | --- |
 | 选择 | 多选 |
-| 文件名 | 精确 `file_name` |
+| 身份 | `auth_index`（可缩略展示，详情可复制） |
+| 文件名 | 精确 `exact_file_name` |
 | 启用 | enabled |
 | 优先级 | host priority；降权态高亮 |
 | 健康 | status + stale 标记 |
 | 套餐 | tier + confidence |
 | Token | total / capacity / ratio |
 | 失败 | 连续可归责失败 / 阈值 |
-| 操作 | 检查、套餐、Responses、启停、恢复、清理入口 |
+| 操作 | M1 无 auth 写；M2 启停/恢复；M3 按能力开放检查与清理 |
 
 排序建议：优先级、token、失败次数、最后活动时间。筛选：启用、健康、套餐、降权状态、搜索（仅显示字段）。
 
 ## 4. 批量栏
 
 - 选择本页 / 清除选中（有选中才显示）
-- 检查选中 / 核实套餐 / Responses 实测
-- 启用 / 停用 / 恢复优先级
+- M1 不展示或禁用所有 auth 写按钮
+- M2 开放启用 / 停用 / 恢复优先级
+- M3 在安全 invoke/lease 可用时开放检查 / 套餐 / Responses
 - 不提供无保护的“一键删除选中”；清理走危险区两阶段
 
 ## 5. 反馈与 busy 生命周期
@@ -59,6 +61,8 @@
 
 - operation concurrency
 - attributed failure threshold
+- attributed failure statuses（默认 401/403）
+- demotion priority（默认候选 -100）
 - protection level
 - default token capacity
 - per-account capacity（可后期）
@@ -81,6 +85,8 @@
 - 无 xAI 账号：引导检查 CPA auth
 - capability 缺失：对应按钮 disabled + reason
 - 统计起点：明确“本插件启用后开始累计”
+- 去重模式：`exact` 显示精确去重；`weak` 明确“可能重复或漏重，不用于账单”
+- 条件写：当前显示“无 revision，采用串行写后校验与 LWW”，不得展示为 CAS 安全
 
 ## 9. 非目标
 

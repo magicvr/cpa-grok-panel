@@ -31,7 +31,8 @@
   "settings": {},
   "statistics_started_at": "2026-07-15T00:00:00Z",
   "accounts": {
-    "<auth_file_id>": {
+    "<auth_index>": {
+      "exact_file_name": "account-001.json",
       "usage": {},
       "failure": {},
       "demotion": {},
@@ -41,7 +42,8 @@
     }
   },
   "event_dedupe": {
-    "window": "ring-or-bloom-policy",
+    "mode": "exact-or-weak",
+    "window": "ttl-ring-policy",
     "recent_ids": []
   },
   "operations": [],
@@ -58,11 +60,12 @@ MVP 可用单文件；账号很多时再拆 `accounts/*.json` + manifest。
 - 关键写（降权成功、删除确认、设置更新）同步刷盘
 - writer 失败：告警 + fail closed 对危险写；usage 可返回可重试
 
-## 5. 去重
+## 5. 去重模式
 
-- 以 `event_id` 去重
-- 保留最近 N 个或 TTL 窗口
-- 与 usage 累计同一提交，避免“计了数但去重丢失”或相反
+- `exact`：仅当宿主提供经证明全局/重放稳定的 `event_id` 时，以该 id 去重，保留最近 N 个或 TTL 窗口。
+- `weak`：无稳定 id 时，用版本化合成指纹（如 `auth_index`、时间桶、请求/模型、结果和真实 usage 字段的非敏感组合）抑制短窗明显重复。
+- 弱去重可能因字段相同而误判，也可能因重放字段变化而漏重；UI、meta 与诊断必须标明 `dedupe_mode=weak`，不得承诺账本级准确。
+- 去重状态与 usage 累计同一提交，避免“计了数但去重丢失”或相反；策略版本进入 state，升级不追溯改账。
 
 ## 6. 迁移
 
@@ -86,8 +89,8 @@ MVP 可用单文件；账号很多时再拆 `accounts/*.json` + manifest。
 - 文件权限 0600
 - 日志与 state 均不落秘密
 
-## 9. 开放问题
+## 9. 剩余开放问题
 
 - CPA 是否保证专用 data dir 与权限
 - usage 峰值下可接受的丢盘窗口
-- event_id 全局唯一还是仅进程内
+- raw usage 是否在未来 CPA 版本提供稳定 `event_id`，以便从 `weak` 升级为 `exact`

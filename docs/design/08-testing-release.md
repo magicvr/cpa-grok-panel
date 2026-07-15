@@ -15,9 +15,12 @@
 
 ## 2. 关键负面用例
 
-- 无 `auth_file_id` 的失败 usage → 不降权
-- 重复 `event_id` → 不双计
-- 外部已改 priority → 恢复/降权冲突
+- 无可信 `auth_index` 的失败 usage → 不降权
+- exact 模式重复 `event_id` → 不双计；weak 模式 → 明确允许漏重/误判边界
+- 仅 `auth_index`、缺少精确 `.json` name 的 Management 写 → 拒绝
+- usage handler 达阈值 → 只入队，不同步调用 Management PATCH
+- 无 revision → 串行写 + 写后 re-list；不得宣告 CAS
+- 外部已改 priority → 恢复返回 `priority_superseded`
 - 确认令牌过期/复用 → 删除拒绝
 - write_mode=read_only → 所有写失败且原因明确
 - capability 缺失 → 功能禁用而非崩溃

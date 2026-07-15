@@ -2,7 +2,9 @@
 
 ## 1. 通用规则
 
-基础路径：`/plugins/cpa-grok-panel/api/v1`。请求/响应使用 UTF-8 JSON，时间为 UTC RFC 3339，ID 为不透明字符串。修改请求支持 `Idempotency-Key`；响应带 `X-Request-ID`。所有端点由 CPA 管理鉴权保护。
+基础路径：`/plugins/cpa-grok-panel/api/v1`。请求/响应使用 UTF-8 JSON，时间为 UTC RFC 3339，ID 为不透明字符串。账号领域 id 即 CPA `auth_index`。修改请求支持 `Idempotency-Key`；响应带 `X-Request-ID`。所有端点由 CPA 管理鉴权保护。
+
+所有会触发 CPA Management status/fields/delete 的账号项必须同时提交 `auth_index` 与 `exact_file_name`。`auth_index` 用于领域定位，`exact_file_name` 用于实际写入；服务端在写前通过最新 list 验证双键映射。host `expected_revision` 是可选字段，仅当 `/meta` 宣告 `conditional_write` 时使用；当前实测无 revision，客户端应省略或提交 `null`，服务端不得伪造 CAS。插件 Settings 的本地 revision 不受此规则影响。
 
 列表默认 `limit=50`，最大 200；分页使用不透明 `cursor`。未知字段的兼容行为：服务端默认拒绝修改请求中的未知字段，读取响应允许客户端忽略新增字段。
 
@@ -12,11 +14,11 @@
 
 ```json
 {
-  "id": "auth_opaque_id",
-  "file_name": "account-001.json",
+  "auth_index": "0123456789abcdef",
+  "exact_file_name": "account-001.json",
   "enabled": true,
   "priority": 10,
-  "host_revision": "rev_opaque",
+  "host_revision": null,
   "health": {
     "status": "unchecked",
     "checked_at": null,
@@ -30,6 +32,7 @@
     "confidence": "unknown"
   },
   "usage": {
+    "dedupe_mode": "weak",
     "input_tokens": 100,
     "output_tokens": 40,
     "total_tokens": 140,
@@ -56,13 +59,14 @@
   "demotion": {
     "state": "none",
     "baseline_priority": null,
+    "target_priority": null,
     "triggered_at": null,
     "failure_code": null
   },
   "capabilities": {
-    "health_check": true,
-    "tier_check": true,
-    "responses_test": true,
+    "health_check": false,
+    "tier_check": false,
+    "responses_test": false,
     "set_enabled": true,
     "restore_priority": false,
     "cleanup": false
@@ -83,8 +87,8 @@
   "finished_at": null,
   "progress": {"total": 2, "completed": 1, "succeeded": 1, "failed": 0},
   "results": [
-    {"account_id": "auth_1", "state": "succeeded", "error": null},
-    {"account_id": "auth_2", "state": "running", "error": null}
+    {"auth_index": "auth_1", "state": "succeeded", "error": null},
+    {"auth_index": "auth_2", "state": "running", "error": null}
   ]
 }
 ```
@@ -104,8 +108,13 @@
   "status": "ready",
   "state_status": "healthy",
   "statistics_started_at": "2026-07-15T00:00:00Z",
+  "dedupe_mode": "weak",
+  "conditional_write": false,
   "capabilities": ["usage", "auth_list", "management_routes"],
-  "unavailable_features": [{"feature": "cleanup", "reason": "host capability unavailable"}]
+  "unavailable_features": [
+    {"feature": "checks", "reason": "host.auth.invoke unavailable"},
+    {"feature": "cleanup", "reason": "M3 feature disabled"}
+  ]
 }
 ```
 
@@ -126,12 +135,12 @@
   "items": [],
   "next_cursor": null,
   "snapshot_at": "2026-07-15T12:35:00Z",
-  "host_snapshot_revision": "snapshot_opaque",
+  "host_snapshot_revision": null,
   "stale": false
 }
 ```
 
-### `GET /accounts/{account_id}`
+### `GET /accounts/{auth_index}`
 
 返回单个 AccountView 和最近有限条非敏感审计/操作摘要。不存在返回 404；墓碑默认 404，可通过独立审计端点查询。
 
@@ -145,8 +154,7 @@
 
 ```json
 {
-  "account_ids": ["auth_1", "auth_2"],
-  "expected_revisions": {"auth_1": "rev_1", "auth_2": "rev_2"}
+  "auth_indexes": ["auth_1", "auth_2"]
 }
 ```
 
@@ -154,8 +162,7 @@ Responses 测试可额外携带受限参数：
 
 ```json
 {
-  "account_ids": ["auth_1"],
-  "expected_revisions": {"auth_1": "rev_1"},
+  "auth_indexes": ["auth_1"],
   "model": "host-approved-model-alias",
   "test_profile": "minimal_text",
   "max_output_tokens": 32
@@ -172,14 +179,14 @@ Responses 测试可额外携带受限参数：
 {
   "action": "disable",
   "accounts": [
-    {"id": "auth_1", "expected_revision": "rev_1"},
-    {"id": "auth_2", "expected_revision": "rev_2"}
+    {"auth_index": "auth_1", "exact_file_name": "account-001.json"},
+    {"auth_index": "auth_2", "exact_file_name": "account-002.json"}
   ],
   "reason": "operator maintenance"
 }
 ```
 
-`action` 为 `enable|disable`。返回 202 OperationView。`reason` 长度受限且审计脱敏；不接受文件名作为目标。
+`action` 为 `enable|disable`。返回 202 OperationView。`reason` 长度受限且审计脱敏。精确文件名不是领域主键，但它是当前 Management 写端不可省略的第二把键；服务端不得仅凭文件名查找账号。
 
 ## 7. 恢复优先级
 
@@ -189,15 +196,14 @@ Responses 测试可额外携带受限参数：
 {
   "accounts": [
     {
-      "id": "auth_1",
-      "expected_revision": "rev_after_demotion",
-      "expected_current_priority": -100
+      "auth_index": "auth_1",
+      "exact_file_name": "account-001.json"
     }
   ]
 }
 ```
 
-服务端从持久化 DemotionState 读取 baseline，客户端不能提交恢复目标值。返回 202。
+服务端从持久化 DemotionState 读取 baseline 与该次 `target_priority`，客户端不能提交恢复目标值或写死 `-100`。写前要求当前 priority 等于状态中的 target，写后 re-list 校验。返回 202。
 
 ## 8. 删除预检与确认
 
@@ -207,9 +213,8 @@ MVP 单账号请求：
 
 ```json
 {
-  "account_id": "auth_1",
-  "exact_file_name": "account-001.json",
-  "expected_revision": "rev_1"
+  "auth_index": "auth_1",
+  "exact_file_name": "account-001.json"
 }
 ```
 
@@ -222,10 +227,11 @@ MVP 单账号请求：
   "expires_at": "2026-07-15T12:05:00Z",
   "required_confirmation_text": "DELETE account-001.json",
   "summary": {
-    "account_id": "auth_1",
-    "file_name": "account-001.json",
+    "auth_index": "auth_1",
+    "exact_file_name": "account-001.json",
     "enabled": false,
     "priority": -100,
+    "demotion_target_priority": -100,
     "last_usage_at": "2026-07-01T00:00:00Z",
     "health": "unhealthy"
   },
@@ -239,15 +245,14 @@ MVP 单账号请求：
 
 ```json
 {
-  "account_id": "auth_1",
+  "auth_index": "auth_1",
   "exact_file_name": "account-001.json",
-  "expected_revision": "rev_1",
   "confirmation_token": "short_lived_opaque_token",
   "confirmation_text": "DELETE account-001.json"
 }
 ```
 
-返回 202 cleanup OperationView，或同步成功时 200 明确结果。实现应选择一种并固定；为统一 busy 生命周期，设计推荐 202。确认令牌一次性使用，绑定 principal、身份、revision 和保护规则摘要。
+返回 202 cleanup OperationView，或同步成功时 200 明确结果。实现应选择一种并固定；为统一 busy 生命周期，设计推荐 202。确认令牌一次性使用，绑定 principal、双键、写前状态与保护规则摘要；只有宿主实际提供 revision 时才额外绑定 revision。
 
 ## 9. 操作查询与取消
 
@@ -268,6 +273,8 @@ MVP 单账号请求：
   "revision": 1,
   "operation_concurrency": 3,
   "attributed_failure_threshold": 3,
+  "attributed_failure_statuses": [401, 403],
+  "demotion_priority": -100,
   "protection_level": "strict",
   "default_token_capacity": 1000000,
   "per_account_token_capacity": {"auth_1": 2000000},
@@ -291,7 +298,7 @@ MVP 单账号请求：
 
 ### `GET /audit`
 
-过滤：`cursor`、`limit`、`account_id`、`operation_id`、`action`、`since`。响应不包含秘密；文件名是否脱敏由保留策略决定。
+过滤：`cursor`、`limit`、`auth_index`、`operation_id`、`action`、`since`。响应不包含秘密；文件名是否脱敏由保留策略决定。
 
 ## 12. 错误与部分失败
 
@@ -301,13 +308,13 @@ MVP 单账号请求：
 
 ```json
 {
-  "account_id": "auth_2",
+  "auth_index": "auth_2",
   "state": "failed",
   "before": {"enabled": true, "priority": 10},
   "after": null,
   "error": {
-    "code": "revision_conflict",
-    "message": "账号状态已变化",
+    "code": "write_verification_failed",
+    "message": "写入后状态与目标不一致",
     "retryable": false
   }
 }
@@ -315,8 +322,8 @@ MVP 单账号请求：
 
 ## 13. API 安全限制
 
-- account id 位于 URL 时按不透明段处理并限制长度；禁止把它当路径拼接。
-- 文件名只在 cleanup 两阶段作为精确交叉确认，不用于查找或拼接磁盘路径。
+- `auth_index` 位于 URL 时按不透明段处理并限制长度；禁止把它当路径拼接。
+- `exact_file_name` 是所有 Management auth 写请求必需的交叉确认键，但不得单独用于领域查找，也不得拼接磁盘路径；必须以 `.json` 结尾并与最新 list 完全相等。
 - 所有数组有限长，字符串有限长，请求体有限制。
 - 修改 API 校验 Content-Type、同源/CSRF 和幂等键。
 - 响应不返回 auth 文件内容、OAuth token、管理密钥、完整外部 Responses 文本。
