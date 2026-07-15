@@ -35,10 +35,16 @@ extern int cliproxyPluginCall(char*, uint8_t*, size_t, cliproxy_buffer*);
 extern void cliproxyPluginFree(void*, size_t);
 extern void cliproxyPluginShutdown(void);
 
-static const cliproxy_host_api* stored_host;
+static cliproxy_host_api stored_host;
+static int host_ready;
 
 static void store_host_api(const cliproxy_host_api* host) {
-	stored_host = host;
+	if (host == NULL) {
+		host_ready = 0;
+		return;
+	}
+	stored_host = *host; // copy struct; do not keep caller's pointer
+	host_ready = 1;
 }
 
 static int validate_host_api(const cliproxy_host_api* host, uint32_t expected_abi) {
@@ -49,15 +55,15 @@ static int validate_host_api(const cliproxy_host_api* host, uint32_t expected_ab
 }
 
 static int call_host_api(const char* method, const uint8_t* request, size_t request_len, cliproxy_buffer* response) {
-	if (stored_host == NULL || stored_host->call == NULL) {
+	if (!host_ready || stored_host.call == NULL) {
 		return 1;
 	}
-	return stored_host->call(stored_host->host_ctx, method, request, request_len, response);
+	return stored_host.call(stored_host.host_ctx, method, request, request_len, response);
 }
 
 static void free_host_buffer(void* ptr, size_t len) {
-	if (stored_host != NULL && stored_host->free_buffer != NULL && ptr != NULL) {
-		stored_host->free_buffer(ptr, len);
+	if (host_ready && stored_host.free_buffer != NULL && ptr != NULL) {
+		stored_host.free_buffer(ptr, len);
 	}
 }
 */
@@ -84,15 +90,17 @@ func cliproxy_plugin_init(host *C.cliproxy_host_api, pluginAPI *C.cliproxy_plugi
 	if pluginAPI == nil || C.validate_host_api(host, C.uint32_t(abiVersion)) == 0 {
 		return 1
 	}
+	// Shutdown previous runtime before replacing (reload safety).
+	runtimeMu.Lock()
+	_ = runtime.Shutdown()
 	C.store_host_api(host)
+	runtime = plugin.NewRuntime(cpaabi.NewHost(callHost))
+	runtimeMu.Unlock()
+
 	pluginAPI.abi_version = C.uint32_t(abiVersion)
 	pluginAPI.call = C.cliproxy_plugin_call_fn(C.cliproxyPluginCall)
 	pluginAPI.free_buffer = C.cliproxy_plugin_free_fn(C.cliproxyPluginFree)
 	pluginAPI.shutdown = C.cliproxy_plugin_shutdown_fn(C.cliproxyPluginShutdown)
-
-	runtimeMu.Lock()
-	runtime = plugin.NewRuntime(cpaabi.NewHost(callHost))
-	runtimeMu.Unlock()
 	return 0
 }
 
@@ -108,13 +116,12 @@ func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t,
 	}
 	var requestBytes []byte
 	if request != nil && requestLen > 0 {
-		requestBytes = C.GoBytes(unsafe.Pointer(request), C.int(requestLen))
+		requestBytes = goBytes(unsafe.Pointer(request), requestLen)
 	}
 	runtimeMu.RLock()
 	current := runtime
 	runtimeMu.RUnlock()
-	raw := current.Call(C.GoString(method), requestBytes)
-	writeResponse(response, raw)
+	writeResponse(response, current.Call(C.GoString(method), requestBytes))
 	return 0
 }
 
@@ -130,6 +137,7 @@ func cliproxyPluginFree(ptr unsafe.Pointer, length C.size_t) {
 func cliproxyPluginShutdown() {
 	runtimeMu.Lock()
 	_ = runtime.Shutdown()
+	C.store_host_api(nil)
 	runtimeMu.Unlock()
 }
 
@@ -150,9 +158,24 @@ func callHost(method string, payload []byte) ([]byte, error) {
 	if response.ptr == nil || response.len == 0 {
 		return []byte("null"), nil
 	}
-	out := C.GoBytes(unsafe.Pointer(response.ptr), C.int(response.len))
+	out := goBytes(unsafe.Pointer(response.ptr), response.len)
 	C.free_host_buffer(response.ptr, response.len)
 	return out, nil
+}
+
+func goBytes(ptr unsafe.Pointer, length C.size_t) []byte {
+	if ptr == nil || length == 0 {
+		return nil
+	}
+	// Avoid C.int overflow for large payloads.
+	n := int(length)
+	if C.size_t(n) != length || n < 0 {
+		// Fallback copy in chunks if size doesn't fit int (extremely rare for our APIs).
+		buf := make([]byte, length)
+		C.memcpy(unsafe.Pointer(&buf[0]), ptr, length)
+		return buf
+	}
+	return C.GoBytes(ptr, C.int(n))
 }
 
 func writeResponse(response *C.cliproxy_buffer, raw []byte) {

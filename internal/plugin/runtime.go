@@ -73,7 +73,13 @@ func (runtime *Runtime) ensureReady(dataDir string) error {
 		return nil
 	}
 	if dataDir == "" {
-		dataDir = filepath.Join("plugins", cpaabi.PluginID)
+		// Prefer absolute path under cwd so reloads don't depend on relative CWD surprises.
+		cwd, err := os.Getwd()
+		if err != nil || cwd == "" {
+			dataDir = filepath.Join("plugins", "data", cpaabi.PluginID)
+		} else {
+			dataDir = filepath.Join(cwd, "plugins", "data", cpaabi.PluginID)
+		}
 	}
 	store, err := stateinfra.Open(dataDir, time.Now().UTC())
 	if err != nil {
