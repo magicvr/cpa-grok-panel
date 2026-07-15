@@ -17,7 +17,7 @@ import (
 const (
 	SchemaVersion = 1
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.1.4"
+	PluginVersion = "0.1.5"
 )
 
 type DedupeState struct {
