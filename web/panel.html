@@ -5,14 +5,30 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Grok 账号面板</title>
   <style>
-    :root{color-scheme:dark;--bg:#0b1020;--card:#151c31;--line:#293450;--text:#eaf0ff;--muted:#98a6c7;--accent:#70d7ff;--good:#69e6a6;--bad:#ff8b9b}*{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#0b1020,#111932);color:var(--text);font:14px/1.5 system-ui,sans-serif}.wrap{max-width:1180px;margin:auto;padding:28px 18px}header{display:flex;justify-content:space-between;align-items:center;gap:16px}h1{margin:0;font-size:26px}.sub{color:var(--muted);margin-top:4px}.actions,.modal-actions{display:flex;align-items:center;gap:9px}button{border:0;border-radius:9px;padding:9px 16px;background:var(--accent);color:#07111c;font-weight:700;cursor:pointer}button:disabled{opacity:.55;cursor:wait}button.secondary{background:#202b46;color:var(--text);border:1px solid var(--line)}button.danger{margin-right:auto;background:transparent;color:var(--bad);border:1px solid #653444}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px}.label{color:var(--muted);font-size:12px}.value{font-size:22px;font-weight:750;margin-top:4px}.panel{overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}table{width:100%;border-collapse:collapse;min-width:880px}th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line)}th{color:var(--muted);font-size:12px}.ok{color:var(--good)}.bad{color:var(--bad)}.file{max-width:270px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.notice{margin:12px 0;color:var(--muted)}.modal-backdrop{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(3,7,17,.72);backdrop-filter:blur(3px)}.modal-backdrop[hidden]{display:none}.modal{width:min(460px,100%);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:0 24px 80px rgba(0,0,0,.45)}.modal h2{margin:0 0 6px;font-size:20px}.modal p{margin:0 0 16px;color:var(--muted)}.modal label{display:block;margin-bottom:6px;font-weight:700}.modal input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;outline:0;background:#0d1426;color:var(--text);font:inherit}.modal input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(112,215,255,.12)}.key-status{min-height:21px;margin:8px 0 18px;color:var(--muted);font-size:12px}@media(max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}header{align-items:flex-start}.actions{flex-wrap:wrap;justify-content:flex-end}}
+    :root{color-scheme:dark;--bg:#0b1020;--card:#151c31;--line:#293450;--text:#eaf0ff;--muted:#98a6c7;--accent:#70d7ff;--good:#69e6a6;--bad:#ff8b9b}*{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#0b1020,#111932);color:var(--text);font:14px/1.5 system-ui,sans-serif}.wrap{max-width:1180px;margin:auto;padding:28px 18px}header{display:flex;justify-content:space-between;align-items:center;gap:16px}h1{margin:0;font-size:26px}.sub{color:var(--muted);margin-top:4px}.actions,.modal-actions{display:flex;align-items:center;gap:9px}button{border:0;border-radius:9px;padding:9px 16px;background:var(--accent);color:#07111c;font-weight:700;cursor:pointer}button:disabled{opacity:.55;cursor:wait}button.secondary{background:#202b46;color:var(--text);border:1px solid var(--line)}button.danger{margin-right:auto;background:transparent;color:var(--bad);border:1px solid #653444}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:22px 0}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px}.label{color:var(--muted);font-size:12px}.value{font-size:22px;font-weight:750;margin-top:4px}.panel{overflow:hidden;background:var(--card);border:1px solid var(--line);border-radius:12px}.table-scroll{overflow:auto}table{width:100%;border-collapse:collapse;min-width:980px}th,td{text-align:left;padding:11px 13px;border-bottom:1px solid var(--line)}th{padding:0;color:var(--muted);font-size:12px}.sort-button{display:flex;width:100%;align-items:center;gap:6px;padding:11px 13px;border:0;border-radius:0;background:transparent;color:inherit;font:inherit;font-weight:700;white-space:nowrap}.sort-button:hover{background:#1b2540;color:var(--text)}th.sorted .sort-button{color:var(--accent);background:#19253e}.sort-indicator{width:12px;color:var(--accent);font-size:10px}.ok{color:var(--good)}.bad{color:var(--bad)}.file{max-width:270px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.empty{text-align:center;color:var(--muted);padding:32px 16px}.pagination{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 13px;background:#11182b}.page-size{display:flex;align-items:center;gap:8px;color:var(--muted)}select{padding:7px 28px 7px 9px;border:1px solid var(--line);border-radius:7px;background:#0d1426;color:var(--text);font:inherit}.page-nav{display:flex;align-items:center;gap:10px}.page-nav button{padding:7px 12px}.page-info{min-width:150px;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums}.notice{margin:12px 0;color:var(--muted)}.modal-backdrop{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(3,7,17,.72);backdrop-filter:blur(3px)}.modal-backdrop[hidden]{display:none}.modal{width:min(460px,100%);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:0 24px 80px rgba(0,0,0,.45)}.modal h2{margin:0 0 6px;font-size:20px}.modal p{margin:0 0 16px;color:var(--muted)}.modal label{display:block;margin-bottom:6px;font-weight:700}.modal input{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;outline:0;background:#0d1426;color:var(--text);font:inherit}.modal input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(112,215,255,.12)}.key-status{min-height:21px;margin:8px 0 18px;color:var(--muted);font-size:12px}@media(max-width:760px){.cards{grid-template-columns:repeat(2,1fr)}header{align-items:flex-start}.actions{flex-wrap:wrap;justify-content:flex-end}.pagination{align-items:flex-start;flex-direction:column}.page-nav{width:100%;justify-content:space-between}.page-info{min-width:0}.page-nav button{padding:7px 10px}}
   </style>
 </head>
 <body><main class="wrap">
   <header><div><h1>Grok 账号面板</h1><div class="sub">CPA xAI OAuth 账号 · M1 只读模式</div></div><div class="actions"><button id="refresh">刷新</button><button id="settings" class="secondary">设置</button></div></header>
   <section class="cards"><div class="card"><div class="label">账号数</div><div id="accounts" class="value">—</div></div><div class="card"><div class="label">成功请求</div><div id="success" class="value">—</div></div><div class="card"><div class="label">失败请求</div><div id="failed" class="value">—</div></div><div class="card"><div class="label">累计 Token</div><div id="tokens" class="value">—</div></div></section>
   <div id="notice" class="notice">正在读取数据…</div>
-  <section class="panel"><table><thead><tr><th>账号文件</th><th>状态</th><th>优先级</th><th>输入 Token</th><th>输出 Token</th><th>总 Token</th><th>成功 / 失败</th><th>去重</th></tr></thead><tbody id="rows"></tbody></table></section>
+  <section class="panel">
+    <div class="table-scroll"><table><thead><tr>
+      <th data-sort="file"><button class="sort-button" type="button">账号文件 <span class="sort-indicator"></span></button></th>
+      <th data-sort="status"><button class="sort-button" type="button">状态 <span class="sort-indicator"></span></button></th>
+      <th data-sort="priority"><button class="sort-button" type="button">优先级 <span class="sort-indicator"></span></button></th>
+      <th data-sort="input"><button class="sort-button" type="button">输入 Token <span class="sort-indicator"></span></button></th>
+      <th data-sort="output"><button class="sort-button" type="button">输出 Token <span class="sort-indicator"></span></button></th>
+      <th data-sort="total"><button class="sort-button" type="button">总 Token <span class="sort-indicator"></span></button></th>
+      <th data-sort="success"><button class="sort-button" type="button">成功 <span class="sort-indicator"></span></button></th>
+      <th data-sort="failed"><button class="sort-button" type="button">失败 <span class="sort-indicator"></span></button></th>
+      <th data-sort="dedupe"><button class="sort-button" type="button">去重 <span class="sort-indicator"></span></button></th>
+    </tr></thead><tbody id="rows"></tbody></table></div>
+    <footer class="pagination">
+      <label class="page-size" for="page-size">每页 <select id="page-size"><option value="20">20</option><option value="50" selected>50</option><option value="100">100</option></select> 条</label>
+      <div class="page-nav"><button id="previous-page" class="secondary" type="button">上一页</button><span id="page-info" class="page-info">第 1/1 页 · 共 0 条</span><button id="next-page" class="secondary" type="button">下一页</button></div>
+    </footer>
+  </section>
 </main>
 <div id="settings-modal" class="modal-backdrop" hidden>
   <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
@@ -30,8 +46,64 @@ const base='/v0/management/cpa-grok-panel/api/v1';
 const storageKey='cpa-grok-panel.management_key';
 const fmt=n=>new Intl.NumberFormat('zh-CN').format(n||0);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const sortColumns={
+  file:{direction:'asc',value:x=>x.exact_file_name||''},
+  status:{direction:'asc',value:x=>`${x.enabled?'启用':'停用'}${x.unavailable?' / 不可用':''}`},
+  priority:{direction:'desc',value:x=>Number(x.priority)||0},
+  input:{direction:'desc',value:x=>Number(x.usage?.input_tokens)||0},
+  output:{direction:'desc',value:x=>Number(x.usage?.output_tokens)||0},
+  total:{direction:'desc',value:x=>Number(x.usage?.total_tokens)||0},
+  success:{direction:'desc',value:x=>Number(x.usage?.successful_requests)||0},
+  failed:{direction:'desc',value:x=>Number(x.usage?.failed_requests)||0},
+  dedupe:{direction:'asc',value:x=>x.usage?.dedupe_mode||currentMeta?.dedupe_mode||''}
+};
 const modal=document.querySelector('#settings-modal');
 const keyInput=document.querySelector('#management-key');
+let allItems=[];
+let currentMeta=null;
+let currentPage=1;
+let pageSize=50;
+let sortKey=null;
+let sortDirection='asc';
+
+function compareValues(left,right){
+  if(typeof left==='number'&&typeof right==='number') return left-right;
+  return String(left).localeCompare(String(right),'zh-CN',{numeric:true,sensitivity:'base'});
+}
+function sortedItems(){
+  if(!sortKey) return allItems.slice();
+  const column=sortColumns[sortKey];
+  return allItems.map((item,index)=>({item,index})).sort((left,right)=>{
+    const compared=compareValues(column.value(left.item),column.value(right.item));
+    if(compared!==0) return sortDirection==='asc'?compared:-compared;
+    const fileCompared=compareValues(left.item.exact_file_name||'',right.item.exact_file_name||'');
+    return fileCompared||left.index-right.index;
+  }).map(entry=>entry.item);
+}
+function renderTable(){
+  const totalPages=Math.max(1,Math.ceil(allItems.length/pageSize));
+  currentPage=Math.min(Math.max(1,currentPage),totalPages);
+  const items=sortedItems().slice((currentPage-1)*pageSize,currentPage*pageSize);
+  document.querySelector('#rows').innerHTML=items.length?items.map(x=>`<tr><td class="file" title="${esc(x.exact_file_name)}">${esc(x.exact_file_name)}</td><td class="${x.enabled?'ok':'bad'}">${x.enabled?'启用':'停用'}${x.unavailable?' / 不可用':''}</td><td>${fmt(x.priority)}</td><td>${fmt(x.usage?.input_tokens)}</td><td>${fmt(x.usage?.output_tokens)}</td><td>${fmt(x.usage?.total_tokens)}</td><td class="ok">${fmt(x.usage?.successful_requests)}</td><td class="bad">${fmt(x.usage?.failed_requests)}</td><td>${esc(x.usage?.dedupe_mode||currentMeta?.dedupe_mode)}</td></tr>`).join(''):'<tr><td class="empty" colspan="9">暂无账号数据</td></tr>';
+  document.querySelector('#page-info').textContent=`第 ${currentPage}/${totalPages} 页 · 共 ${fmt(allItems.length)} 条`;
+  document.querySelector('#previous-page').disabled=currentPage<=1;
+  document.querySelector('#next-page').disabled=currentPage>=totalPages;
+  document.querySelectorAll('th[data-sort]').forEach(header=>{
+    const active=header.dataset.sort===sortKey;
+    header.classList.toggle('sorted',active);
+    header.setAttribute('aria-sort',active?(sortDirection==='asc'?'ascending':'descending'):'none');
+    header.querySelector('.sort-indicator').textContent=active?(sortDirection==='asc'?'▲':'▼'):'';
+  });
+}
+function changeSort(key){
+  if(sortKey===key) sortDirection=sortDirection==='asc'?'desc':'asc';
+  else{
+    sortKey=key;
+    sortDirection=sortColumns[key].direction;
+  }
+  currentPage=1;
+  renderTable();
+}
 
 function getManagementKey(){
   try{return localStorage.getItem(storageKey)?.trim()||''}catch{return ''}
@@ -86,13 +158,15 @@ async function refresh(){
     ]);
     if(metaRes.status===401||accountsRes.status===401) throw new Error('管理密钥无效或已失效，请点“设置”更新');
     if(!metaRes.ok||!accountsRes.ok) throw new Error('接口返回异常 HTTP '+(metaRes.ok?accountsRes.status:metaRes.status));
-    const meta=await metaRes.json(),data=await accountsRes.json(),items=data.items||[];
-    const sum=items.reduce((a,x)=>{a.s+=(x.usage?.successful_requests||0);a.f+=(x.usage?.failed_requests||0);a.t+=(x.usage?.total_tokens||0);return a},{s:0,f:0,t:0});
-    document.querySelector('#accounts').textContent=fmt(items.length);
+    const meta=await metaRes.json(),data=await accountsRes.json();
+    currentMeta=meta;
+    allItems=Array.isArray(data.items)?data.items:[];
+    const sum=allItems.reduce((a,x)=>{a.s+=(x.usage?.successful_requests||0);a.f+=(x.usage?.failed_requests||0);a.t+=(x.usage?.total_tokens||0);return a},{s:0,f:0,t:0});
+    document.querySelector('#accounts').textContent=fmt(allItems.length);
     document.querySelector('#success').textContent=fmt(sum.s);
     document.querySelector('#failed').textContent=fmt(sum.f);
     document.querySelector('#tokens').textContent=fmt(sum.t);
-    document.querySelector('#rows').innerHTML=items.map(x=>`<tr><td class="file" title="${esc(x.exact_file_name)}">${esc(x.exact_file_name)}</td><td class="${x.enabled?'ok':'bad'}">${x.enabled?'启用':'停用'}${x.unavailable?' / 不可用':''}</td><td>${x.priority}</td><td>${fmt(x.usage?.input_tokens)}</td><td>${fmt(x.usage?.output_tokens)}</td><td>${fmt(x.usage?.total_tokens)}</td><td>${fmt(x.usage?.successful_requests)} / ${fmt(x.usage?.failed_requests)}</td><td>${esc(x.usage?.dedupe_mode||meta.dedupe_mode)}</td></tr>`).join('');
+    renderTable();
     document.querySelector('#notice').textContent=`统计起点：${new Date(meta.statistics_started_at).toLocaleString()} · 全局去重：${meta.dedupe_mode} · write_mode=${meta.write_mode}`;
   }catch(e){
     document.querySelector('#notice').textContent='刷新失败：'+e.message;
@@ -105,8 +179,13 @@ document.querySelector('#settings').addEventListener('click',openSettings);
 document.querySelector('#save-key').addEventListener('click',saveManagementKey);
 document.querySelector('#cancel-settings').addEventListener('click',closeSettings);
 document.querySelector('#clear-key').addEventListener('click',clearManagementKey);
+document.querySelectorAll('th[data-sort] .sort-button').forEach(button=>button.addEventListener('click',()=>changeSort(button.parentElement.dataset.sort)));
+document.querySelector('#page-size').addEventListener('change',event=>{pageSize=Number(event.target.value);currentPage=1;renderTable()});
+document.querySelector('#previous-page').addEventListener('click',()=>{if(currentPage>1){currentPage--;renderTable()}});
+document.querySelector('#next-page').addEventListener('click',()=>{if(currentPage*pageSize<allItems.length){currentPage++;renderTable()}});
 keyInput.addEventListener('keydown',event=>{if(event.key==='Enter')saveManagementKey()});
 modal.addEventListener('click',event=>{if(event.target===modal)closeSettings()});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&!modal.hidden)closeSettings()});
+renderTable();
 refresh();
 </script></body></html>
