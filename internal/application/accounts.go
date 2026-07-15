@@ -290,6 +290,23 @@ func (service *AccountsService) ApplyRequestedDemotion(authIndex string, targetP
 	return service.markDemotionApplied(authIndex, file.Name)
 }
 
+func (service *AccountsService) ClearState(authIndex, exactFileName string) error {
+	if strings.TrimSpace(authIndex) == "" || strings.TrimSpace(exactFileName) == "" {
+		return &AccountError{Code: "invalid_argument", Message: "auth_index 与 exact_file_name 均为必填", HTTPStatus: 400}
+	}
+	return service.store.Update(func(snapshot *stateinfra.Snapshot) error {
+		state, exists := snapshot.Accounts[authIndex]
+		if !exists {
+			return nil
+		}
+		if state.ExactFileName != "" && state.ExactFileName != exactFileName {
+			return &AccountError{Code: "account_mapping_changed", Message: "本地账号状态映射已变化，未清理 state", HTTPStatus: 409}
+		}
+		delete(snapshot.Accounts, authIndex)
+		return nil
+	})
+}
+
 func (service *AccountsService) resolveExact(authIndex, exactFileName string) (domain.AuthFile, error) {
 	if strings.TrimSpace(authIndex) == "" || strings.TrimSpace(exactFileName) == "" {
 		return domain.AuthFile{}, &AccountError{Code: "invalid_argument", Message: "auth_index 与 exact_file_name 均为必填", HTTPStatus: 400}

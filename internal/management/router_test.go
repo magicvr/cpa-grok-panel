@@ -49,7 +49,7 @@ func TestRouterPanelPath(t *testing.T) {
 	if !strings.Contains(body, "Grok") {
 		t.Fatalf("not html panel: %s", string(resp.Body)[:80])
 	}
-	for _, marker := range []string{"v0.2.8", ">诊断<", "清除选中", "全部选中", "批量启用", "批量停用", "批量降权", "批量解除降权"} {
+	for _, marker := range []string{"v0.3.0", ">诊断<", "清除选中", "全部选中", "批量启用", "批量停用", "批量降权", "批量解除降权", "批量安全删除", "每日清零"} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("panel missing %q", marker)
 		}
@@ -146,7 +146,7 @@ func TestRouterUpdateSettingsThenGet(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := management.NewRouter(application.NewAccountsService(fakeLister{}, store, time.Now, defaults), store, defaults)
-	body := []byte(`{"auto_refresh_enabled":false,"auto_refresh_interval_seconds":12,"attributed_failure_threshold":7,"count_status_429":true,"count_status_5xx":true,"demotion_priority":-250,"default_restore_priority":12}`)
+	body := []byte(`{"auto_refresh_enabled":false,"auto_refresh_interval_seconds":12,"daily_usage_reset_enabled":true,"daily_usage_reset_time":"03:45","attributed_failure_threshold":7,"count_status_429":true,"count_status_5xx":true,"demotion_priority":-250,"default_restore_priority":12}`)
 	response := router.Handle(management.Request{Method: "PUT", Path: "/v0/management/cpa-grok-panel/api/v1/settings", Body: body})
 	if response.StatusCode != 200 {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
@@ -163,7 +163,7 @@ func TestRouterUpdateSettingsThenGet(t *testing.T) {
 	if err := json.Unmarshal(response.Body, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.AutoRefreshEnabled || got.AutoRefreshIntervalSeconds != 12 || got.AttributedFailureThreshold != 7 || !got.CountStatus429 || !got.CountStatus5XX || got.DemotionPriority != -250 || got.DefaultRestorePriority != 12 {
+	if got.AutoRefreshEnabled || got.AutoRefreshIntervalSeconds != 12 || !got.DailyUsageResetEnabled || got.DailyUsageResetTime != "03:45" || got.AttributedFailureThreshold != 7 || !got.CountStatus429 || !got.CountStatus5XX || got.DemotionPriority != -250 || got.DefaultRestorePriority != 12 {
 		t.Fatalf("settings=%+v", got.Settings)
 	}
 	if got.Revision != defaults.Revision+1 || got.Source != "state" {
@@ -182,12 +182,41 @@ func TestRouterRejectsInvalidSettings(t *testing.T) {
 	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "2..60") {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
 	}
+	response = router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"daily_usage_reset_time":"9:00"}`)})
+	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "HH:mm") {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
+	response = router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"daily_usage_reset_time":"24:00"}`)})
+	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "24 小时") {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
 }
 
 func TestDefaultAutoRefreshSettings(t *testing.T) {
 	settings := application.DefaultSettings()
 	if !settings.AutoRefreshEnabled || settings.AutoRefreshIntervalSeconds != 5 {
 		t.Fatalf("auto refresh defaults=%+v", settings)
+	}
+	if settings.DailyUsageResetEnabled || settings.DailyUsageResetTime != "00:00" {
+		t.Fatalf("daily usage reset defaults=%+v", settings)
+	}
+}
+
+func TestRouterClearState(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-1"] = domain.AccountState{ExactFileName: "xai-a.json"}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	router := management.NewRouter(application.NewAccountsService(fakeLister{}, store, time.Now), store)
+	response := router.Handle(management.Request{Method: "POST", Path: management.APIPrefix + "/accounts/clear-state", Body: []byte(`{"auth_index":"idx-1","exact_file_name":"xai-a.json"}`)})
+	if response.StatusCode != 200 {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
+	if _, exists := store.View().Accounts["idx-1"]; exists {
+		t.Fatal("account state was not cleared")
 	}
 }
 

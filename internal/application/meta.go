@@ -1,7 +1,9 @@
 package application
 
 import (
+	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +16,7 @@ type Settings = config.Settings
 
 func DefaultSettings() Settings {
 	return Settings{Revision: 1, AutoRefreshEnabled: true, AutoRefreshIntervalSeconds: 5,
+		DailyUsageResetEnabled: false, DailyUsageResetTime: "00:00",
 		OperationConcurrency: 1, AttributedFailureThreshold: 3,
 		// 401/403 are always immediate; this list is for documentation / future extras.
 		AttributedFailureStatuses: []int{401, 403}, DemotionPriority: -100, ProtectionLevel: "strict",
@@ -23,6 +26,18 @@ func DefaultSettings() Settings {
 		CountStatus429: false, CountStatus5XX: false,
 		DefaultTokenCapacity: 1_000_000, PerAccountTokenCapacity: map[string]uint64{},
 		HealthStaleAfterSeconds: 86400, OperationTimeoutSeconds: 60, WriteMode: "managed"}
+}
+
+var dailyUsageResetTimePattern = regexp.MustCompile(`^\d{2}:\d{2}$`)
+
+func ValidateDailyUsageResetTime(value string) error {
+	if !dailyUsageResetTimePattern.MatchString(value) {
+		return fmt.Errorf("daily_usage_reset_time 必须使用 HH:mm 格式")
+	}
+	if _, err := time.Parse("15:04", value); err != nil {
+		return fmt.Errorf("daily_usage_reset_time 必须是有效的 24 小时时间")
+	}
+	return nil
 }
 
 func LoadSettings() Settings {
@@ -82,6 +97,6 @@ func BuildMeta(snapshot stateinfra.Snapshot) Meta {
 	return Meta{PluginID: stateinfra.PluginID, PluginVersion: stateinfra.PluginVersion, APIVersion: 1,
 		WriteMode: "managed", Status: "ready", StateStatus: "healthy",
 		StatisticsStartedAt: snapshot.StatisticsStartedAt, DedupeMode: dedupeMode, ConditionalWrite: false,
-		Capabilities:        []string{"usage", "auth_list", "auth_get", "auth_save", "management_routes", "set_enabled", "demote", "restore_priority", "auto_demotion"},
-		UnavailableFeatures: []Unavailable{{Feature: "checks", Reason: "host.auth.invoke 未提供"}, {Feature: "cleanup", Reason: "M3 功能未启用"}}}
+		Capabilities:        []string{"usage", "auth_list", "auth_get", "auth_save", "management_routes", "set_enabled", "demote", "restore_priority", "auto_demotion", "safe_delete", "daily_usage_reset"},
+		UnavailableFeatures: []Unavailable{{Feature: "checks", Reason: "host.auth.invoke 未提供"}}}
 }

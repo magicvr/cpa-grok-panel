@@ -28,7 +28,7 @@ func TestOpenLegacyStateWithoutSettings(t *testing.T) {
 	if strings.Contains(string(data), `"settings"`) {
 		t.Fatalf("fixture unexpectedly contains settings: %s", data)
 	}
-	data = bytes.ReplaceAll(data, []byte(`"plugin_version": "0.2.8"`), []byte(`"plugin_version": "0.2.7"`))
+	data = bytes.ReplaceAll(data, []byte(`"plugin_version": "0.3.0"`), []byte(`"plugin_version": "0.2.8"`))
 	if err := os.WriteFile(filepath.Join(dir, "state.json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -43,7 +43,7 @@ func TestOpenLegacyStateWithoutSettings(t *testing.T) {
 	}
 }
 
-func TestOpenLegacySettingsAppliesAutoRefreshDefaults(t *testing.T) {
+func TestOpenLegacySettingsAppliesNewDefaults(t *testing.T) {
 	dir := t.TempDir()
 	state := map[string]any{
 		"schema_version":        1,
@@ -68,7 +68,7 @@ func TestOpenLegacySettingsAppliesAutoRefreshDefaults(t *testing.T) {
 	}
 	defer store.Close()
 	settings := store.View().Settings
-	if settings == nil || !settings.AutoRefreshEnabled || settings.AutoRefreshIntervalSeconds != 5 {
+	if settings == nil || !settings.AutoRefreshEnabled || settings.AutoRefreshIntervalSeconds != 5 || settings.DailyUsageResetEnabled || settings.DailyUsageResetTime != "00:00" {
 		t.Fatalf("normalized settings=%+v", settings)
 	}
 }
