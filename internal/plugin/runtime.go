@@ -55,11 +55,16 @@ func (runtime *Runtime) register(payload []byte) []byte {
 }
 
 func (runtime *Runtime) reconfigure(payload []byte) []byte {
+	// CPA reuses registerRPCPlugin for plugin.reconfigure and requires the SAME
+	// registration envelope (schema_version + metadata + capabilities).
+	// Returning a different shape makes validPlugin fail and the host drops the plugin
+	// from the active snapshot → UI shows "未注册" after management page refresh.
 	dataDir := discoverDataDir(payload)
 	if err := runtime.ensureReady(dataDir); err != nil {
-		return cpaabi.Failure("state_unavailable", err.Error(), false)
+		// Still return registration shape so host does not un-register the plugin.
+		return cpaabi.Success(cpaabi.PluginRegistration())
 	}
-	return cpaabi.Success(map[string]any{"applied": true, "settings": application.ReadOnlySettings(), "write_mode": "read_only"})
+	return cpaabi.Success(cpaabi.PluginRegistration())
 }
 
 func (runtime *Runtime) ensureReady(dataDir string) error {
