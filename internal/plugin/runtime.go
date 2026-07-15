@@ -102,8 +102,8 @@ func (runtime *Runtime) ensureReady(dataDir string) error {
 		used = "memory"
 		_ = lastErr
 	}
-	accounts := application.NewAccountsService(runtime.host, store, time.Now)
 	settings := application.LoadSettings()
+	accounts := application.NewAccountsService(runtime.host, store, time.Now, settings)
 	worker := application.NewDemotionWorker(accounts, store, settings)
 	runtime.store = store
 	runtime.worker = worker
