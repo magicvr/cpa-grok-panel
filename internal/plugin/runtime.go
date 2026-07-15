@@ -40,7 +40,7 @@ func (runtime *Runtime) Call(method string, payload []byte) []byte {
 		return runtime.handleUsage(payload)
 	case "management.register":
 		return cpaabi.Success(management.Registration())
-	case "management.http":
+	case "management.handle", "management.http": // http is legacy alias
 		return runtime.handleManagement(payload)
 	default:
 		return cpaabi.Failure("method_not_found", "unsupported plugin method: "+method, false)
@@ -73,12 +73,12 @@ func (runtime *Runtime) ensureReady(dataDir string) error {
 		return nil
 	}
 	if dataDir == "" {
-		// Prefer absolute path under cwd so reloads don't depend on relative CWD surprises.
+		// Match CPA host cwd layout used by other plugins: <cwd>/plugins/<id>
 		cwd, err := os.Getwd()
 		if err != nil || cwd == "" {
-			dataDir = filepath.Join("plugins", "data", cpaabi.PluginID)
+			dataDir = filepath.Join("plugins", cpaabi.PluginID)
 		} else {
-			dataDir = filepath.Join(cwd, "plugins", "data", cpaabi.PluginID)
+			dataDir = filepath.Join(cwd, "plugins", cpaabi.PluginID)
 		}
 	}
 	store, err := stateinfra.Open(dataDir, time.Now().UTC())

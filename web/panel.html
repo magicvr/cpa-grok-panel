@@ -14,7 +14,35 @@
   <div id="notice" class="notice">正在读取数据…</div>
   <section class="panel"><table><thead><tr><th>账号文件</th><th>状态</th><th>优先级</th><th>输入 Token</th><th>输出 Token</th><th>总 Token</th><th>成功 / 失败</th><th>去重</th></tr></thead><tbody id="rows"></tbody></table></section>
 </main><script>
-const base='/plugins/cpa-grok-panel/api/v1';const fmt=n=>new Intl.NumberFormat('zh-CN').format(n||0);const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-async function refresh(){const btn=document.querySelector('#refresh');btn.disabled=true;document.querySelector('#notice').textContent='正在刷新…';try{const [metaRes,accountsRes]=await Promise.all([fetch(base+'/meta',{cache:'no-store'}),fetch(base+'/accounts',{cache:'no-store'})]);if(!metaRes.ok||!accountsRes.ok)throw new Error('接口返回异常');const meta=await metaRes.json(),data=await accountsRes.json(),items=data.items||[];const sum=items.reduce((a,x)=>{a.s+=(x.usage.successful_requests||0);a.f+=(x.usage.failed_requests||0);a.t+=(x.usage.total_tokens||0);return a},{s:0,f:0,t:0});document.querySelector('#accounts').textContent=fmt(items.length);document.querySelector('#success').textContent=fmt(sum.s);document.querySelector('#failed').textContent=fmt(sum.f);document.querySelector('#tokens').textContent=fmt(sum.t);document.querySelector('#rows').innerHTML=items.map(x=>`<tr><td class="file" title="${esc(x.exact_file_name)}">${esc(x.exact_file_name)}</td><td class="${x.enabled?'ok':'bad'}">${x.enabled?'启用':'停用'}${x.unavailable?' / 不可用':''}</td><td>${x.priority}</td><td>${fmt(x.usage.input_tokens)}</td><td>${fmt(x.usage.output_tokens)}</td><td>${fmt(x.usage.total_tokens)}</td><td>${fmt(x.usage.successful_requests)} / ${fmt(x.usage.failed_requests)}</td><td>${esc(x.usage.dedupe_mode||meta.dedupe_mode)}</td></tr>`).join('');document.querySelector('#notice').textContent=`统计起点：${new Date(meta.statistics_started_at).toLocaleString()} · 全局去重：${meta.dedupe_mode} · write_mode=${meta.write_mode}`;}catch(e){document.querySelector('#notice').textContent='刷新失败：'+e.message;}finally{btn.disabled=false}}
-document.querySelector('#refresh').addEventListener('click',refresh);refresh();
+// Management API under /v0/management (needs session/credentials from management UI)
+const base='/v0/management/cpa-grok-panel/api/v1';
+const fmt=n=>new Intl.NumberFormat('zh-CN').format(n||0);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function refresh(){
+  const btn=document.querySelector('#refresh');
+  btn.disabled=true;
+  document.querySelector('#notice').textContent='正在刷新…';
+  try{
+    const opts={cache:'no-store',credentials:'include'};
+    const [metaRes,accountsRes]=await Promise.all([
+      fetch(base+'/meta',opts),
+      fetch(base+'/accounts',opts)
+    ]);
+    if(!metaRes.ok||!accountsRes.ok) throw new Error('接口返回异常 HTTP '+(metaRes.ok?accountsRes.status:metaRes.status));
+    const meta=await metaRes.json(), data=await accountsRes.json(), items=data.items||[];
+    const sum=items.reduce((a,x)=>{a.s+=(x.usage?.successful_requests||0);a.f+=(x.usage?.failed_requests||0);a.t+=(x.usage?.total_tokens||0);return a},{s:0,f:0,t:0});
+    document.querySelector('#accounts').textContent=fmt(items.length);
+    document.querySelector('#success').textContent=fmt(sum.s);
+    document.querySelector('#failed').textContent=fmt(sum.f);
+    document.querySelector('#tokens').textContent=fmt(sum.t);
+    document.querySelector('#rows').innerHTML=items.map(x=>`<tr><td class="file" title="${esc(x.exact_file_name)}">${esc(x.exact_file_name)}</td><td class="${x.enabled?'ok':'bad'}">${x.enabled?'启用':'停用'}${x.unavailable?' / 不可用':''}</td><td>${x.priority}</td><td>${fmt(x.usage?.input_tokens)}</td><td>${fmt(x.usage?.output_tokens)}</td><td>${fmt(x.usage?.total_tokens)}</td><td>${fmt(x.usage?.successful_requests)} / ${fmt(x.usage?.failed_requests)}</td><td>${esc(x.usage?.dedupe_mode||meta.dedupe_mode)}</td></tr>`).join('');
+    document.querySelector('#notice').textContent=`统计起点：${new Date(meta.statistics_started_at).toLocaleString()} · 全局去重：${meta.dedupe_mode} · write_mode=${meta.write_mode}`;
+  }catch(e){
+    document.querySelector('#notice').textContent='刷新失败：'+e.message;
+  }finally{
+    btn.disabled=false;
+  }
+}
+document.querySelector('#refresh').addEventListener('click',refresh);
+refresh();
 </script></body></html>

@@ -2,7 +2,7 @@ package cpaabi
 
 const (
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.1.1"
+	PluginVersion = "0.1.2"
 	ABIVersion    = 1
 )
 
@@ -25,8 +25,10 @@ func PluginRegistration() map[string]any {
 	}
 }
 
+// ManagementResponse matches pluginapi.ManagementResponse JSON shape.
+// Headers must be map[string][]string (http.Header), not map[string]string.
 type ManagementResponse struct {
-	StatusCode int               `json:"StatusCode"`
-	Headers    map[string]string `json:"Headers"`
-	Body       []byte            `json:"Body"`
+	StatusCode int                 `json:"StatusCode"`
+	Headers    map[string][]string `json:"Headers"`
+	Body       []byte              `json:"Body"`
 }
