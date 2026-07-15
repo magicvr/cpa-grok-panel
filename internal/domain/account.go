@@ -95,15 +95,13 @@ func ProjectAccount(file AuthFile, state AccountState, now time.Time, demotionPr
 		usage.PeriodStartedAt = now.UTC()
 	}
 	demotion := state.Demotion.Normalized()
-	recordedTargetMatch := demotion.State == "applied" && demotion.TargetPriority != nil && file.Priority == *demotion.TargetPriority
-	isDemoted := recordedTargetMatch || file.Priority == demotionPriority
-	canRestore := (recordedTargetMatch && demotion.BaselinePriority != nil) || file.Priority == demotionPriority
+	isDemoted := file.Priority <= demotionPriority
 	return AccountView{
 		AuthIndex: file.AuthIndex, ExactFileName: file.Name, Email: file.Email,
 		Enabled: !file.Disabled, Unavailable: file.Unavailable, Status: file.Status,
 		StatusMessage: file.StatusMessage, Priority: file.Priority, Provider: "xai",
 		AuthType: "oauth", Usage: usage, Failure: state.Failure, Demotion: demotion,
-		IsDemoted: isDemoted, CanRestore: canRestore,
+		IsDemoted: isDemoted, CanRestore: isDemoted,
 		LastSeenAt: now.UTC(), WriteMode: "managed",
 	}
 }

@@ -43,3 +43,26 @@ func TestProjectAccountManaged(t *testing.T) {
 		t.Fatalf("%+v", view)
 	}
 }
+
+func TestProjectAccountDemotionUsesPriorityThreshold(t *testing.T) {
+	tests := []struct {
+		name      string
+		priority  int
+		isDemoted bool
+	}{
+		{name: "at threshold", priority: -100, isDemoted: true},
+		{name: "normal priority", priority: 0, isDemoted: false},
+		{name: "below threshold", priority: -101, isDemoted: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			view := domain.ProjectAccount(domain.AuthFile{
+				AuthIndex: "idx", Name: "xai-a.json", Provider: "xai", Type: "xai",
+				AccountType: "oauth", Priority: test.priority,
+			}, domain.AccountState{}, time.Now().UTC(), -100)
+			if view.IsDemoted != test.isDemoted || view.CanRestore != test.isDemoted {
+				t.Fatalf("priority=%d is_demoted=%t can_restore=%t", test.priority, view.IsDemoted, view.CanRestore)
+			}
+		})
+	}
+}

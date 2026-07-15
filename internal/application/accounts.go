@@ -128,9 +128,6 @@ func (service *AccountsService) RestorePriority(authIndex, exactFileName string)
 	settings := service.settings()
 	restorePriority, recordedRestore := service.restoreTarget(file.Priority, demotion, settings)
 	if restorePriority == nil {
-		if demotion.State == "applied" {
-			return domain.AccountView{}, &AccountError{Code: "priority_superseded", Message: "当前优先级已不是记录的降权档位，请刷新后确认", HTTPStatus: 409}
-		}
 		return domain.AccountView{}, &AccountError{Code: "demotion_not_applied", Message: "该账号当前不在降权档位", HTTPStatus: 409}
 	}
 	document, err := service.host.GetAuthFile(authIndex)
@@ -180,7 +177,7 @@ func (service *AccountsService) Demote(authIndex, exactFileName string) (domain.
 		return domain.AccountView{}, err
 	}
 	targetPriority := service.settings().DemotionPriority
-	if file.Priority == targetPriority {
+	if file.Priority <= targetPriority {
 		return service.project(file), nil
 	}
 	document, err := service.host.GetAuthFile(authIndex)
@@ -336,13 +333,13 @@ func (service *AccountsService) project(file domain.AuthFile) domain.AccountView
 }
 
 func (service *AccountsService) restoreTarget(priority int, demotion domain.DemotionState, settings Settings) (*int, bool) {
-	if demotion.State == "applied" && demotion.BaselinePriority != nil && demotion.TargetPriority != nil && priority == *demotion.TargetPriority {
+	if priority > settings.DemotionPriority {
+		return nil, false
+	}
+	if demotion.BaselinePriority != nil {
 		return intPointer(*demotion.BaselinePriority), true
 	}
-	if priority == settings.DemotionPriority {
-		return intPointer(settings.DefaultRestorePriority), false
-	}
-	return nil, false
+	return intPointer(settings.DefaultRestorePriority), false
 }
 
 func (service *AccountsService) settings() Settings {

@@ -11,7 +11,7 @@ import (
 	stateinfra "github.com/magicvr/cpa-grok-panel/internal/infrastructure/state"
 )
 
-func TestAccountsListComputesDemotionFromStateOrConfiguredPriority(t *testing.T) {
+func TestAccountsListComputesDemotionFromConfiguredPriority(t *testing.T) {
 	baseline, recordedTarget := 8, -55
 	store := stateinfra.OpenMemory(time.Now().UTC())
 	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
@@ -27,7 +27,7 @@ func TestAccountsListComputesDemotionFromStateOrConfiguredPriority(t *testing.T)
 	}
 	host := &accountHost{files: []domain.AuthFile{
 		xaiFile("external", "xai-external.json", -77),
-		xaiFile("recorded", "xai-recorded.json", recordedTarget),
+		xaiFile("recorded", "xai-recorded.json", -78),
 		xaiFile("superseded", "xai-superseded.json", 4),
 	}}
 	settings := application.DefaultSettings()
@@ -169,8 +169,8 @@ func TestDemotionWorkerUsesUpdatedTarget(t *testing.T) {
 func TestRestorePriorityWithoutPluginRecordUsesConfiguredDefault(t *testing.T) {
 	store := stateinfra.OpenMemory(time.Now().UTC())
 	host := &accountHost{
-		files:     []domain.AuthFile{xaiFile("idx-1", "xai-a.json", -77)},
-		documents: map[string]cpaabi.AuthDocument{"idx-1": {"priority": -77, "disabled": false}},
+		files:     []domain.AuthFile{xaiFile("idx-1", "xai-a.json", -78)},
+		documents: map[string]cpaabi.AuthDocument{"idx-1": {"priority": -78, "disabled": false}},
 	}
 	settings := application.DefaultSettings()
 	settings.DemotionPriority = -77
@@ -187,6 +187,34 @@ func TestRestorePriorityWithoutPluginRecordUsesConfiguredDefault(t *testing.T) {
 	state := store.View().Accounts["idx-1"]
 	if state.Demotion.State != "restored" || state.Demotion.BaselinePriority == nil || *state.Demotion.BaselinePriority != 3 || state.Demotion.TargetPriority == nil || *state.Demotion.TargetPriority != -77 {
 		t.Fatalf("state=%+v", state)
+	}
+}
+
+func TestRestorePriorityBelowConfiguredTargetUsesRecordedBaseline(t *testing.T) {
+	baseline, recordedTarget := 9, -55
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-1"] = domain.AccountState{Demotion: domain.DemotionState{
+			State: "failed", BaselinePriority: &baseline, TargetPriority: &recordedTarget,
+		}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	host := &accountHost{
+		files:     []domain.AuthFile{xaiFile("idx-1", "xai-a.json", -78)},
+		documents: map[string]cpaabi.AuthDocument{"idx-1": {"priority": -78, "disabled": false}},
+	}
+	settings := application.DefaultSettings()
+	settings.DemotionPriority = -77
+	service := application.NewAccountsService(host, store, time.Now, settings)
+
+	account, err := service.RestorePriority("idx-1", "xai-a.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if account.Priority != baseline || account.IsDemoted {
+		t.Fatalf("account=%+v", account)
 	}
 }
 
