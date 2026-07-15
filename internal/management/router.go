@@ -30,9 +30,9 @@ type Request struct {
 }
 
 type Router struct {
-	accounts *application.AccountsService
-	store    *stateinfra.Store
-	settings application.Settings
+	accounts         *application.AccountsService
+	store            *stateinfra.Store
+	settingsFallback application.Settings
 }
 
 func NewRouter(accounts *application.AccountsService, store *stateinfra.Store, configured ...application.Settings) *Router {
@@ -40,7 +40,7 @@ func NewRouter(accounts *application.AccountsService, store *stateinfra.Store, c
 	if len(configured) > 0 {
 		settings = configured[0]
 	}
-	return &Router{accounts: accounts, store: store, settings: settings}
+	return &Router{accounts: accounts, store: store, settingsFallback: settings}
 }
 
 func Registration() map[string]any {
@@ -50,6 +50,8 @@ func Registration() map[string]any {
 		{"Method": "GET", "Path": APIPrefix + "/meta", "Description": "插件元信息"},
 		{"Method": "GET", "Path": APIPrefix + "/accounts", "Description": "账号列表"},
 		{"Method": "GET", "Path": APIPrefix + "/settings", "Description": "只读设置"},
+		{"Method": "PUT", "Path": APIPrefix + "/settings", "Description": "更新插件设置"},
+		{"Method": "PATCH", "Path": APIPrefix + "/settings", "Description": "部分更新插件设置"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/demote", "Description": "手动降低账号优先级"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/restore-priority", "Description": "恢复账号优先级"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/set-enabled", "Description": "启用或停用账号"},
@@ -72,7 +74,17 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 	case method == "GET" && matchesPath(path, "/meta"):
 		return jsonResponse(200, application.BuildMeta(router.store.View()))
 	case method == "GET" && matchesPath(path, "/settings"):
-		return jsonResponse(200, router.settings)
+		return jsonResponse(200, router.settingsResponse())
+	case (method == "PUT" || method == "PATCH") && matchesPath(path, "/settings"):
+		var body settingsUpdateRequest
+		if err := decodeStrictBody(request.Body, &body); err != nil {
+			return apiError(400, "invalid_argument", err.Error(), false)
+		}
+		settings, err := router.updateSettings(body)
+		if err != nil {
+			return apiError(400, "invalid_argument", err.Error(), false)
+		}
+		return jsonResponse(200, settingsResponse{Settings: settings, Source: "state"})
 	case method == "GET" && matchesPath(path, "/accounts"):
 		items, snapshotAt, err := router.accounts.List(firstQuery(query, "search"))
 		if err != nil {
@@ -115,9 +127,9 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 			return accountErrorResponse(err)
 		}
 		return jsonResponse(200, map[string]any{"account": account})
-	case method != "GET" && method != "POST":
+	case method != "GET" && method != "POST" && method != "PUT" && method != "PATCH":
 		return apiError(405, "method_not_allowed", "请求方法不受支持", false)
-	case method == "POST":
+	case method == "POST" || method == "PUT" || method == "PATCH":
 		return apiError(404, "not_found", "接口不存在: "+path, false)
 	default:
 		return jsonResponse(404, map[string]any{"error": map[string]any{"code": "not_found", "message": "接口不存在: " + path}})
@@ -133,6 +145,80 @@ type setEnabledRequest struct {
 	AuthIndex     string `json:"auth_index"`
 	ExactFileName string `json:"exact_file_name"`
 	Enabled       *bool  `json:"enabled"`
+}
+
+type settingsUpdateRequest struct {
+	AttributedFailureThreshold *int  `json:"attributed_failure_threshold"`
+	CountStatus429             *bool `json:"count_status_429"`
+	CountStatus5XX             *bool `json:"count_status_5xx"`
+	DemotionPriority           *int  `json:"demotion_priority"`
+	DefaultRestorePriority     *int  `json:"default_restore_priority"`
+}
+
+type settingsResponse struct {
+	application.Settings
+	Source string `json:"source"`
+}
+
+func (router *Router) settingsResponse() settingsResponse {
+	settings := router.settingsFallback
+	source := "default"
+	if persisted := router.store.View().Settings; persisted != nil {
+		settings = *persisted
+		source = "state"
+	}
+	return settingsResponse{Settings: settings, Source: source}
+}
+
+func (router *Router) updateSettings(update settingsUpdateRequest) (application.Settings, error) {
+	if update.AttributedFailureThreshold == nil && update.CountStatus429 == nil && update.CountStatus5XX == nil &&
+		update.DemotionPriority == nil && update.DefaultRestorePriority == nil {
+		return application.Settings{}, fmt.Errorf("至少提供一个可配置字段")
+	}
+	if update.AttributedFailureThreshold != nil && (*update.AttributedFailureThreshold < 1 || *update.AttributedFailureThreshold > 100) {
+		return application.Settings{}, fmt.Errorf("attributed_failure_threshold 必须在 1..100 范围内")
+	}
+	const minPriority, maxPriority = -1_000_000, 1_000_000
+	if update.DemotionPriority != nil && (*update.DemotionPriority < minPriority || *update.DemotionPriority > maxPriority) {
+		return application.Settings{}, fmt.Errorf("demotion_priority 必须在 %d..%d 范围内", minPriority, maxPriority)
+	}
+	if update.DefaultRestorePriority != nil && (*update.DefaultRestorePriority < minPriority || *update.DefaultRestorePriority > maxPriority) {
+		return application.Settings{}, fmt.Errorf("default_restore_priority 必须在 %d..%d 范围内", minPriority, maxPriority)
+	}
+
+	var result application.Settings
+	err := router.store.Update(func(snapshot *stateinfra.Snapshot) error {
+		settings := router.settingsFallback
+		if snapshot.Settings != nil {
+			settings = *snapshot.Settings
+		}
+		if update.AttributedFailureThreshold != nil {
+			settings.AttributedFailureThreshold = *update.AttributedFailureThreshold
+		}
+		if update.CountStatus429 != nil {
+			settings.CountStatus429 = *update.CountStatus429
+		}
+		if update.CountStatus5XX != nil {
+			settings.CountStatus5XX = *update.CountStatus5XX
+		}
+		if update.DemotionPriority != nil {
+			settings.DemotionPriority = *update.DemotionPriority
+		}
+		if update.DefaultRestorePriority != nil {
+			settings.DefaultRestorePriority = *update.DefaultRestorePriority
+		}
+		settings.Revision++
+		if settings.Revision < 1 {
+			settings.Revision = 1
+		}
+		snapshot.Settings = &settings
+		result = settings
+		return nil
+	})
+	if err != nil {
+		return application.Settings{}, fmt.Errorf("保存设置失败: %w", err)
+	}
+	return result, nil
 }
 
 func matchesPath(path, endpoint string) bool {

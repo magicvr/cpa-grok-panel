@@ -21,11 +21,11 @@ type AuthHost interface {
 }
 
 type AccountsService struct {
-	host     AuthHost
-	store    *stateinfra.Store
-	now      func() time.Time
-	settings Settings
-	write    sync.Mutex
+	host             AuthHost
+	store            *stateinfra.Store
+	now              func() time.Time
+	settingsFallback Settings
+	write            sync.Mutex
 }
 
 func NewAccountsService(host AuthHost, store *stateinfra.Store, now func() time.Time, configured ...Settings) *AccountsService {
@@ -33,7 +33,7 @@ func NewAccountsService(host AuthHost, store *stateinfra.Store, now func() time.
 	if len(configured) > 0 {
 		settings = configured[0]
 	}
-	return &AccountsService{host: host, store: store, now: now, settings: settings}
+	return &AccountsService{host: host, store: store, now: now, settingsFallback: settings}
 }
 
 type AccountError struct {
@@ -60,6 +60,7 @@ func (service *AccountsService) List(search string) ([]domain.AccountView, time.
 	}
 	now := service.now().UTC()
 	snapshot := service.store.View()
+	settings := service.settings()
 	items := make([]domain.AccountView, 0, len(files))
 	for _, file := range files {
 		if !domain.IsXAIOAuth(file) || file.AuthIndex == "" || !strings.HasSuffix(file.Name, ".json") {
@@ -68,7 +69,7 @@ func (service *AccountsService) List(search string) ([]domain.AccountView, time.
 		if search != "" && !containsFold(file.AuthIndex, search) && !containsFold(file.Name, search) && !containsFold(file.Email, search) {
 			continue
 		}
-		items = append(items, domain.ProjectAccount(file, snapshot.Accounts[file.AuthIndex], now, service.settings.DemotionPriority))
+		items = append(items, domain.ProjectAccount(file, snapshot.Accounts[file.AuthIndex], now, settings.DemotionPriority))
 	}
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].ExactFileName < items[j].ExactFileName
@@ -106,8 +107,8 @@ func (service *AccountsService) SetEnabled(authIndex, exactFileName string, enab
 	}
 	if verified.Disabled != !enabled {
 		return domain.AccountView{}, &AccountError{
-			Code: "host_disabled_not_applied",
-			Message: "host.auth.save 已写文件但运行时未应用 disabled；请使用 Management PATCH /auth-files/status",
+			Code:       "host_disabled_not_applied",
+			Message:    "host.auth.save 已写文件但运行时未应用 disabled；请使用 Management PATCH /auth-files/status",
 			HTTPStatus: 502, Retryable: true,
 		}
 	}
@@ -124,7 +125,8 @@ func (service *AccountsService) RestorePriority(authIndex, exactFileName string)
 	}
 	account := service.store.View().Accounts[authIndex]
 	demotion := account.Demotion.Normalized()
-	restorePriority, recordedRestore := service.restoreTarget(file.Priority, demotion)
+	settings := service.settings()
+	restorePriority, recordedRestore := service.restoreTarget(file.Priority, demotion, settings)
 	if restorePriority == nil {
 		if demotion.State == "applied" {
 			return domain.AccountView{}, &AccountError{Code: "priority_superseded", Message: "当前优先级已不是记录的降权档位，请刷新后确认", HTTPStatus: 409}
@@ -157,7 +159,7 @@ func (service *AccountsService) RestorePriority(authIndex, exactFileName string)
 		state.ExactFileName = exactFileName
 		if !recordedRestore {
 			state.Demotion.BaselinePriority = intPointer(*restorePriority)
-			state.Demotion.TargetPriority = intPointer(service.settings.DemotionPriority)
+			state.Demotion.TargetPriority = intPointer(settings.DemotionPriority)
 		}
 		state.Demotion.State = "restored"
 		state.Demotion.FailureCode = ""
@@ -177,7 +179,7 @@ func (service *AccountsService) Demote(authIndex, exactFileName string) (domain.
 	if err != nil {
 		return domain.AccountView{}, err
 	}
-	targetPriority := service.settings.DemotionPriority
+	targetPriority := service.settings().DemotionPriority
 	if file.Priority == targetPriority {
 		return service.project(file), nil
 	}
@@ -330,17 +332,24 @@ func (service *AccountsService) resolveByAuthIndex(authIndex string) (domain.Aut
 }
 
 func (service *AccountsService) project(file domain.AuthFile) domain.AccountView {
-	return domain.ProjectAccount(file, service.store.View().Accounts[file.AuthIndex], service.now().UTC(), service.settings.DemotionPriority)
+	return domain.ProjectAccount(file, service.store.View().Accounts[file.AuthIndex], service.now().UTC(), service.settings().DemotionPriority)
 }
 
-func (service *AccountsService) restoreTarget(priority int, demotion domain.DemotionState) (*int, bool) {
+func (service *AccountsService) restoreTarget(priority int, demotion domain.DemotionState, settings Settings) (*int, bool) {
 	if demotion.State == "applied" && demotion.BaselinePriority != nil && demotion.TargetPriority != nil && priority == *demotion.TargetPriority {
 		return intPointer(*demotion.BaselinePriority), true
 	}
-	if priority == service.settings.DemotionPriority {
-		return intPointer(service.settings.DefaultRestorePriority), false
+	if priority == settings.DemotionPriority {
+		return intPointer(settings.DefaultRestorePriority), false
 	}
 	return nil, false
+}
+
+func (service *AccountsService) settings() Settings {
+	if settings := service.store.View().Settings; settings != nil {
+		return *settings
+	}
+	return service.settingsFallback
 }
 
 func (service *AccountsService) markDemotionApplied(authIndex, exactFileName string) error {

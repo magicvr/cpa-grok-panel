@@ -11,13 +11,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/magicvr/cpa-grok-panel/internal/config"
 	"github.com/magicvr/cpa-grok-panel/internal/domain"
 )
 
 const (
 	SchemaVersion = 1
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.2.4"
+	PluginVersion = "0.2.5"
 )
 
 type DedupeState struct {
@@ -33,6 +34,7 @@ type Snapshot struct {
 	PluginVersion       string                         `json:"plugin_version"`
 	SavedAt             time.Time                      `json:"saved_at"`
 	StatisticsStartedAt time.Time                      `json:"statistics_started_at"`
+	Settings            *config.Settings               `json:"settings,omitempty"`
 	Accounts            map[string]domain.AccountState `json:"accounts"`
 	EventDedupe         DedupeState                    `json:"event_dedupe"`
 }

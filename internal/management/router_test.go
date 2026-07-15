@@ -126,6 +126,54 @@ func TestRouterDemote(t *testing.T) {
 	}
 }
 
+func TestRouterUpdateSettingsThenGet(t *testing.T) {
+	store, err := stateinfra.Open(t.TempDir(), time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	defaults := application.DefaultSettings()
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Settings = &defaults
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	router := management.NewRouter(application.NewAccountsService(fakeLister{}, store, time.Now, defaults), store, defaults)
+	body := []byte(`{"attributed_failure_threshold":7,"count_status_429":true,"count_status_5xx":true,"demotion_priority":-250,"default_restore_priority":12}`)
+	response := router.Handle(management.Request{Method: "PUT", Path: "/v0/management/cpa-grok-panel/api/v1/settings", Body: body})
+	if response.StatusCode != 200 {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
+
+	response = router.Handle(management.Request{Method: "GET", Path: "/v0/management/cpa-grok-panel/api/v1/settings"})
+	if response.StatusCode != 200 {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
+	var got struct {
+		application.Settings
+		Source string `json:"source"`
+	}
+	if err := json.Unmarshal(response.Body, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.AttributedFailureThreshold != 7 || !got.CountStatus429 || !got.CountStatus5XX || got.DemotionPriority != -250 || got.DefaultRestorePriority != 12 {
+		t.Fatalf("settings=%+v", got.Settings)
+	}
+	if got.Revision != defaults.Revision+1 || got.Source != "state" {
+		t.Fatalf("revision=%d source=%q", got.Revision, got.Source)
+	}
+}
+
+func TestRouterRejectsInvalidSettings(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	router := management.NewRouter(application.NewAccountsService(fakeLister{}, store, time.Now), store)
+	response := router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"attributed_failure_threshold":0}`)})
+	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "1..100") {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
+}
+
 type fakeLister struct{}
 
 func (fakeLister) ListAuthFiles() ([]domain.AuthFile, error) { return nil, nil }
