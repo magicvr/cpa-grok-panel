@@ -1,7 +1,11 @@
 package application_test
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -50,6 +54,111 @@ func TestAccountsListComputesDemotionFromConfiguredPriority(t *testing.T) {
 	}
 	if byID["superseded"].IsDemoted || byID["superseded"].CanRestore {
 		t.Fatalf("superseded=%+v", byID["superseded"])
+	}
+}
+
+func TestAccountsListDetectsBotFlagFromAccessTokens(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	host := &accountHost{
+		files: []domain.AuthFile{
+			xaiFile("flagged", "xai-flagged.json", 0),
+			xaiFile("clean", "xai-clean.json", 0),
+			xaiFile("invalid", "xai-invalid.json", 0),
+			xaiFile("no-token", "xai-no-token.json", 0),
+			xaiFile("credentials", "xai-credentials.json", 0),
+			xaiFile("token-priority", "xai-token-priority.json", 0),
+			xaiFile("nested-wins", "xai-nested-wins.json", 0),
+			xaiFile("get-error", "xai-get-error.json", 0),
+		},
+		documents: map[string]cpaabi.AuthDocument{
+			"flagged":     {"access_token": testJWT(t, map[string]any{"bot_flag_source": 1})},
+			"clean":       {"access_token": testJWT(t, map[string]any{"sub": "clean"})},
+			"invalid":     {"access_token": "not-a-jwt"},
+			"no-token":    {"refresh_token": "present"},
+			"credentials": {"credentials": map[string]any{"access_token": testJWT(t, map[string]any{"user": map[string]any{"bot_flag_source": "1"}})}},
+			"token-priority": {
+				"access_token": testJWT(t, map[string]any{"sub": "direct-clean"}),
+				"credentials":  map[string]any{"access_token": testJWT(t, map[string]any{"bot_flag_source": 1})},
+			},
+			"nested-wins": {"access_token": testJWT(t, map[string]any{"bot_flag_source": 0, "bot": map[string]any{"bot_flag_source": 1}})},
+		},
+		getErrors: map[string]error{"get-error": errors.New("host unavailable")},
+	}
+	service := application.NewAccountsService(host, store, time.Now)
+
+	items, _, err := service.List("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := make(map[string]domain.AccountView, len(items))
+	for _, item := range items {
+		byID[item.AuthIndex] = item
+	}
+	if !byID["flagged"].BotFlagged || !byID["flagged"].BotFlagKnown || fmt.Sprint(byID["flagged"].BotFlagSource) != "1" {
+		t.Fatalf("flagged=%+v", byID["flagged"])
+	}
+	if byID["clean"].BotFlagged || !byID["clean"].BotFlagKnown {
+		t.Fatalf("clean=%+v", byID["clean"])
+	}
+	if byID["invalid"].BotFlagged || byID["invalid"].BotFlagKnown {
+		t.Fatalf("invalid=%+v", byID["invalid"])
+	}
+	if byID["no-token"].BotFlagged || byID["no-token"].BotFlagKnown {
+		t.Fatalf("no-token=%+v", byID["no-token"])
+	}
+	if !byID["credentials"].BotFlagged || !byID["credentials"].BotFlagKnown || byID["credentials"].BotFlagSource != "1" {
+		t.Fatalf("credentials=%+v", byID["credentials"])
+	}
+	if byID["token-priority"].BotFlagged || !byID["token-priority"].BotFlagKnown {
+		t.Fatalf("token-priority=%+v", byID["token-priority"])
+	}
+	if !byID["nested-wins"].BotFlagged || !byID["nested-wins"].BotFlagKnown || fmt.Sprint(byID["nested-wins"].BotFlagSource) != "1" {
+		t.Fatalf("nested-wins=%+v", byID["nested-wins"])
+	}
+	if byID["get-error"].BotFlagged || byID["get-error"].BotFlagKnown {
+		t.Fatalf("get-error=%+v", byID["get-error"])
+	}
+}
+
+func TestAccountsListFindsAccessTokenInsideNestedJSON(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	host := &accountHost{
+		files: []domain.AuthFile{xaiFile("nested-json", "xai-nested-json.json", 0)},
+		documents: map[string]cpaabi.AuthDocument{
+			"nested-json": {"json": map[string]any{"oauth": map[string]any{"access_token": testJWT(t, map[string]any{"bot": map[string]any{"bot_flag_source": 1}})}}},
+		},
+	}
+	service := application.NewAccountsService(host, store, time.Now)
+
+	items, _, err := service.List("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || !items[0].BotFlagged || !items[0].BotFlagKnown {
+		t.Fatalf("items=%+v", items)
+	}
+}
+
+func TestAccountsListBoundsConcurrentAuthGetsAtTen(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	files := make([]domain.AuthFile, 24)
+	for index := range files {
+		files[index] = xaiFile(fmt.Sprintf("idx-%02d", index), fmt.Sprintf("xai-%02d.json", index), 0)
+	}
+	host := &concurrentGetHost{files: files}
+	settings := application.DefaultSettings()
+	settings.BatchOperationConcurrency = 50
+	service := application.NewAccountsService(host, store, time.Now, settings)
+
+	items, _, err := service.List("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != len(files) {
+		t.Fatalf("items=%d want=%d", len(items), len(files))
+	}
+	if maximum := host.maximum.Load(); maximum <= 1 || maximum > 10 {
+		t.Fatalf("maximum concurrent host.auth.get=%d want 2..10", maximum)
 	}
 }
 
@@ -295,16 +404,45 @@ func TestRestorePriorityBelowConfiguredTargetUsesRecordedBaseline(t *testing.T) 
 type accountHost struct {
 	files              []domain.AuthFile
 	documents          map[string]cpaabi.AuthDocument
+	getErrors          map[string]error
 	savedName          string
 	savedDocument      cpaabi.AuthDocument
 	ignorePrioritySave bool
 }
+
+type concurrentGetHost struct {
+	files   []domain.AuthFile
+	active  atomic.Int32
+	maximum atomic.Int32
+}
+
+func (host *concurrentGetHost) ListAuthFiles() ([]domain.AuthFile, error) {
+	return append([]domain.AuthFile(nil), host.files...), nil
+}
+
+func (host *concurrentGetHost) GetAuthFile(string) (cpaabi.AuthDocument, error) {
+	active := host.active.Add(1)
+	defer host.active.Add(-1)
+	for {
+		maximum := host.maximum.Load()
+		if active <= maximum || host.maximum.CompareAndSwap(maximum, active) {
+			break
+		}
+	}
+	time.Sleep(10 * time.Millisecond)
+	return cpaabi.AuthDocument{"access_token": "invalid"}, nil
+}
+
+func (host *concurrentGetHost) SaveAuthFile(string, cpaabi.AuthDocument) error { return nil }
 
 func (host *accountHost) ListAuthFiles() ([]domain.AuthFile, error) {
 	return append([]domain.AuthFile(nil), host.files...), nil
 }
 
 func (host *accountHost) GetAuthFile(authIndex string) (cpaabi.AuthDocument, error) {
+	if err := host.getErrors[authIndex]; err != nil {
+		return nil, err
+	}
 	document := host.documents[authIndex]
 	if document == nil {
 		for _, file := range host.files {
@@ -314,6 +452,15 @@ func (host *accountHost) GetAuthFile(authIndex string) (cpaabi.AuthDocument, err
 		}
 	}
 	return cloneDocument(document), nil
+}
+
+func testJWT(t *testing.T, payload map[string]any) string {
+	t.Helper()
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return "eyJhbGciOiJub25lIn0." + base64.RawURLEncoding.EncodeToString(raw) + ".signature"
 }
 
 func (host *accountHost) SaveAuthFile(name string, document cpaabi.AuthDocument) error {
