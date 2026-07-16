@@ -36,11 +36,12 @@ type FailureState struct {
 }
 
 type DemotionState struct {
-	State            string     `json:"state"`
-	BaselinePriority *int       `json:"baseline_priority,omitempty"`
-	TargetPriority   *int       `json:"target_priority,omitempty"`
-	TriggeredAt      *time.Time `json:"triggered_at,omitempty"`
-	FailureCode      string     `json:"failure_code,omitempty"`
+	State                string     `json:"state"`
+	BaselinePriority     *int       `json:"baseline_priority,omitempty"`
+	TargetPriority       *int       `json:"target_priority,omitempty"`
+	TriggeredAt          *time.Time `json:"triggered_at,omitempty"`
+	RestoreCooldownHours int        `json:"restore_cooldown_hours,omitempty"`
+	FailureCode          string     `json:"failure_code,omitempty"`
 }
 
 func (state DemotionState) Normalized() DemotionState {

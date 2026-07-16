@@ -14,7 +14,7 @@ import (
 
 func TestNewStateUsesCurrentPluginVersion(t *testing.T) {
 	store := stateinfra.OpenMemory(time.Now().UTC())
-	if got, want := store.View().PluginVersion, "0.3.5"; got != want {
+	if got, want := store.View().PluginVersion, "0.3.6"; got != want {
 		t.Fatalf("PluginVersion=%q want=%q", got, want)
 	}
 }
@@ -35,7 +35,7 @@ func TestOpenLegacyStateWithoutSettings(t *testing.T) {
 	if strings.Contains(string(data), `"settings"`) {
 		t.Fatalf("fixture unexpectedly contains settings: %s", data)
 	}
-	data = bytes.ReplaceAll(data, []byte(`"plugin_version": "0.3.5"`), []byte(`"plugin_version": "0.2.8"`))
+	data = bytes.ReplaceAll(data, []byte(`"plugin_version": "0.3.6"`), []byte(`"plugin_version": "0.2.8"`))
 	if err := os.WriteFile(filepath.Join(dir, "state.json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestOpenLegacySettingsAppliesNewDefaults(t *testing.T) {
 	}
 	defer store.Close()
 	settings := store.View().Settings
-	if settings == nil || !settings.AutoRefreshEnabled || settings.AutoRefreshIntervalSeconds != 5 || settings.BatchOperationConcurrency != 10 || settings.DailyUsageResetEnabled || settings.DailyUsageResetTime != "00:00" {
+	if settings == nil || !settings.AutoRefreshEnabled || settings.AutoRefreshIntervalSeconds != 5 || settings.BatchOperationConcurrency != 10 || settings.DailyUsageResetEnabled || settings.DailyUsageResetTime != "00:00" || !settings.CooldownRestoreEnabled {
 		t.Fatalf("normalized settings=%+v", settings)
 	}
 }

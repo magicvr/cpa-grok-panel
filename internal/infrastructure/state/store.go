@@ -18,7 +18,7 @@ import (
 const (
 	SchemaVersion = 1
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.3.5"
+	PluginVersion = "0.3.6"
 )
 
 type DedupeState struct {
@@ -136,6 +136,9 @@ func decodeSnapshot(data []byte, snapshot *Snapshot) error {
 	}
 	if _, exists := raw.Settings["batch_operation_concurrency"]; !exists {
 		snapshot.Settings.BatchOperationConcurrency = 10
+	}
+	if _, exists := raw.Settings["cooldown_restore_enabled"]; !exists {
+		snapshot.Settings.CooldownRestoreEnabled = true
 	}
 	return nil
 }

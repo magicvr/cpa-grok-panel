@@ -160,9 +160,8 @@ func (service *AccountsService) RestorePriority(authIndex, exactFileName string)
 	if err != nil {
 		return domain.AccountView{}, err
 	}
-	account := service.store.View().Accounts[authIndex]
-	demotion := account.Demotion.Normalized()
 	settings := service.settings()
+	demotion := service.store.View().Accounts[authIndex].Demotion.Normalized()
 	restorePriority, recordedRestore := service.restoreTarget(file.Priority, demotion, settings)
 	if restorePriority == nil {
 		return domain.AccountView{}, &AccountError{Code: "demotion_not_applied", Message: "该账号当前不在降权档位", HTTPStatus: 409}
@@ -174,30 +173,88 @@ func (service *AccountsService) RestorePriority(authIndex, exactFileName string)
 	if priority, ok := documentInt(document, "priority"); ok && priority != file.Priority {
 		return domain.AccountView{}, &AccountError{Code: "priority_superseded", Message: "当前优先级已被其他操作修改，请刷新后确认", HTTPStatus: 409}
 	}
-	document["priority"] = *restorePriority
-	if err := service.host.SaveAuthFile(exactFileName, document); err != nil {
-		service.recordDemotionFailure(authIndex, "restore_save_failed", false)
+	return service.restorePriorityLocked(file, settings, *restorePriority, recordedRestore, document, true)
+}
+
+// RestorePriorityAfterCooldown restores one eligible account. A failed or
+// unknown bot check is allowed; only an explicit bot flag keeps the account at
+// the demoted priority.
+func (service *AccountsService) RestorePriorityAfterCooldown(authIndex string) (bool, error) {
+	service.write.Lock()
+	defer service.write.Unlock()
+
+	settings := service.settings()
+	if !settings.CooldownRestoreEnabled {
+		return false, nil
+	}
+	account, exists := service.store.View().Accounts[authIndex]
+	if !exists {
+		return false, nil
+	}
+	demotion := account.Demotion.Normalized()
+	if demotion.TriggeredAt == nil || demotion.RestoreCooldownHours <= 0 {
+		return false, nil
+	}
+	eligibleAt := demotion.TriggeredAt.Add(time.Duration(demotion.RestoreCooldownHours) * time.Hour)
+	if service.now().UTC().Before(eligibleAt) {
+		return false, nil
+	}
+	file, err := service.resolveByAuthIndex(authIndex)
+	if err != nil {
+		return false, err
+	}
+	if file.Priority > settings.DemotionPriority {
+		return false, nil
+	}
+	restorePriority, recordedRestore := service.restoreTarget(file.Priority, demotion, settings)
+	if restorePriority == nil {
+		return false, nil
+	}
+	document, err := service.host.GetAuthFile(authIndex)
+	if err != nil {
+		return false, hostError("auth_get_failed", err)
+	}
+	if bot := detectBotFlag(document); bot.known && bot.flagged {
+		return false, nil
+	}
+	if priority, ok := documentInt(document, "priority"); ok && priority != file.Priority {
+		return false, &AccountError{Code: "priority_superseded", Message: "当前优先级已被其他操作修改，请刷新后确认", HTTPStatus: 409}
+	}
+	if _, err := service.restorePriorityLocked(file, settings, *restorePriority, recordedRestore, document, false); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (service *AccountsService) restorePriorityLocked(file domain.AuthFile, settings Settings, restorePriority int, recordedRestore bool, document cpaabi.AuthDocument, manual bool) (domain.AccountView, error) {
+	document["priority"] = restorePriority
+	if err := service.host.SaveAuthFile(file.Name, document); err != nil {
+		service.recordDemotionFailure(file.AuthIndex, "restore_save_failed", false)
 		return domain.AccountView{}, hostError("auth_save_failed", err)
 	}
-	verified, err := service.resolveExact(authIndex, exactFileName)
+	verified, err := service.resolveExact(file.AuthIndex, file.Name)
 	if err != nil {
-		service.recordDemotionFailure(authIndex, "restore_verify_failed", false)
+		service.recordDemotionFailure(file.AuthIndex, "restore_verify_failed", false)
 		return domain.AccountView{}, err
 	}
-	if verified.Priority != *restorePriority {
-		service.recordDemotionFailure(authIndex, "restore_verify_failed", false)
+	if verified.Priority != restorePriority {
+		service.recordDemotionFailure(file.AuthIndex, "restore_verify_failed", false)
 		return domain.AccountView{}, &AccountError{Code: "write_verification_failed", Message: "优先级恢复写后校验不一致", HTTPStatus: 502, Retryable: true}
 	}
 	if err := service.store.Update(func(snapshot *stateinfra.Snapshot) error {
-		state := snapshot.Accounts[authIndex]
-		state.ExactFileName = exactFileName
+		state := snapshot.Accounts[file.AuthIndex]
+		state.ExactFileName = file.Name
 		if !recordedRestore {
-			state.Demotion.BaselinePriority = intPointer(*restorePriority)
+			state.Demotion.BaselinePriority = intPointer(restorePriority)
 			state.Demotion.TargetPriority = intPointer(settings.DemotionPriority)
 		}
 		state.Demotion.State = "restored"
 		state.Demotion.FailureCode = ""
-		snapshot.Accounts[authIndex] = state
+		if manual {
+			state.Demotion.RestoreCooldownHours = 0
+		}
+		state.Failure = domain.FailureState{}
+		snapshot.Accounts[file.AuthIndex] = state
 		return nil
 	}); err != nil {
 		return domain.AccountView{}, &AccountError{Code: "state_write_failed", Message: err.Error(), HTTPStatus: 503, Retryable: true}
@@ -225,8 +282,10 @@ func (service *AccountsService) Demote(authIndex, exactFileName string) (domain.
 		return domain.AccountView{}, &AccountError{Code: "priority_superseded", Message: "降权前优先级已变化", HTTPStatus: 409}
 	}
 	now := service.now().UTC()
+	previousDemotion := service.store.View().Accounts[authIndex].Demotion.Normalized()
 	demotion := domain.DemotionState{
 		State: "requested", BaselinePriority: intPointer(file.Priority), TargetPriority: intPointer(targetPriority), TriggeredAt: &now,
+		RestoreCooldownHours: previousDemotion.RestoreCooldownHours,
 	}
 	if err := service.store.Update(func(snapshot *stateinfra.Snapshot) error {
 		state := snapshot.Accounts[authIndex]
@@ -283,6 +342,9 @@ func (service *AccountsService) ApplyRequestedDemotion(authIndex string, targetP
 			state.ExactFileName = file.Name
 			demotion.State = "applied"
 			demotion.FailureCode = ""
+			now := service.now().UTC()
+			demotion.TriggeredAt = &now
+			demotion.RestoreCooldownHours = nextRestoreCooldownHours(demotion.RestoreCooldownHours)
 			state.Demotion = demotion
 			snapshot.Accounts[authIndex] = state
 			return nil
@@ -442,6 +504,9 @@ func (service *AccountsService) markDemotionApplied(authIndex, exactFileName str
 		state.ExactFileName = exactFileName
 		state.Demotion.State = "applied"
 		state.Demotion.FailureCode = ""
+		now := service.now().UTC()
+		state.Demotion.TriggeredAt = &now
+		state.Demotion.RestoreCooldownHours = nextRestoreCooldownHours(state.Demotion.RestoreCooldownHours)
 		snapshot.Accounts[authIndex] = state
 		return nil
 	})
@@ -480,6 +545,17 @@ func documentInt(document cpaabi.AuthDocument, key string) (int, bool) {
 }
 
 func intPointer(value int) *int { return &value }
+
+func nextRestoreCooldownHours(current int) int {
+	switch {
+	case current <= 0:
+		return 6
+	case current <= 6:
+		return 12
+	default:
+		return 24
+	}
+}
 
 func (service *AccountsService) String() string {
 	return fmt.Sprintf("accounts service managed=%t", service != nil && service.host != nil)
