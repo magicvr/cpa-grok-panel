@@ -49,7 +49,7 @@ func TestRouterPanelPath(t *testing.T) {
 	if !strings.Contains(body, "Grok") {
 		t.Fatalf("not html panel: %s", string(resp.Body)[:80])
 	}
-	for _, marker := range []string{"v0.3.2", ">诊断<", "首页", "末页", "跳转", "page-input", "清除选中", "全部选中", "批量启用", "批量停用", "批量降权", "批量解除降权", "批量安全删除", "每日清零"} {
+	for _, marker := range []string{"v0.3.4", ">机器人<", ">诊断<", "bot_flag_known", "首页", "末页", "跳转", "page-input", "清除选中", "全部选中", "批量启用", "批量停用", "批量降权", "批量解除降权", "批量安全删除", "批量操作并发数", "batch_operation_concurrency", "runConcurrent", "每日清零"} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("panel missing %q", marker)
 		}
@@ -146,7 +146,7 @@ func TestRouterUpdateSettingsThenGet(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := management.NewRouter(application.NewAccountsService(fakeLister{}, store, time.Now, defaults), store, defaults)
-	body := []byte(`{"auto_refresh_enabled":false,"auto_refresh_interval_seconds":12,"daily_usage_reset_enabled":true,"daily_usage_reset_time":"03:45","attributed_failure_threshold":7,"count_status_429":true,"count_status_5xx":true,"demotion_priority":-250,"default_restore_priority":12}`)
+	body := []byte(`{"auto_refresh_enabled":false,"auto_refresh_interval_seconds":12,"batch_operation_concurrency":17,"daily_usage_reset_enabled":true,"daily_usage_reset_time":"03:45","attributed_failure_threshold":7,"count_status_429":true,"count_status_5xx":true,"demotion_priority":-250,"default_restore_priority":12}`)
 	response := router.Handle(management.Request{Method: "PUT", Path: "/v0/management/cpa-grok-panel/api/v1/settings", Body: body})
 	if response.StatusCode != 200 {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
@@ -163,7 +163,7 @@ func TestRouterUpdateSettingsThenGet(t *testing.T) {
 	if err := json.Unmarshal(response.Body, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.AutoRefreshEnabled || got.AutoRefreshIntervalSeconds != 12 || !got.DailyUsageResetEnabled || got.DailyUsageResetTime != "03:45" || got.AttributedFailureThreshold != 7 || !got.CountStatus429 || !got.CountStatus5XX || got.DemotionPriority != -250 || got.DefaultRestorePriority != 12 {
+	if got.AutoRefreshEnabled || got.AutoRefreshIntervalSeconds != 12 || got.BatchOperationConcurrency != 17 || !got.DailyUsageResetEnabled || got.DailyUsageResetTime != "03:45" || got.AttributedFailureThreshold != 7 || !got.CountStatus429 || !got.CountStatus5XX || got.DemotionPriority != -250 || got.DefaultRestorePriority != 12 {
 		t.Fatalf("settings=%+v", got.Settings)
 	}
 	if got.Revision != defaults.Revision+1 || got.Source != "state" {
@@ -190,6 +190,10 @@ func TestRouterRejectsInvalidSettings(t *testing.T) {
 	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "24 小时") {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
 	}
+	response = router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"batch_operation_concurrency":51}`)})
+	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "1..50") {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
 }
 
 func TestDefaultAutoRefreshSettings(t *testing.T) {
@@ -199,6 +203,20 @@ func TestDefaultAutoRefreshSettings(t *testing.T) {
 	}
 	if settings.DailyUsageResetEnabled || settings.DailyUsageResetTime != "00:00" {
 		t.Fatalf("daily usage reset defaults=%+v", settings)
+	}
+	if settings.BatchOperationConcurrency != 10 {
+		t.Fatalf("batch operation concurrency=%d", settings.BatchOperationConcurrency)
+	}
+}
+
+func TestLoadSettingsBatchConcurrencyFromEnvironment(t *testing.T) {
+	t.Setenv("CPA_GROK_BATCH_CONCURRENCY", "23")
+	if got := application.LoadSettings().BatchOperationConcurrency; got != 23 {
+		t.Fatalf("batch operation concurrency=%d want=23", got)
+	}
+	t.Setenv("CPA_GROK_BATCH_CONCURRENCY", "51")
+	if got := application.LoadSettings().BatchOperationConcurrency; got != 10 {
+		t.Fatalf("invalid environment fallback=%d want=10", got)
 	}
 }
 

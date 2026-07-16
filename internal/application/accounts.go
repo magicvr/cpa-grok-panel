@@ -71,10 +71,47 @@ func (service *AccountsService) List(search string) ([]domain.AccountView, time.
 		}
 		items = append(items, domain.ProjectAccount(file, snapshot.Accounts[file.AuthIndex], now, settings.DemotionPriority))
 	}
+	service.decorateBotFlags(items, settings.BatchOperationConcurrency)
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].ExactFileName < items[j].ExactFileName
 	})
 	return items, now, nil
+}
+
+func (service *AccountsService) decorateBotFlags(items []domain.AccountView, configuredConcurrency int) {
+	if len(items) == 0 {
+		return
+	}
+	concurrency := configuredConcurrency
+	if concurrency < 1 {
+		concurrency = 10
+	}
+	if concurrency > 10 {
+		concurrency = 10
+	}
+	jobs := make(chan int)
+	var workers sync.WaitGroup
+	workers.Add(concurrency)
+	for range concurrency {
+		go func() {
+			defer workers.Done()
+			for index := range jobs {
+				document, err := service.host.GetAuthFile(items[index].AuthIndex)
+				if err != nil {
+					continue
+				}
+				result := detectBotFlag(document)
+				items[index].BotFlagged = result.flagged
+				items[index].BotFlagKnown = result.known
+				items[index].BotFlagSource = result.source
+			}
+		}()
+	}
+	for index := range items {
+		jobs <- index
+	}
+	close(jobs)
+	workers.Wait()
 }
 
 // SetEnabled is kept for API completeness, but CPA host.auth.save does not apply

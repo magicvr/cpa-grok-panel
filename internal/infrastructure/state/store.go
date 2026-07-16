@@ -18,7 +18,7 @@ import (
 const (
 	SchemaVersion = 1
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.3.2"
+	PluginVersion = "0.3.4"
 )
 
 type DedupeState struct {
@@ -133,6 +133,9 @@ func decodeSnapshot(data []byte, snapshot *Snapshot) error {
 	}
 	if _, exists := raw.Settings["daily_usage_reset_time"]; !exists {
 		snapshot.Settings.DailyUsageResetTime = "00:00"
+	}
+	if _, exists := raw.Settings["batch_operation_concurrency"]; !exists {
+		snapshot.Settings.BatchOperationConcurrency = 10
 	}
 	return nil
 }

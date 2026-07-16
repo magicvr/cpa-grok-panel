@@ -54,6 +54,9 @@ type AccountView struct {
 	AuthIndex     string        `json:"auth_index"`
 	ExactFileName string        `json:"exact_file_name"`
 	Email         string        `json:"email,omitempty"`
+	BotFlagged    bool          `json:"bot_flagged"`
+	BotFlagKnown  bool          `json:"bot_flag_known,omitempty"`
+	BotFlagSource any           `json:"bot_flag_source,omitempty"`
 	Enabled       bool          `json:"enabled"`
 	Unavailable   bool          `json:"unavailable"`
 	Status        string        `json:"status,omitempty"`

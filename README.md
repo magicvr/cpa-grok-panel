@@ -1,12 +1,12 @@
 # cpa-grok-panel
 
-`cpa-grok-panel` 是 CLIProxyAPI（CPA）的 Grok/xAI OAuth 账号运维面板。v0.3.2 已提供可安装的 Linux amd64 原生插件，用于查看账号与真实用量、执行启停和优先级操作、自动降权、安全删除，以及按日清零统计。
+`cpa-grok-panel` 是 CLIProxyAPI（CPA）的 Grok/xAI OAuth 账号运维面板。v0.3.4 可从 xAI OAuth `access_token` 的 JWT payload 只读检测 `bot_flag_source` 机器人标记，并保留有限并发批量操作。
 
 插件 id：`cpa-grok-panel`。
 
 ## 功能概览
 
-- **账号列表**：读取 CPA 中的 xAI OAuth 账号，展示启停状态、优先级、请求数和 Token 用量。
+- **账号列表**：读取 CPA 中的 xAI OAuth 账号，展示机器人标记、启停状态、优先级、请求数和 Token 用量。
 - **用量统计**：累计 CPA `usage` 回调中的真实 input、output 和 total token，不根据请求内容估算。
 - **账号操作**：支持单账号和批量启用、停用、降权、解除降权。
 - **自动降权**：401/403 立即请求降权；429 和 5xx 可选择计入连续失败阈值。
@@ -26,7 +26,7 @@
 
 ### GitHub Release
 
-1. 打开 [GitHub Releases](https://github.com/magicvr/cpa-grok-panel/releases)，下载 `cpa-grok-panel_0.3.2_linux_amd64.zip`。
+1. 打开 [GitHub Releases](https://github.com/magicvr/cpa-grok-panel/releases)，下载 `cpa-grok-panel_0.3.4_linux_amd64.zip`。
 2. 在 CPA 插件管理中安装该 Release 包。不要修改压缩包内的插件目录和文件名。
 3. 安装完成后**完整停止并重新启动 CPA**。插件包含原生 `.so`，热更新或仅重载配置可能保留旧动态库。
 4. 在 CPA 管理页打开菜单 **Grok 账号**，或直接访问：
@@ -61,7 +61,7 @@
 
 - 表头复选框选择当前页；“全部选中”选择当前筛选结果；“清除选中”取消所有选择。
 - 支持批量启用、停用、降权、解除降权和安全删除。
-- 批量操作逐项执行并显示成功、跳过和失败数量；批量删除要求输入 `DELETE`，且每个账号删除前都会再次校验映射。
+- 批量操作使用有限并发执行并显示完成进度以及成功、跳过和失败数量；默认并发为 10，可在设置页调整为 1–50。批量删除要求输入 `DELETE`，且每个账号删除前都会再次校验映射。
 
 ### 自动刷新
 
@@ -83,12 +83,15 @@
 
 诊断列直接显示连续归因失败次数、上次失败码，以及处理中、已降权或失败标记。将鼠标停在该列可查看上次失败时间、降权状态、目标优先级、恢复基线、触发时间和降权失败码。
 
+“机器人”列只读解析账号 `access_token` 的 JWT payload；`bot_flag_source` 为数字 `1` 或字符串 `"1"` 时显示红色“是”，有效 token 无标记时显示绿色“否”，无 token、无效 JWT 或单账号凭据读取失败时显示灰色“—”。列表读取凭据使用有限并发，且不会写入插件 state。
+
 ## 设置与环境变量
 
 面板保存过设置后，以持久化 state 中的 settings 为准。以下 `CPA_GROK_*` 环境变量只在插件首次启动且尚无持久化设置时作为初始值生效：
 
 | 环境变量 | 默认值 | 说明 |
 | --- | ---: | --- |
+| `CPA_GROK_BATCH_CONCURRENCY` | `10` | 首次无持久化设置时的浏览器批量操作并发数，范围 1–50 |
 | `CPA_GROK_FAILURE_THRESHOLD` | `3` | 非 401/403 的连续失败阈值，范围 1–100 |
 | `CPA_GROK_DEMOTION_PRIORITY` | `-100` | 自动或手动降权的目标优先级 |
 | `CPA_GROK_DEFAULT_RESTORE_PRIORITY` | `0` | 没有可靠基线时的恢复优先级 |
@@ -112,4 +115,4 @@ CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
 go test ./...
 ```
 
-架构、CPA 集成、接口和持久化等设计资料仍保留在 [docs/design/](docs/design/)；README 以当前 v0.3.2 的可安装版本为准。
+架构、CPA 集成、接口和持久化等设计资料仍保留在 [docs/design/](docs/design/)；README 以当前 v0.3.4 的可安装版本为准。

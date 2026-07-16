@@ -7,6 +7,7 @@ type Settings struct {
 	DailyUsageResetEnabled     bool              `json:"daily_usage_reset_enabled"`
 	DailyUsageResetTime        string            `json:"daily_usage_reset_time"`
 	OperationConcurrency       int               `json:"operation_concurrency"`
+	BatchOperationConcurrency  int               `json:"batch_operation_concurrency"`
 	AttributedFailureThreshold int               `json:"attributed_failure_threshold"`
 	AttributedFailureStatuses  []int             `json:"attributed_failure_statuses"`
 	CountStatus429             bool              `json:"count_status_429"`

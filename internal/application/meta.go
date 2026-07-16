@@ -17,7 +17,7 @@ type Settings = config.Settings
 func DefaultSettings() Settings {
 	return Settings{Revision: 1, AutoRefreshEnabled: true, AutoRefreshIntervalSeconds: 5,
 		DailyUsageResetEnabled: false, DailyUsageResetTime: "00:00",
-		OperationConcurrency: 1, AttributedFailureThreshold: 3,
+		OperationConcurrency: 1, BatchOperationConcurrency: 10, AttributedFailureThreshold: 3,
 		// 401/403 are always immediate; this list is for documentation / future extras.
 		AttributedFailureStatuses: []int{401, 403}, DemotionPriority: -100, ProtectionLevel: "strict",
 		DefaultRestorePriority: 0,
@@ -42,6 +42,7 @@ func ValidateDailyUsageResetTime(value string) error {
 
 func LoadSettings() Settings {
 	settings := DefaultSettings()
+	settings.BatchOperationConcurrency = envInt("CPA_GROK_BATCH_CONCURRENCY", settings.BatchOperationConcurrency, 1, 50)
 	settings.AttributedFailureThreshold = envInt("CPA_GROK_FAILURE_THRESHOLD", settings.AttributedFailureThreshold, 1, 100)
 	settings.DemotionPriority = envInt("CPA_GROK_DEMOTION_PRIORITY", settings.DemotionPriority, -1_000_000, 1_000_000)
 	settings.DefaultRestorePriority = envInt("CPA_GROK_DEFAULT_RESTORE_PRIORITY", settings.DefaultRestorePriority, -1_000_000, 1_000_000)

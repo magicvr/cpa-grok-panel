@@ -162,6 +162,7 @@ type settingsUpdateRequest struct {
 	AutoRefreshIntervalSeconds *int    `json:"auto_refresh_interval_seconds"`
 	DailyUsageResetEnabled     *bool   `json:"daily_usage_reset_enabled"`
 	DailyUsageResetTime        *string `json:"daily_usage_reset_time"`
+	BatchOperationConcurrency  *int    `json:"batch_operation_concurrency"`
 	AttributedFailureThreshold *int    `json:"attributed_failure_threshold"`
 	CountStatus429             *bool   `json:"count_status_429"`
 	CountStatus5XX             *bool   `json:"count_status_5xx"`
@@ -186,6 +187,7 @@ func (router *Router) settingsResponse() settingsResponse {
 
 func (router *Router) updateSettings(update settingsUpdateRequest) (application.Settings, error) {
 	if update.AutoRefreshEnabled == nil && update.AutoRefreshIntervalSeconds == nil && update.DailyUsageResetEnabled == nil && update.DailyUsageResetTime == nil &&
+		update.BatchOperationConcurrency == nil &&
 		update.AttributedFailureThreshold == nil && update.CountStatus429 == nil && update.CountStatus5XX == nil &&
 		update.DemotionPriority == nil && update.DefaultRestorePriority == nil {
 		return application.Settings{}, fmt.Errorf("至少提供一个可配置字段")
@@ -197,6 +199,9 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		if err := application.ValidateDailyUsageResetTime(*update.DailyUsageResetTime); err != nil {
 			return application.Settings{}, err
 		}
+	}
+	if update.BatchOperationConcurrency != nil && (*update.BatchOperationConcurrency < 1 || *update.BatchOperationConcurrency > 50) {
+		return application.Settings{}, fmt.Errorf("batch_operation_concurrency 必须在 1..50 范围内")
 	}
 	if update.AttributedFailureThreshold != nil && (*update.AttributedFailureThreshold < 1 || *update.AttributedFailureThreshold > 100) {
 		return application.Settings{}, fmt.Errorf("attributed_failure_threshold 必须在 1..100 范围内")
@@ -226,6 +231,9 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		}
 		if update.DailyUsageResetTime != nil {
 			settings.DailyUsageResetTime = *update.DailyUsageResetTime
+		}
+		if update.BatchOperationConcurrency != nil {
+			settings.BatchOperationConcurrency = *update.BatchOperationConcurrency
 		}
 		if update.AttributedFailureThreshold != nil {
 			settings.AttributedFailureThreshold = *update.AttributedFailureThreshold
