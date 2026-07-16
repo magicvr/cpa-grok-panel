@@ -1,5 +1,13 @@
 # cpa-grok-panel
 
+## 友链
+
+> 感谢 [LINUX DO](https://linux.do/) 社区对开源项目的支持。本项目的开发与推广得益于社区环境，在此致敬。
+
+[![LINUX DO](https://img.shields.io/badge/LINUX%20DO-社区友链-0066cc)](https://linux.do/)
+
+---
+
 `cpa-grok-panel` 是 CLIProxyAPI（CPA）的 Grok/xAI OAuth 账号运维面板。v0.3.6 新增“优先级冷却恢复”：降权后按 6h → 12h → 24h 阶梯自动恢复，明确标记为机器人的账号除外。
 
 插件 id：`cpa-grok-panel`。
