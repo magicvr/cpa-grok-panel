@@ -1,6 +1,6 @@
 # cpa-grok-panel
 
-`cpa-grok-panel` 是 CLIProxyAPI（CPA）的 Grok/xAI OAuth 账号运维面板。v0.3.1 已提供可安装的 Linux amd64 原生插件，用于查看账号与真实用量、执行启停和优先级操作、自动降权、安全删除，以及按日清零统计。
+`cpa-grok-panel` 是 CLIProxyAPI（CPA）的 Grok/xAI OAuth 账号运维面板。v0.3.2 已提供可安装的 Linux amd64 原生插件，用于查看账号与真实用量、执行启停和优先级操作、自动降权、安全删除，以及按日清零统计。
 
 插件 id：`cpa-grok-panel`。
 
@@ -26,7 +26,7 @@
 
 ### GitHub Release
 
-1. 打开 [GitHub Releases](https://github.com/magicvr/cpa-grok-panel/releases)，下载 `cpa-grok-panel_0.3.1_linux_amd64.zip`。
+1. 打开 [GitHub Releases](https://github.com/magicvr/cpa-grok-panel/releases)，下载 `cpa-grok-panel_0.3.2_linux_amd64.zip`。
 2. 在 CPA 插件管理中安装该 Release 包。不要修改压缩包内的插件目录和文件名。
 3. 安装完成后**完整停止并重新启动 CPA**。插件包含原生 `.so`，热更新或仅重载配置可能保留旧动态库。
 4. 在 CPA 管理页打开菜单 **Grok 账号**，或直接访问：
@@ -112,4 +112,4 @@ CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
 go test ./...
 ```
 
-架构、CPA 集成、接口和持久化等设计资料仍保留在 [docs/design/](docs/design/)；README 以当前 v0.3.1 的可安装版本为准。
+架构、CPA 集成、接口和持久化等设计资料仍保留在 [docs/design/](docs/design/)；README 以当前 v0.3.2 的可安装版本为准。

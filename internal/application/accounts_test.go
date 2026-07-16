@@ -186,6 +186,60 @@ func TestDemotionWorkerUsesUpdatedTarget(t *testing.T) {
 	t.Fatalf("priority=%d state=%+v", host.files[0].Priority, store.View().Accounts["idx-worker"].Demotion)
 }
 
+func TestApplyRequestedDemotionAlreadyAtTargetMarksApplied(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	settings := application.DefaultSettings()
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-target"] = domain.AccountState{Demotion: domain.DemotionState{State: "requested"}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	host := &accountHost{
+		files:     []domain.AuthFile{xaiFile("idx-target", "xai-target.json", settings.DemotionPriority)},
+		documents: map[string]cpaabi.AuthDocument{"idx-target": {"priority": settings.DemotionPriority, "disabled": false}},
+	}
+	service := application.NewAccountsService(host, store, time.Now, settings)
+
+	if err := service.ApplyRequestedDemotion("idx-target", settings.DemotionPriority); err != nil {
+		t.Fatal(err)
+	}
+	state := store.View().Accounts["idx-target"].Demotion
+	if state.State != "applied" || state.TargetPriority == nil || *state.TargetPriority != settings.DemotionPriority || state.BaselinePriority == nil || *state.BaselinePriority != settings.DefaultRestorePriority {
+		t.Fatalf("state=%+v", state)
+	}
+	if host.savedName != "" {
+		t.Fatalf("already-target demotion should not save auth file: saved=%q", host.savedName)
+	}
+}
+
+func TestApplyRequestedDemotionVerificationFailureIsRetryable(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	baseline := 0
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-verify"] = domain.AccountState{Demotion: domain.DemotionState{State: "requested", BaselinePriority: &baseline}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	host := &accountHost{
+		files:              []domain.AuthFile{xaiFile("idx-verify", "xai-verify.json", baseline)},
+		documents:          map[string]cpaabi.AuthDocument{"idx-verify": {"priority": baseline, "disabled": false}},
+		ignorePrioritySave: true,
+	}
+	service := application.NewAccountsService(host, store, time.Now)
+
+	err := service.ApplyRequestedDemotion("idx-verify", application.DefaultSettings().DemotionPriority)
+	accountErr := application.AsAccountError(err)
+	if err == nil || !accountErr.Retryable || accountErr.Code != "write_verification_failed" {
+		t.Fatalf("error=%+v", accountErr)
+	}
+	state := store.View().Accounts["idx-verify"].Demotion
+	if state.State != "failed" || state.FailureCode != "demotion_verify_failed" {
+		t.Fatalf("state=%+v", state)
+	}
+}
+
 func TestRestorePriorityWithoutPluginRecordUsesConfiguredDefault(t *testing.T) {
 	store := stateinfra.OpenMemory(time.Now().UTC())
 	host := &accountHost{
@@ -239,10 +293,11 @@ func TestRestorePriorityBelowConfiguredTargetUsesRecordedBaseline(t *testing.T) 
 }
 
 type accountHost struct {
-	files         []domain.AuthFile
-	documents     map[string]cpaabi.AuthDocument
-	savedName     string
-	savedDocument cpaabi.AuthDocument
+	files              []domain.AuthFile
+	documents          map[string]cpaabi.AuthDocument
+	savedName          string
+	savedDocument      cpaabi.AuthDocument
+	ignorePrioritySave bool
 }
 
 func (host *accountHost) ListAuthFiles() ([]domain.AuthFile, error) {
@@ -271,7 +326,7 @@ func (host *accountHost) SaveAuthFile(name string, document cpaabi.AuthDocument)
 		if disabled, ok := document["disabled"].(bool); ok {
 			host.files[index].Disabled = disabled
 		}
-		if priority, ok := numberAsInt(document["priority"]); ok {
+		if priority, ok := numberAsInt(document["priority"]); ok && !host.ignorePrioritySave {
 			host.files[index].Priority = priority
 		}
 		host.documents[host.files[index].AuthIndex] = cloneDocument(document)

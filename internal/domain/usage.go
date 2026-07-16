@@ -20,17 +20,18 @@ type TokenUsage struct {
 }
 
 type UsageEvent struct {
-	EventID    string     `json:"event_id,omitempty"`
-	OccurredAt time.Time  `json:"occurred_at"`
-	AuthIndex  string     `json:"auth_index"`
-	Name       string     `json:"name,omitempty"`
-	RequestID  string     `json:"request_id,omitempty"`
-	Model      string     `json:"model,omitempty"`
-	Outcome    string     `json:"outcome"`
-	StatusCode int        `json:"status_code,omitempty"`
-	Provider   string     `json:"provider,omitempty"`
-	AuthType   string     `json:"auth_type,omitempty"`
-	Usage      TokenUsage `json:"usage"`
+	EventID      string     `json:"event_id,omitempty"`
+	OccurredAt   time.Time  `json:"occurred_at"`
+	AuthIndex    string     `json:"auth_index"`
+	Name         string     `json:"name,omitempty"`
+	RequestID    string     `json:"request_id,omitempty"`
+	Model        string     `json:"model,omitempty"`
+	Outcome      string     `json:"outcome"`
+	StatusCode   int        `json:"status_code,omitempty"`
+	Provider     string     `json:"provider,omitempty"`
+	AuthType     string     `json:"auth_type,omitempty"`
+	ExecutorType string     `json:"executor_type,omitempty"`
+	Usage        TokenUsage `json:"usage"`
 }
 
 type UsageCounters struct {
