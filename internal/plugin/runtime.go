@@ -210,6 +210,10 @@ func (runtime *Runtime) Shutdown() error {
 		runtime.worker.Stop()
 		runtime.worker = nil
 	}
+	if runtime.cooldownWorker != nil {
+		runtime.cooldownWorker.Stop()
+		runtime.cooldownWorker = nil
+	}
 	if runtime.usageResetWorker != nil {
 		runtime.usageResetWorker.Stop()
 		runtime.usageResetWorker = nil
