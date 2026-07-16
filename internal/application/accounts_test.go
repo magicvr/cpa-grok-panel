@@ -207,6 +207,61 @@ func TestClearStateRequiresMatchingStoredFileName(t *testing.T) {
 	}
 }
 
+func TestClearDiagnosticClearsOnlyFailureForMatchingAccount(t *testing.T) {
+	now := time.Now().UTC()
+	baseline, target := 10, -100
+	store := stateinfra.OpenMemory(now)
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-1"] = domain.AccountState{
+			ExactFileName: "xai-a.json",
+			Usage:         domain.UsageCounters{SuccessfulRequests: 7, FailedRequests: 3, TotalTokens: 1234},
+			Failure: domain.FailureState{
+				ConsecutiveAttributedFailures: 3,
+				LastFailureAt:                 &now,
+				LastFailureCode:               "http_500",
+			},
+			Demotion: domain.DemotionState{State: "applied", BaselinePriority: &baseline, TargetPriority: &target},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := application.NewAccountsService(&accountHost{}, store, time.Now)
+
+	if err := service.ClearDiagnostic("idx-1", "xai-a.json"); err != nil {
+		t.Fatal(err)
+	}
+	state := store.View().Accounts["idx-1"]
+	if state.Failure != (domain.FailureState{}) {
+		t.Fatalf("failure=%+v", state.Failure)
+	}
+	if state.Usage.TotalTokens != 1234 || state.Usage.SuccessfulRequests != 7 || state.Demotion.State != "applied" {
+		t.Fatalf("unrelated account state changed: %+v", state)
+	}
+}
+
+func TestClearDiagnosticRequiresMatchingStoredFileName(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-1"] = domain.AccountState{
+			ExactFileName: "xai-a.json",
+			Failure:       domain.FailureState{ConsecutiveAttributedFailures: 2, LastFailureCode: "http_429"},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := application.NewAccountsService(&accountHost{}, store, time.Now)
+
+	err := service.ClearDiagnostic("idx-1", "xai-other.json")
+	if application.AsAccountError(err).Code != "account_mapping_changed" {
+		t.Fatalf("error=%v", err)
+	}
+	if got := store.View().Accounts["idx-1"].Failure.ConsecutiveAttributedFailures; got != 2 {
+		t.Fatalf("failure streak=%d want=2", got)
+	}
+}
+
 func TestDemoteRecordsBaselineAndUsesConfiguredTarget(t *testing.T) {
 	store := stateinfra.OpenMemory(time.Now().UTC())
 	host := &accountHost{
@@ -299,7 +354,10 @@ func TestApplyRequestedDemotionAlreadyAtTargetMarksApplied(t *testing.T) {
 	store := stateinfra.OpenMemory(time.Now().UTC())
 	settings := application.DefaultSettings()
 	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
-		snapshot.Accounts["idx-target"] = domain.AccountState{Demotion: domain.DemotionState{State: "requested"}}
+		snapshot.Accounts["idx-target"] = domain.AccountState{
+			Failure:  domain.FailureState{ConsecutiveAttributedFailures: 4, LastFailureCode: "http_403"},
+			Demotion: domain.DemotionState{State: "requested"},
+		}
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -316,6 +374,9 @@ func TestApplyRequestedDemotionAlreadyAtTargetMarksApplied(t *testing.T) {
 	state := store.View().Accounts["idx-target"].Demotion
 	if state.State != "applied" || state.TargetPriority == nil || *state.TargetPriority != settings.DemotionPriority || state.BaselinePriority == nil || *state.BaselinePriority != settings.DefaultRestorePriority {
 		t.Fatalf("state=%+v", state)
+	}
+	if failure := store.View().Accounts["idx-target"].Failure; failure.ConsecutiveAttributedFailures != 4 || failure.LastFailureCode != "http_403" {
+		t.Fatalf("automatic demotion cleared failure diagnostics: %+v", failure)
 	}
 	if host.savedName != "" {
 		t.Fatalf("already-target demotion should not save auth file: saved=%q", host.savedName)

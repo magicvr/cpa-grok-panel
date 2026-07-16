@@ -358,6 +358,25 @@ func (service *AccountsService) ClearState(authIndex, exactFileName string) erro
 	})
 }
 
+func (service *AccountsService) ClearDiagnostic(authIndex, exactFileName string) error {
+	if strings.TrimSpace(authIndex) == "" || strings.TrimSpace(exactFileName) == "" {
+		return &AccountError{Code: "invalid_argument", Message: "auth_index 与 exact_file_name 均为必填", HTTPStatus: 400}
+	}
+	return service.store.Update(func(snapshot *stateinfra.Snapshot) error {
+		state, exists := snapshot.Accounts[authIndex]
+		if !exists {
+			return nil
+		}
+		if state.ExactFileName != "" && state.ExactFileName != exactFileName {
+			return &AccountError{Code: "account_mapping_changed", Message: "本地账号状态映射已变化，未清空诊断", HTTPStatus: 409}
+		}
+		state.ExactFileName = exactFileName
+		state.Failure = domain.FailureState{}
+		snapshot.Accounts[authIndex] = state
+		return nil
+	})
+}
+
 func (service *AccountsService) resolveExact(authIndex, exactFileName string) (domain.AuthFile, error) {
 	if strings.TrimSpace(authIndex) == "" || strings.TrimSpace(exactFileName) == "" {
 		return domain.AuthFile{}, &AccountError{Code: "invalid_argument", Message: "auth_index 与 exact_file_name 均为必填", HTTPStatus: 400}

@@ -55,6 +55,7 @@ func Registration() map[string]any {
 		{"Method": "POST", "Path": APIPrefix + "/accounts/demote", "Description": "手动降低账号优先级"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/restore-priority", "Description": "恢复账号优先级"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/set-enabled", "Description": "启用或停用账号"},
+		{"Method": "POST", "Path": APIPrefix + "/accounts/clear-diagnostic", "Description": "清空账号失败诊断"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/clear-state", "Description": "删除账号后清理插件本地状态"},
 	}
 	resources := []map[string]any{
@@ -128,6 +129,15 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 			return accountErrorResponse(err)
 		}
 		return jsonResponse(200, map[string]any{"account": account})
+	case method == "POST" && matchesPath(path, "/accounts/clear-diagnostic"):
+		var body accountTargetRequest
+		if err := decodeStrictBody(request.Body, &body); err != nil {
+			return apiError(400, "invalid_argument", err.Error(), false)
+		}
+		if err := router.accounts.ClearDiagnostic(body.AuthIndex, body.ExactFileName); err != nil {
+			return accountErrorResponse(err)
+		}
+		return jsonResponse(200, map[string]any{"cleared": true})
 	case method == "POST" && matchesPath(path, "/accounts/clear-state"):
 		var body accountTargetRequest
 		if err := decodeStrictBody(request.Body, &body); err != nil {
