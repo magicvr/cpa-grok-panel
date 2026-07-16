@@ -14,6 +14,7 @@ type Settings struct {
 	CountStatus5XX             bool              `json:"count_status_5xx"`
 	DemotionPriority           int               `json:"demotion_priority"`
 	DefaultRestorePriority     int               `json:"default_restore_priority"`
+	CooldownRestoreEnabled     bool              `json:"cooldown_restore_enabled"`
 	ProtectionLevel            string            `json:"protection_level"`
 	DefaultTokenCapacity       uint64            `json:"default_token_capacity"`
 	PerAccountTokenCapacity    map[string]uint64 `json:"per_account_token_capacity"`

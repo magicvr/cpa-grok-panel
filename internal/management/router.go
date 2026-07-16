@@ -178,6 +178,7 @@ type settingsUpdateRequest struct {
 	CountStatus5XX             *bool   `json:"count_status_5xx"`
 	DemotionPriority           *int    `json:"demotion_priority"`
 	DefaultRestorePriority     *int    `json:"default_restore_priority"`
+	CooldownRestoreEnabled     *bool   `json:"cooldown_restore_enabled"`
 }
 
 type settingsResponse struct {
@@ -199,7 +200,7 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 	if update.AutoRefreshEnabled == nil && update.AutoRefreshIntervalSeconds == nil && update.DailyUsageResetEnabled == nil && update.DailyUsageResetTime == nil &&
 		update.BatchOperationConcurrency == nil &&
 		update.AttributedFailureThreshold == nil && update.CountStatus429 == nil && update.CountStatus5XX == nil &&
-		update.DemotionPriority == nil && update.DefaultRestorePriority == nil {
+		update.DemotionPriority == nil && update.DefaultRestorePriority == nil && update.CooldownRestoreEnabled == nil {
 		return application.Settings{}, fmt.Errorf("至少提供一个可配置字段")
 	}
 	if update.AutoRefreshIntervalSeconds != nil && (*update.AutoRefreshIntervalSeconds < 2 || *update.AutoRefreshIntervalSeconds > 60) {
@@ -259,6 +260,9 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		}
 		if update.DefaultRestorePriority != nil {
 			settings.DefaultRestorePriority = *update.DefaultRestorePriority
+		}
+		if update.CooldownRestoreEnabled != nil {
+			settings.CooldownRestoreEnabled = *update.CooldownRestoreEnabled
 		}
 		settings.Revision++
 		if settings.Revision < 1 {

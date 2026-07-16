@@ -20,7 +20,7 @@ func DefaultSettings() Settings {
 		OperationConcurrency: 1, BatchOperationConcurrency: 10, AttributedFailureThreshold: 3,
 		// 401/403 are always immediate; this list is for documentation / future extras.
 		AttributedFailureStatuses: []int{401, 403}, DemotionPriority: -100, ProtectionLevel: "strict",
-		DefaultRestorePriority: 0,
+		DefaultRestorePriority: 0, CooldownRestoreEnabled: true,
 		// 429/5xx participate in the consecutive-threshold path (default off → only 401/403 auto-demote).
 		// Set CPA_GROK_COUNT_429 / CPA_GROK_COUNT_5XX=true to also demote after N consecutive such failures.
 		CountStatus429: false, CountStatus5XX: false,
@@ -46,6 +46,7 @@ func LoadSettings() Settings {
 	settings.AttributedFailureThreshold = envInt("CPA_GROK_FAILURE_THRESHOLD", settings.AttributedFailureThreshold, 1, 100)
 	settings.DemotionPriority = envInt("CPA_GROK_DEMOTION_PRIORITY", settings.DemotionPriority, -1_000_000, 1_000_000)
 	settings.DefaultRestorePriority = envInt("CPA_GROK_DEFAULT_RESTORE_PRIORITY", settings.DefaultRestorePriority, -1_000_000, 1_000_000)
+	settings.CooldownRestoreEnabled = envBool("CPA_GROK_COOLDOWN_RESTORE", settings.CooldownRestoreEnabled)
 	settings.CountStatus429 = envBool("CPA_GROK_COUNT_429", false)
 	settings.CountStatus5XX = envBool("CPA_GROK_COUNT_5XX", false)
 	return settings
@@ -98,6 +99,6 @@ func BuildMeta(snapshot stateinfra.Snapshot) Meta {
 	return Meta{PluginID: stateinfra.PluginID, PluginVersion: stateinfra.PluginVersion, APIVersion: 1,
 		WriteMode: "managed", Status: "ready", StateStatus: "healthy",
 		StatisticsStartedAt: snapshot.StatisticsStartedAt, DedupeMode: dedupeMode, ConditionalWrite: false,
-		Capabilities:        []string{"usage", "auth_list", "auth_get", "auth_save", "management_routes", "set_enabled", "demote", "restore_priority", "auto_demotion", "safe_delete", "daily_usage_reset"},
+		Capabilities:        []string{"usage", "auth_list", "auth_get", "auth_save", "management_routes", "set_enabled", "demote", "restore_priority", "auto_demotion", "cooldown_restore", "safe_delete", "daily_usage_reset"},
 		UnavailableFeatures: []Unavailable{{Feature: "checks", Reason: "host.auth.invoke 未提供"}}}
 }

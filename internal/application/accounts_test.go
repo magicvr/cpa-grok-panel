@@ -462,6 +462,83 @@ func TestRestorePriorityBelowConfiguredTargetUsesRecordedBaseline(t *testing.T) 
 	}
 }
 
+func TestCooldownRestoreLadderIncrementsAndAutomaticRestorePreservesIt(t *testing.T) {
+	now := time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC)
+	store := stateinfra.OpenMemory(now)
+	host := &accountHost{
+		files:     []domain.AuthFile{xaiFile("idx-cooldown", "xai-cooldown.json", 10)},
+		documents: map[string]cpaabi.AuthDocument{"idx-cooldown": {"priority": 10, "disabled": false}},
+	}
+	service := application.NewAccountsService(host, store, func() time.Time { return now })
+
+	for cycle, wantHours := range []int{6, 12, 24} {
+		if _, err := service.Demote("idx-cooldown", "xai-cooldown.json"); err != nil {
+			t.Fatalf("cycle %d demote: %v", cycle+1, err)
+		}
+		demotion := store.View().Accounts["idx-cooldown"].Demotion
+		if demotion.State != "applied" || demotion.RestoreCooldownHours != wantHours || demotion.TriggeredAt == nil || !demotion.TriggeredAt.Equal(now) {
+			t.Fatalf("cycle %d demotion=%+v want cooldown=%d", cycle+1, demotion, wantHours)
+		}
+		if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+			state := snapshot.Accounts["idx-cooldown"]
+			state.Failure = domain.FailureState{ConsecutiveAttributedFailures: 3, LastFailureCode: "http_403"}
+			snapshot.Accounts["idx-cooldown"] = state
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		now = now.Add(time.Duration(wantHours) * time.Hour)
+		restored, err := service.RestorePriorityAfterCooldown("idx-cooldown")
+		if err != nil || !restored {
+			t.Fatalf("cycle %d restored=%t err=%v", cycle+1, restored, err)
+		}
+		demotion = store.View().Accounts["idx-cooldown"].Demotion
+		if demotion.State != "restored" || demotion.RestoreCooldownHours != wantHours || host.files[0].Priority != 10 || store.View().Accounts["idx-cooldown"].Failure != (domain.FailureState{}) {
+			t.Fatalf("cycle %d state=%+v priority=%d", cycle+1, store.View().Accounts["idx-cooldown"], host.files[0].Priority)
+		}
+	}
+}
+
+func TestCooldownRestoreSkipsExplicitBotButManualRestoreStillWorks(t *testing.T) {
+	now := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	triggeredAt := now.Add(-6 * time.Hour)
+	baseline, target := 10, -100
+	store := stateinfra.OpenMemory(now)
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-bot"] = domain.AccountState{
+			ExactFileName: "xai-bot.json",
+			Failure:       domain.FailureState{ConsecutiveAttributedFailures: 3, LastFailureCode: "http_403"},
+			Demotion: domain.DemotionState{
+				State: "applied", BaselinePriority: &baseline, TargetPriority: &target,
+				TriggeredAt: &triggeredAt, RestoreCooldownHours: 6,
+			},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	host := &accountHost{
+		files: []domain.AuthFile{xaiFile("idx-bot", "xai-bot.json", target)},
+		documents: map[string]cpaabi.AuthDocument{"idx-bot": {
+			"priority": target, "disabled": false,
+			"access_token": testJWT(t, map[string]any{"bot_flag_source": 1}),
+		}},
+	}
+	service := application.NewAccountsService(host, store, func() time.Time { return now })
+
+	application.NewCooldownRestoreWorker(service, store).ProcessOnce()
+	if host.files[0].Priority != target {
+		t.Fatalf("worker restored explicit bot priority=%d", host.files[0].Priority)
+	}
+	if _, err := service.RestorePriority("idx-bot", "xai-bot.json"); err != nil {
+		t.Fatal(err)
+	}
+	state := store.View().Accounts["idx-bot"]
+	if host.files[0].Priority != baseline || state.Demotion.State != "restored" || state.Demotion.RestoreCooldownHours != 0 || state.Failure != (domain.FailureState{}) {
+		t.Fatalf("manual restore priority=%d state=%+v", host.files[0].Priority, state)
+	}
+}
+
 type accountHost struct {
 	files              []domain.AuthFile
 	documents          map[string]cpaabi.AuthDocument

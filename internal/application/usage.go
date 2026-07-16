@@ -130,8 +130,9 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 	triggeredAt := now.UTC()
 	target := settings.DemotionPriority
 	account.Demotion = domain.DemotionState{
-		State: "requested", TargetPriority: &target, TriggeredAt: &triggeredAt,
-		FailureCode: account.Failure.LastFailureCode,
+		State: "requested", BaselinePriority: demotion.BaselinePriority, TargetPriority: &target, TriggeredAt: &triggeredAt,
+		RestoreCooldownHours: demotion.RestoreCooldownHours,
+		FailureCode:          account.Failure.LastFailureCode,
 	}
 	return true
 }

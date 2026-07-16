@@ -21,6 +21,7 @@ type Runtime struct {
 	store            *stateinfra.Store
 	usage            *application.UsageService
 	worker           *application.DemotionWorker
+	cooldownWorker   *application.CooldownRestoreWorker
 	usageResetWorker *application.UsageResetWorker
 	router           *management.Router
 	dataDir          string
@@ -116,15 +117,18 @@ func (runtime *Runtime) ensureReady(dataDir string) error {
 	}
 	accounts := application.NewAccountsService(runtime.host, store, time.Now, settings)
 	worker := application.NewDemotionWorker(accounts, store, settings)
+	cooldownWorker := application.NewCooldownRestoreWorker(accounts, store)
 	usageResetWorker := application.NewUsageResetWorker(store, settings)
 	runtime.store = store
 	runtime.worker = worker
+	runtime.cooldownWorker = cooldownWorker
 	runtime.usageResetWorker = usageResetWorker
 	runtime.usage = application.NewUsageServiceWithDemotion(store, time.Now, settings, worker)
 	runtime.router = management.NewRouter(accounts, store, settings)
 	runtime.dataDir = used
 	runtime.ready = true
 	worker.Start()
+	cooldownWorker.Start()
 	usageResetWorker.Start()
 	return nil
 }
