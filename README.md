@@ -21,22 +21,136 @@
 
 ### 前置条件
 
-- CPA 已启用 plugins，并支持原生插件 ABI、Management API 和 usage 回调。
+- CPA 已启用插件体系（`plugins.enabled: true`），并支持原生插件 ABI、Management API 和 usage 回调。
 - 已设置并持有 CPA management key。
-- 运行平台为 Linux amd64。
+- 运行平台为 **Linux amd64**（当前仅发布该平台的 Release 包）。
+- CPA 进程所在主机能访问 **GitHub**（`api.github.com`、`github.com`、`raw.githubusercontent.com`、Release 资源域名）。若主机直连 GitHub 不稳定，请在 CPA 配置中设置可用的 `proxy-url`，再走安装方式 A。
 
-### GitHub Release
+### 安装方式 A（推荐）：把本仓库 registry 加入 CPA 插件商店
 
-1. 打开 [GitHub Releases](https://github.com/magicvr/cpa-grok-panel/releases)，下载 `cpa-grok-panel_0.3.6_linux_amd64.zip`。
-2. 在 CPA 插件管理中安装该 Release 包。不要修改压缩包内的插件目录和文件名。
-3. 安装完成后**完整停止并重新启动 CPA**。插件包含原生 `.so`，热更新或仅重载配置可能保留旧动态库。
-4. 在 CPA 管理页打开菜单 **Grok 账号**，或直接访问：
+安装方式 A 的思路是：向 CPA 注册一个**商店目录源**（`store-sources`），让 CPA 插件商店能**列出**本插件；真正安装时，CPA 再按目录里的 `repository` 字段去对应仓库的 **GitHub Releases** 拉取 zip 与校验文件。
+
+```text
+store-sources → registry.json（只负责目录/元数据）
+plugin.repository → GitHub Releases（真正下载 .so 安装包）
+```
+
+#### 1. 商店目录 URL
+
+本仓库公开目录文件：
+
+```text
+https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
+```
+
+当前 `registry.json` 中的关键字段：
+
+| 字段 | 值 |
+| --- | --- |
+| `id` | `cpa-grok-panel` |
+| `name` | Grok 账号面板 |
+| `version` | 与最新 Release 对齐（例如 `0.3.6`） |
+| `repository` | `https://github.com/magicvr/cpa-grok-panel` |
+
+可用浏览器或下面命令确认目录可访问、内容正确：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
+```
+
+#### 2. 在 CPA 配置里添加 `store-sources`
+
+编辑 CPA 的 `config.yaml`（路径以你的部署为准），在 `plugins` 段加入或合并如下内容：
+
+```yaml
+plugins:
+  enabled: true
+  # dir: plugins          # 保持你现有的插件目录即可
+  store-sources:
+    # 可与其它商店源并存；本插件只需加入下面这一条
+    - https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
+  configs:
+    cpa-grok-panel:
+      enabled: true
+```
+
+说明：
+
+- `store-sources` 是字符串数组，每项是一个 **registry.json 的 HTTPS URL**。
+- 若你已有其它商店源，**追加**本 URL，不要整段覆盖丢掉原有源。
+- `configs.cpa-grok-panel.enabled: true` 表示安装后允许启用该插件；若你的 CPA 版本在商店安装时会自动写入，也可先只加 `store-sources`，安装后再确认。
+- 修改 `config.yaml` 后，按你的 CPA 版本要求**重载配置或重启一次**，让新的商店源生效。
+
+> 若你的 CPA 管理页提供「插件商店源 / store sources」类设置，效果应等价于写入上述 `store-sources`：把同一 URL 粘贴进去保存即可。以你当前 CPA 管理页实际字段为准。
+
+#### 3. 在插件商店里找到并安装
+
+1. 打开 CPA 管理页（例如 `http://<cpa-host>:<port>/management.html`），使用 management key 登录。
+2. 进入 **插件 / 插件商店**（Plugin Store）相关页面。
+3. 刷新商店列表后，应能看到 **Grok 账号面板** / id **`cpa-grok-panel`**。
+4. 选择需要的版本（一般选最新，例如 `0.3.6`）并点击安装。
+5. 安装成功后，**完整停止并重新启动整个 CPA 进程**。  
+   本插件是原生 `.so`：仅热更新、只重载配置或不杀进程替换动态库，可能导致仍加载旧库或注册状态异常。
+
+也可用 Management API 安装（需已能在商店目录中解析到该插件）：
+
+```http
+POST /v0/management/plugin-store/cpa-grok-panel/install
+Authorization: Bearer <management-key>
+Content-Type: application/json
+
+{"version":"0.3.6"}
+```
+
+版本号请与 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 上已发布的 tag（去掉前缀 `v` 后的 semver）一致。
+
+#### 4. 安装后如何打开面板
+
+- 管理页菜单：**Grok 账号**（若侧栏已出现）
+- 或直接访问资源路径：
+
+  ```text
+  /v0/resource/plugins/cpa-grok-panel/panel
+  ```
+
+#### 5. 方式 A 常见问题
+
+| 现象 | 常见原因 | 处理 |
+| --- | --- | --- |
+| 商店里搜不到本插件 | 未写入 / 未生效 `store-sources`，或 registry URL 写错 | 核对 URL 与配置重载；用 `curl` 验证 registry.json |
+| 能列出但安装失败（GitHub 404） | 仓库不可见、Release 不存在、或 CPA 未拿到公开资源 | 确认仓库公开且对应版本已发 Release；检查 CPA 出网/代理 |
+| 安装失败（403 / rate limit） | 未认证访问 GitHub API 配额或代理拦截 | 等待重试、配置 `proxy-url`、检查出口 IP 限制 |
+| 安装显示成功但 `registered: false` / 刷新后变未注册 | 动态库未完整加载或 reconfigure 异常 | **完整重启 CPA**；再查 `GET /v0/management/plugins` |
+| 面板仍是旧版本 | 热替换 `.so` 或浏览器缓存 | 完整重启 + 浏览器强刷；看面板副标题版本号 |
+
+### 安装方式 B：手动下载 GitHub Release 安装
+
+适合：暂时不想改 `store-sources`、离线拷包、或商店安装链路不通时。
+
+1. 打开 [GitHub Releases](https://github.com/magicvr/cpa-grok-panel/releases)，下载当前平台包，例如：
+
+   - `cpa-grok-panel_0.3.6_linux_amd64.zip`
+   - （可选校验）同 Release 下的 `checksums.txt`
+
+2. 在 CPA **插件管理**中选择本地安装 / 上传该 zip。  
+   **不要**改压缩包内部结构：包根目录应直接是 `cpa-grok-panel.so`（不要再套一层额外目录后再打包）。
+
+3. 安装完成后同样 **完整停止并重新启动 CPA**。
+
+4. 打开面板（与方式 A 相同）：
 
    ```text
    /v0/resource/plugins/cpa-grok-panel/panel
    ```
 
-如果 CPA 已配置包含本插件的商店 registry，也可以在插件商店搜索 `cpa-grok-panel` 安装；安装后同样需要完整重启 CPA。
+### 安装方式对照
+
+| | 安装方式 A（商店源） | 安装方式 B（手动包） |
+| --- | --- | --- |
+| 需要改 CPA 配置 | 是：追加 `store-sources` | 否 |
+| 升级体验 | 商店内选版本安装 | 每次手动下新 zip |
+| 依赖出网 | 需要访问 GitHub（目录 + Release） | 可在有网机器下载后拷到 CPA 主机 |
+| 安装后 | 都必须**完整重启 CPA** | 同左 |
 
 ## 使用
 
