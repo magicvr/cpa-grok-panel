@@ -49,10 +49,43 @@ func TestRouterPanelPath(t *testing.T) {
 	if !strings.Contains(body, "Grok") {
 		t.Fatalf("not html panel: %s", string(resp.Body)[:80])
 	}
-	for _, marker := range []string{"v0.3.4", ">机器人<", ">诊断<", "bot_flag_known", "首页", "末页", "跳转", "page-input", "清除选中", "全部选中", "批量启用", "批量停用", "批量降权", "批量解除降权", "批量安全删除", "批量操作并发数", "batch_operation_concurrency", "runConcurrent", "每日清零"} {
+	for _, marker := range []string{"v0.3.5", "data-sort=\"bot\"", "id=\"bot-filter\"", "matchesBot", "clearDiagnostic", "/accounts/clear-diagnostic", ">诊断<", "bot_flag_known", "首页", "末页", "跳转", "page-input", "清除选中", "全部选中", "批量启用", "批量停用", "批量降权", "批量解除降权", "批量安全删除", "批量操作并发数", "batch_operation_concurrency", "runConcurrent", "每日清零"} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("panel missing %q", marker)
 		}
+	}
+}
+
+func TestRouterClearDiagnostic(t *testing.T) {
+	store, err := stateinfra.Open(t.TempDir(), time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	failureAt := time.Now().UTC()
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-1"] = domain.AccountState{
+			ExactFileName: "xai-a.json",
+			Usage:         domain.UsageCounters{TotalTokens: 99},
+			Failure: domain.FailureState{
+				ConsecutiveAttributedFailures: 3,
+				LastFailureAt:                 &failureAt,
+				LastFailureCode:               "http_500",
+			},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	router := management.NewRouter(application.NewAccountsService(fakeLister{}, store, time.Now), store)
+	body := []byte(`{"auth_index":"idx-1","exact_file_name":"xai-a.json"}`)
+	response := router.Handle(management.Request{Method: "POST", Path: "/v0/management/cpa-grok-panel/api/v1/accounts/clear-diagnostic", Body: body})
+	if response.StatusCode != 200 {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
+	state := store.View().Accounts["idx-1"]
+	if state.Failure != (domain.FailureState{}) || state.Usage.TotalTokens != 99 {
+		t.Fatalf("state=%+v", state)
 	}
 }
 
