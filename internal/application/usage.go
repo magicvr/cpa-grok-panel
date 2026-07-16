@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +18,8 @@ const (
 	weakDedupeTTL = 2 * time.Minute
 	maxDedupeKeys = 4096
 )
+
+var failureStatusPattern = regexp.MustCompile(`\b(401|403)\b`)
 
 type UsageResult struct {
 	Accepted          bool   `json:"accepted"`
@@ -117,7 +121,10 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 	}
 
 	demotion := account.Demotion.Normalized()
-	if demotion.State == "requested" || demotion.State == "applied" {
+	if demotion.State == "requested" {
+		return false
+	}
+	if demotion.State == "applied" && !immediate {
 		return false
 	}
 	triggeredAt := now.UTC()
@@ -177,10 +184,14 @@ func isSuccessfulOutcome(outcome string) bool {
 func isPotentialXAIOAuth(event domain.UsageEvent) bool {
 	provider := strings.ToLower(strings.TrimSpace(event.Provider))
 	authType := strings.ToLower(strings.TrimSpace(event.AuthType))
+	executorType := strings.ToLower(strings.TrimSpace(event.ExecutorType))
 	if provider != "" && !strings.Contains(provider, "xai") && !strings.Contains(provider, "grok") {
 		return false
 	}
 	if authType != "" && authType != "oauth" && !strings.Contains(authType, "xai") && !strings.Contains(authType, "grok") {
+		return false
+	}
+	if authType == "" && executorType != "" && executorType != "oauth" && !strings.Contains(executorType, "xai") && !strings.Contains(executorType, "grok") {
 		return false
 	}
 	return true
@@ -245,44 +256,48 @@ func ParseUsageEvent(data []byte) (domain.UsageEvent, error) {
 	}
 	var event domain.UsageEvent
 	decodeFirst(raw, &event.EventID, "event_id", "EventID", "id")
-	decodeFirst(raw, &event.AuthIndex, "auth_index", "AuthIndex", "authIndex", "auth_id", "AuthID")
+	decodeFirstNonEmptyString(raw, &event.AuthIndex, "auth_index", "AuthIndex", "authIndex")
+	if event.AuthIndex == "" {
+		decodeFirstNonEmptyString(raw, &event.AuthIndex, "auth_id", "AuthID", "authId")
+	}
 	decodeFirst(raw, &event.Name, "name", "Name", "auth_name", "AuthName")
 	decodeFirst(raw, &event.RequestID, "request_id", "RequestID", "requestId")
 	decodeFirst(raw, &event.Model, "model", "Model")
-	decodeFirst(raw, &event.Outcome, "outcome", "Outcome", "status", "Status")
+	decodeFirst(raw, &event.Outcome, "outcome", "Outcome")
 	decodeFirst(raw, &event.StatusCode, "status_code", "StatusCode", "statusCode")
 	decodeFirst(raw, &event.Provider, "provider", "Provider")
-	decodeFirst(raw, &event.AuthType, "auth_type", "AuthType", "authType", "executor_type", "ExecutorType")
+	decodeFirst(raw, &event.AuthType, "auth_type", "AuthType", "authType")
+	decodeFirst(raw, &event.ExecutorType, "executor_type", "ExecutorType", "executorType")
 	var occurred string
-	decodeFirst(raw, &occurred, "occurred_at", "OccurredAt", "timestamp", "Timestamp", "time", "Time")
+	decodeFirst(raw, &occurred, "occurred_at", "OccurredAt", "requested_at", "RequestedAt", "timestamp", "Timestamp", "time", "Time")
 	if occurred != "" {
 		event.OccurredAt, _ = time.Parse(time.RFC3339Nano, occurred)
 	}
-	if usageRaw, ok := firstRaw(raw, "usage", "Usage", "detail", "Detail"); ok {
+	if usageRaw, ok := firstRaw(raw, "detail", "Detail", "usage", "Usage"); ok {
 		parseTokenUsage(usageRaw, &event.Usage)
 	} else {
 		parseTokenUsage(data, &event.Usage)
 	}
 	var failed bool
-	if decodeFirst(raw, &failed, "failed", "Failed") && event.Outcome == "" {
-		if failed {
-			event.Outcome = "failure"
-		} else {
-			event.Outcome = "success"
-		}
-	}
+	failedPresent := decodeFirst(raw, &failed, "failed", "Failed")
+	failureBody := ""
 	if failureRaw, ok := firstRaw(raw, "failure", "Failure", "error", "Error"); ok {
 		var failure map[string]json.RawMessage
 		if json.Unmarshal(failureRaw, &failure) == nil {
 			if event.StatusCode == 0 {
 				decodeFirst(failure, &event.StatusCode, "status_code", "StatusCode", "statusCode")
 			}
-			if event.Outcome == "" {
-				event.Outcome = "failure"
-			}
+			decodeFirst(failure, &failureBody, "body", "Body")
 		}
 	}
-	if event.Outcome == "" {
+	if event.StatusCode == 0 {
+		if match := failureStatusPattern.FindStringSubmatch(failureBody); len(match) == 2 {
+			event.StatusCode, _ = strconv.Atoi(match[1])
+		}
+	}
+	if failed || event.StatusCode >= 400 || strings.TrimSpace(failureBody) != "" {
+		event.Outcome = "failure"
+	} else if failedPresent {
 		event.Outcome = "success"
 	}
 	return event, nil
@@ -312,6 +327,21 @@ func decodeFirst(raw map[string]json.RawMessage, target any, keys ...string) boo
 		return false
 	}
 	return true
+}
+
+func decodeFirstNonEmptyString(raw map[string]json.RawMessage, target *string, keys ...string) bool {
+	for _, key := range keys {
+		value, ok := raw[key]
+		if !ok {
+			continue
+		}
+		var decoded string
+		if json.Unmarshal(value, &decoded) == nil && strings.TrimSpace(decoded) != "" {
+			*target = decoded
+			return true
+		}
+	}
+	return false
 }
 
 func firstRaw(raw map[string]json.RawMessage, keys ...string) (json.RawMessage, bool) {

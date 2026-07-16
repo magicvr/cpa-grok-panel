@@ -237,21 +237,30 @@ func (service *AccountsService) ApplyRequestedDemotion(authIndex string, targetP
 	if demotion.TargetPriority == nil {
 		demotion.TargetPriority = intPointer(targetPriority)
 	}
-	if demotion.BaselinePriority != nil {
-		if file.Priority == *demotion.TargetPriority && *demotion.BaselinePriority != *demotion.TargetPriority {
-			return service.markDemotionApplied(authIndex, file.Name)
+	if file.Priority <= *demotion.TargetPriority {
+		if demotion.BaselinePriority == nil {
+			demotion.BaselinePriority = intPointer(service.settings().DefaultRestorePriority)
 		}
+		if err := service.store.Update(func(snapshot *stateinfra.Snapshot) error {
+			state := snapshot.Accounts[authIndex]
+			state.ExactFileName = file.Name
+			demotion.State = "applied"
+			demotion.FailureCode = ""
+			state.Demotion = demotion
+			snapshot.Accounts[authIndex] = state
+			return nil
+		}); err != nil {
+			return &AccountError{Code: "state_write_failed", Message: err.Error(), HTTPStatus: 503, Retryable: true}
+		}
+		return nil
+	}
+	if demotion.BaselinePriority != nil {
 		if file.Priority != *demotion.BaselinePriority {
 			err := &AccountError{Code: "priority_superseded", Message: "降权前优先级已变化", HTTPStatus: 409}
 			service.recordDemotionFailure(authIndex, err.Code, true)
 			return err
 		}
 	} else {
-		if file.Priority == *demotion.TargetPriority {
-			err := &AccountError{Code: "priority_already_target", Message: "账号已处于目标优先级，无法保存可靠基线", HTTPStatus: 409}
-			service.recordDemotionFailure(authIndex, err.Code, true)
-			return err
-		}
 		demotion.BaselinePriority = intPointer(file.Priority)
 		if err := service.store.Update(func(snapshot *stateinfra.Snapshot) error {
 			state := snapshot.Accounts[authIndex]
@@ -260,7 +269,8 @@ func (service *AccountsService) ApplyRequestedDemotion(authIndex string, targetP
 			snapshot.Accounts[authIndex] = state
 			return nil
 		}); err != nil {
-			return err
+			service.recordDemotionFailure(authIndex, "state_write_failed", true)
+			return &AccountError{Code: "state_write_failed", Message: err.Error(), HTTPStatus: 503, Retryable: true}
 		}
 	}
 	document, err := service.host.GetAuthFile(authIndex)
@@ -281,13 +291,17 @@ func (service *AccountsService) ApplyRequestedDemotion(authIndex string, targetP
 	verified, err := service.resolveExact(authIndex, file.Name)
 	if err != nil {
 		service.recordDemotionFailure(authIndex, "demotion_verify_failed", true)
-		return err
+		return &AccountError{Code: "demotion_verify_failed", Message: err.Error(), HTTPStatus: 502, Retryable: true}
 	}
 	if verified.Priority != *demotion.TargetPriority {
 		service.recordDemotionFailure(authIndex, "demotion_verify_failed", true)
 		return &AccountError{Code: "write_verification_failed", Message: "降权写后校验不一致", HTTPStatus: 502, Retryable: true}
 	}
-	return service.markDemotionApplied(authIndex, file.Name)
+	if err := service.markDemotionApplied(authIndex, file.Name); err != nil {
+		service.recordDemotionFailure(authIndex, "state_write_failed", true)
+		return &AccountError{Code: "state_write_failed", Message: err.Error(), HTTPStatus: 503, Retryable: true}
+	}
+	return nil
 }
 
 func (service *AccountsService) ClearState(authIndex, exactFileName string) error {
