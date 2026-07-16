@@ -6,7 +6,7 @@
       "name": "Grok 账号面板",
       "description": "xAI OAuth 账号优先级冷却恢复、安全删除与受控写操作面板",
       "author": "magicvr",
-      "version": "0.3.6",
+      "version": "0.3.7",
       "repository": "https://github.com/magicvr/cpa-grok-panel",
       "homepage": "https://github.com/magicvr/cpa-grok-panel",
       "license": "MIT",
