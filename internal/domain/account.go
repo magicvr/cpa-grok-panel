@@ -20,9 +20,20 @@ type AuthFile struct {
 	StatusMessage string `json:"status_message,omitempty"`
 }
 
+type QuotaSnapshot struct {
+	Plan      string    `json:"plan,omitempty"`
+	Used      float64   `json:"used,omitempty"`
+	Limit     float64   `json:"limit,omitempty"`
+	Unit      string    `json:"unit,omitempty"`
+	Source    string    `json:"source,omitempty"`
+	FetchedAt time.Time `json:"fetched_at,omitempty"`
+	Error     string    `json:"error,omitempty"`
+}
+
 type AccountState struct {
 	ExactFileName string        `json:"exact_file_name,omitempty"`
 	Usage         UsageCounters `json:"usage"`
+	Quota         QuotaSnapshot `json:"quota"`
 	Failure       FailureState  `json:"failure"`
 	Demotion      DemotionState `json:"demotion"`
 	FirstSeenAt   time.Time     `json:"first_seen_at,omitempty"`
@@ -66,6 +77,7 @@ type AccountView struct {
 	Provider      string        `json:"provider"`
 	AuthType      string        `json:"auth_type"`
 	Usage         UsageCounters `json:"usage"`
+	Quota         QuotaSnapshot `json:"quota"`
 	Failure       FailureState  `json:"failure"`
 	Demotion      DemotionState `json:"demotion"`
 	IsDemoted     bool          `json:"is_demoted"`
@@ -100,11 +112,15 @@ func ProjectAccount(file AuthFile, state AccountState, now time.Time, demotionPr
 	}
 	demotion := state.Demotion.Normalized()
 	isDemoted := file.Priority <= demotionPriority
+	quota := state.Quota
+	if strings.TrimSpace(quota.Plan) == "" {
+		quota.Plan = "unknown"
+	}
 	return AccountView{
 		AuthIndex: file.AuthIndex, ExactFileName: file.Name, Email: file.Email,
 		Enabled: !file.Disabled, Unavailable: file.Unavailable, Status: file.Status,
 		StatusMessage: file.StatusMessage, Priority: file.Priority, Provider: "xai",
-		AuthType: "oauth", Usage: usage, Failure: state.Failure, Demotion: demotion,
+		AuthType: "oauth", Usage: usage, Quota: quota, Failure: state.Failure, Demotion: demotion,
 		IsDemoted: isDemoted, CanRestore: isDemoted,
 		LastSeenAt: now.UTC(), WriteMode: "managed",
 	}

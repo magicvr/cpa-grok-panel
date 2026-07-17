@@ -21,4 +21,5 @@ type Settings struct {
 	HealthStaleAfterSeconds    int               `json:"health_stale_after_seconds"`
 	OperationTimeoutSeconds    int               `json:"operation_timeout_seconds"`
 	WriteMode                  string            `json:"write_mode"`
+	FreeUserDailyTokenLimit    uint64            `json:"free_user_daily_token_limit"`
 }

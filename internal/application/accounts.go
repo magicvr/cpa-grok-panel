@@ -82,7 +82,10 @@ func (service *AccountsService) List(search string) ([]domain.AccountView, time.
 		if search != "" && !containsFold(file.AuthIndex, search) && !containsFold(file.Name, search) && !containsFold(file.Email, search) {
 			continue
 		}
-		items = append(items, domain.ProjectAccount(file, snapshot.Accounts[file.AuthIndex], now, settings.DemotionPriority))
+		state := snapshot.Accounts[file.AuthIndex]
+		// Display-only overlay for Free/unknown usage bars; cached plan is preserved forever until manual refresh.
+		state.Quota = DisplayQuota(state, settings.FreeUserDailyTokenLimit)
+		items = append(items, domain.ProjectAccount(file, state, now, settings.DemotionPriority))
 	}
 	service.decorateBotFlags(items, settings.BatchOperationConcurrency)
 	sort.Slice(items, func(i, j int) bool {
@@ -602,6 +605,11 @@ func (service *AccountsService) resolveByAuthIndex(authIndex string) (domain.Aut
 		}
 	}
 	return domain.AuthFile{}, &AccountError{Code: "account_not_found", Message: "账号不存在", HTTPStatus: 404}
+}
+
+// localQuotaFallback kept as alias for older tests; prefer DisplayQuota.
+func localQuotaFallback(state domain.AccountState, limit uint64) domain.QuotaSnapshot {
+	return DisplayQuota(state, limit)
 }
 
 func (service *AccountsService) project(file domain.AuthFile) domain.AccountView {
