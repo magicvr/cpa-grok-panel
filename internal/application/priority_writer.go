@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -22,7 +23,7 @@ type ManagementPriorityWriter struct {
 	client   *http.Client
 }
 
-func NewManagementPriorityWriter(baseURL, key string, timeout time.Duration) (*ManagementPriorityWriter, error) {
+func NewManagementPriorityWriter(baseURL, key string, timeout time.Duration) (PriorityWriter, error) {
 	baseURL = strings.TrimSpace(baseURL)
 	key = strings.TrimSpace(key)
 	if baseURL == "" || key == "" {
@@ -49,6 +50,19 @@ func NewManagementPriorityWriter(baseURL, key string, timeout time.Duration) (*M
 	return &ManagementPriorityWriter{
 		endpoint: parsed.String(), key: key, client: &http.Client{Timeout: timeout},
 	}, nil
+}
+
+func isNilPriorityWriter(writer PriorityWriter) bool {
+	if writer == nil {
+		return true
+	}
+	value := reflect.ValueOf(writer)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 func (writer *ManagementPriorityWriter) SetPriority(exactFileName string, priority int) error {

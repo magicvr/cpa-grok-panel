@@ -40,6 +40,9 @@ func NewAccountsService(host AuthHost, store *stateinfra.Store, now func() time.
 func (service *AccountsService) SetPriorityWriter(writer PriorityWriter) {
 	service.write.Lock()
 	defer service.write.Unlock()
+	if isNilPriorityWriter(writer) {
+		writer = nil
+	}
 	service.priorityWriter = writer
 }
 

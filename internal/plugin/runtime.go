@@ -124,7 +124,9 @@ func (runtime *Runtime) ensureReady(dataDir string) error {
 		_ = store.Close()
 		return fmt.Errorf("configure Management priority writer: %w", err)
 	}
-	accounts.SetPriorityWriter(priorityWriter)
+	if priorityWriter != nil {
+		accounts.SetPriorityWriter(priorityWriter)
+	}
 	worker := application.NewDemotionWorker(accounts, store, settings)
 	cooldownWorker := application.NewCooldownRestoreWorker(accounts, store)
 	usageResetWorker := application.NewUsageResetWorker(store, settings)
