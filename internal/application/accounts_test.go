@@ -413,6 +413,67 @@ func TestApplyRequestedDemotionPrefersConfiguredPriorityWriter(t *testing.T) {
 	}
 }
 
+func TestApplyRequestedDemotionWithDisabledPriorityWriterUsesHostSave(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	baseline := 5
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-disabled-writer"] = domain.AccountState{Demotion: domain.DemotionState{State: "requested", BaselinePriority: &baseline}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	host := &accountHost{
+		files: []domain.AuthFile{xaiFile("idx-disabled-writer", "xai-disabled-writer.json", baseline)},
+		documents: map[string]cpaabi.AuthDocument{
+			"idx-disabled-writer": {"priority": baseline, "disabled": false, "refresh_token": "keep-me"},
+		},
+	}
+	writer, err := application.NewManagementPriorityWriter("", "", time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := application.NewAccountsService(host, store, time.Now)
+	service.SetPriorityWriter(writer)
+
+	if err := service.ApplyRequestedDemotion("idx-disabled-writer", -100); err != nil {
+		t.Fatal(err)
+	}
+	if host.savedName != "xai-disabled-writer.json" || host.savedDocument["refresh_token"] != "keep-me" {
+		t.Fatalf("host.auth.save name=%q document=%#v", host.savedName, host.savedDocument)
+	}
+	if host.files[0].Priority != -100 {
+		t.Fatalf("priority=%d", host.files[0].Priority)
+	}
+	if state := store.View().Accounts["idx-disabled-writer"].Demotion.State; state != "applied" {
+		t.Fatalf("state=%s", state)
+	}
+}
+
+func TestSetPriorityWriterTreatsTypedNilAsDisabled(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	baseline := 5
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-typed-nil"] = domain.AccountState{Demotion: domain.DemotionState{State: "requested", BaselinePriority: &baseline}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	host := &accountHost{
+		files:     []domain.AuthFile{xaiFile("idx-typed-nil", "xai-typed-nil.json", baseline)},
+		documents: map[string]cpaabi.AuthDocument{"idx-typed-nil": {"priority": baseline}},
+	}
+	service := application.NewAccountsService(host, store, time.Now)
+	var writer *recordingPriorityWriter
+	service.SetPriorityWriter(writer)
+
+	if err := service.ApplyRequestedDemotion("idx-typed-nil", -100); err != nil {
+		t.Fatal(err)
+	}
+	if host.savedName != "xai-typed-nil.json" {
+		t.Fatalf("host.auth.save name=%q", host.savedName)
+	}
+}
+
 func TestApplyRequestedDemotionAlreadyAtTargetMarksApplied(t *testing.T) {
 	store := stateinfra.OpenMemory(time.Now().UTC())
 	settings := application.DefaultSettings()
