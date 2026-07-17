@@ -79,6 +79,8 @@ type Meta struct {
 	WriteMode           string        `json:"write_mode"`
 	Status              string        `json:"status"`
 	StateStatus         string        `json:"state_status"`
+	StateBackend        string        `json:"state_backend,omitempty"`
+	DataDir             string        `json:"data_dir,omitempty"`
 	StatisticsStartedAt time.Time     `json:"statistics_started_at"`
 	DedupeMode          string        `json:"dedupe_mode"`
 	ConditionalWrite    bool          `json:"conditional_write"`
@@ -91,13 +93,17 @@ type Unavailable struct {
 	Reason  string `json:"reason"`
 }
 
-func BuildMeta(snapshot stateinfra.Snapshot) Meta {
+func BuildMeta(snapshot stateinfra.Snapshot, stateInfo ...stateinfra.Info) Meta {
 	dedupeMode := "exact"
 	if snapshot.EventDedupe.WeakModeUsed || len(snapshot.EventDedupe.ExactIDs) == 0 {
 		dedupeMode = "weak"
 	}
+	info := stateinfra.Info{Status: "healthy"}
+	if len(stateInfo) > 0 {
+		info = stateInfo[0]
+	}
 	return Meta{PluginID: stateinfra.PluginID, PluginVersion: stateinfra.PluginVersion, APIVersion: 1,
-		WriteMode: "managed", Status: "ready", StateStatus: "healthy",
+		WriteMode: "managed", Status: "ready", StateStatus: info.Status, StateBackend: info.Backend, DataDir: info.DataDir,
 		StatisticsStartedAt: snapshot.StatisticsStartedAt, DedupeMode: dedupeMode, ConditionalWrite: false,
 		Capabilities:        []string{"usage", "auth_list", "auth_get", "auth_save", "management_routes", "set_enabled", "demote", "restore_priority", "auto_demotion", "cooldown_restore", "safe_delete", "daily_usage_reset"},
 		UnavailableFeatures: []Unavailable{{Feature: "checks", Reason: "host.auth.invoke 未提供"}}}

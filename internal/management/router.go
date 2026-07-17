@@ -75,7 +75,7 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 	case method == "GET" && isPanelPath(path):
 		return htmlResponse(web.PanelHTML)
 	case method == "GET" && matchesPath(path, "/meta"):
-		return jsonResponse(200, application.BuildMeta(router.store.View()))
+		return jsonResponse(200, application.BuildMeta(router.store.View(), router.store.Info()))
 	case method == "GET" && matchesPath(path, "/settings"):
 		return jsonResponse(200, router.settingsResponse())
 	case (method == "PUT" || method == "PATCH") && matchesPath(path, "/settings"):

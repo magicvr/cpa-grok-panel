@@ -94,6 +94,16 @@ func TestParseUsageEventFailureBodyAndUnknownOutcome(t *testing.T) {
 	}
 }
 
+func TestUsageServiceRejectsEmptyAuthIndex(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	service := application.NewUsageService(store, time.Now)
+
+	result, err := service.Handle(domain.UsageEvent{AuthIndex: "  ", Outcome: "success"})
+	if err == nil || result.Accepted || len(store.View().Accounts) != 0 {
+		t.Fatalf("result=%+v err=%v accounts=%+v", result, err, store.View().Accounts)
+	}
+}
+
 func TestUsageServiceExactDedupe(t *testing.T) {
 	dir := t.TempDir()
 	store, err := stateinfra.Open(dir, time.Now().UTC())

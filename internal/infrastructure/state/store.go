@@ -18,7 +18,7 @@ import (
 const (
 	SchemaVersion = 1
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.3.9"
+	PluginVersion = "0.3.10"
 )
 
 type DedupeState struct {
@@ -46,6 +46,12 @@ type Store struct {
 	path     string
 	lockFile *os.File
 	snapshot Snapshot
+}
+
+type Info struct {
+	Status  string
+	Backend string
+	DataDir string
 }
 
 func Open(dir string, now time.Time) (*Store, error) {
@@ -166,6 +172,19 @@ func (store *Store) View() Snapshot {
 	store.mu.RLock()
 	defer store.mu.RUnlock()
 	return cloneSnapshot(store.snapshot)
+}
+
+func (store *Store) Info() Info {
+	store.mu.RLock()
+	defer store.mu.RUnlock()
+	if store.path == "" {
+		return Info{Status: "memory", Backend: "memory"}
+	}
+	status := "healthy"
+	if store.lockFile == nil {
+		status = "degraded"
+	}
+	return Info{Status: status, Backend: "file", DataDir: store.dir}
 }
 
 func OpenMemory(now time.Time) *Store {

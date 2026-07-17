@@ -8,7 +8,7 @@
 
 ---
 
-`cpa-grok-panel` 是 CLIProxyAPI（CPA）的 Grok/xAI OAuth 账号运维面板。v0.3.9 新增“优先级冷却恢复”：降权后按 6h → 12h → 24h 阶梯自动恢复，明确标记为机器人的账号除外。
+`cpa-grok-panel` 是 CLIProxyAPI（CPA）的 Grok/xAI OAuth 账号运维面板。v0.3.10 新增“优先级冷却恢复”：降权后按 6h → 12h → 24h 阶梯自动恢复，明确标记为机器人的账号除外。
 
 插件 id：`cpa-grok-panel`。
 
@@ -57,7 +57,7 @@ https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
 | --- | --- |
 | `id` | `cpa-grok-panel` |
 | `name` | Grok 账号面板 |
-| `version` | 与最新 Release 对齐（例如 `0.3.9`） |
+| `version` | 与最新 Release 对齐（例如 `0.3.10`） |
 | `repository` | `https://github.com/magicvr/cpa-grok-panel` |
 
 可用浏览器或下面命令确认目录可访问、内容正确：
@@ -96,7 +96,7 @@ plugins:
 1. 打开 CPA 管理页（例如 `http://<cpa-host>:<port>/management.html`），使用 management key 登录。
 2. 进入 **插件 / 插件商店**（Plugin Store）相关页面。
 3. 刷新商店列表后，应能看到 **Grok 账号面板** / id **`cpa-grok-panel`**。
-4. 选择需要的版本（一般选最新，例如 `0.3.9`）并点击安装。
+4. 选择需要的版本（一般选最新，例如 `0.3.10`）并点击安装。
 5. 安装成功后，**完整停止并重新启动整个 CPA 进程**。  
    本插件是原生 `.so`：仅热更新、只重载配置或不杀进程替换动态库，可能导致仍加载旧库或注册状态异常。
 
@@ -107,7 +107,7 @@ POST /v0/management/plugin-store/cpa-grok-panel/install
 Authorization: Bearer <management-key>
 Content-Type: application/json
 
-{"version":"0.3.9"}
+{"version":"0.3.10"}
 ```
 
 版本号请与 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 上已发布的 tag（去掉前缀 `v` 后的 semver）一致。
@@ -137,7 +137,7 @@ Content-Type: application/json
 
 1. 打开 [GitHub Releases](https://github.com/magicvr/cpa-grok-panel/releases)，下载当前平台包，例如：
 
-   - `cpa-grok-panel_0.3.9_linux_amd64.zip`
+   - `cpa-grok-panel_0.3.10_linux_amd64.zip`
    - （可选校验）同 Release 下的 `checksums.txt`
 
 2. 在 CPA **插件管理**中选择本地安装 / 上传该 zip。  
@@ -244,4 +244,4 @@ CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
 go test ./...
 ```
 
-架构、CPA 集成、接口和持久化等设计资料仍保留在 [docs/design/](docs/design/)；README 以当前 v0.3.9 的可安装版本为准。
+架构、CPA 集成、接口和持久化等设计资料仍保留在 [docs/design/](docs/design/)；README 以当前 v0.3.10 的可安装版本为准。
