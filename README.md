@@ -4,15 +4,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/platform-Linux%20amd64-blue)](https://github.com/magicvr/cpa-grok-panel/releases)
 
-CLIProxyAPI（CPA）的 **Grok / xAI OAuth 账号运维面板**。
+**CLIProxyAPI（CPA）** 的 Grok / xAI OAuth 账号运维面板。
 
-在 CPA 管理页中集中查看账号状态、统计真实 Token 用量，并安全地做启用 / 停用 / 降权 / 删除等操作。v0.4.0 起支持**优先级冷却恢复**：降权后按 `6h → 12h → 24h` 阶梯自动恢复（明确标记为机器人的账号除外）。
-
-插件 id：`cpa-grok-panel`
+在 CPA 管理页集中查看账号状态、Token 用量与套餐缓存，并安全地启用 / 停用 / 降权 / 删除账号。  
+插件 id：`cpa-grok-panel` · 当前文档对应 **v0.4.0**（Linux amd64）。
 
 ## 友链
 
-> 感谢 [LINUX DO](https://linux.do/) 社区对开源项目的支持。本项目的开发与推广得益于社区环境，在此致敬。
+> 感谢 [LINUX DO](https://linux.do/) 社区对开源项目的支持。
 
 [![LINUX DO](https://img.shields.io/badge/LINUX%20DO-社区友链-0066cc)](https://linux.do/)
 
@@ -22,49 +21,53 @@ CLIProxyAPI（CPA）的 **Grok / xAI OAuth 账号运维面板**。
 
 - [功能概览](#功能概览)
 - [安装](#安装)
-  - [前置条件](#前置条件)
-  - [方式 A：商店源安装（推荐）](#安装方式-a推荐把本仓库-registry-加入-cpa-插件商店)
-  - [方式 B：手动安装](#安装方式-b手动下载-github-release-安装)
-  - [安装方式对照](#安装方式对照)
 - [使用](#使用)
 - [设置与环境变量](#设置与环境变量)
-- [开发与构建](#开发与构建)
+- [开发与发版](#开发与发版)
 - [相关文档](#相关文档)
 
 ## 功能概览
 
 | 能力 | 说明 |
 | --- | --- |
-| **账号列表** | 读取 CPA 中的 xAI OAuth 账号，展示机器人标记、启停、优先级、请求数与 Token 用量 |
-| **用量统计** | 累计 CPA `usage` 回调中的真实 input / output / total token，不做内容估算 |
+| **账号列表** | 展示 xAI OAuth 账号的套餐、启停、机器人标记、优先级、请求数与用量 |
+| **套餐（手动）** | 管理员手动刷新；默认 `unknown`；失败记 `unknown`；成功且非 SuperGrok / SuperGrok Heavy → `Free`；结果持久缓存，仅下次手动刷新覆盖 |
+| **用量列** | 展示 `用量/限额` + 进度条；付费且有官方限额时用 billing；Free / 无线额时用本插件日 token 与 Free 日限额（默认 2M） |
+| **用量统计** | 累计 CPA `usage` 回调中的真实 input / output / total token |
 | **账号操作** | 单账号与批量：启用、停用、降权、解除降权、设置优先级 |
-| **自动降权** | 401/403 始终计入连败；429 / 5xx 可选计入；默认连续 3 次后降权 |
-| **优先级冷却恢复** | 默认开启；降权后按 6h → 12h → 24h（封顶）恢复并清空失败诊断；再次降权递增冷却 |
-| **安全删除** | 删除前重新校验 `auth_index` 与精确文件名映射；成功后清理插件本地状态 |
-| **每日清零** | 可按服务器本地时区每天清零请求数、Token 累计与连续失败计数 |
-| **持久化设置** | 面板设置与统计状态写入插件 state，重启后继续生效 |
+| **自动降权** | 401/403 始终计入连败；429 / 5xx 可选；默认连续 3 次后降权 |
+| **优先级冷却恢复** | 默认开启；降权后 `6h → 12h → 24h` 阶梯恢复并清空诊断；机器人账号不自动恢复 |
+| **安全删除** | 删除前校验 `auth_index` 与精确文件名；成功后清理插件本地 state |
+| **每日清零** | 可按服务器本地时区每天清零请求数、Token 累计与连败计数 |
+| **持久化** | 设置、统计、套餐缓存写入插件 state，重启后保留 |
 
-**当前未实现**：主动健康检查、套餐核验、Responses 实测。CPA 目前未向插件提供 `host.auth.invoke`，面板不会伪造这些结果。
+**不做的事**
+
+- 不自动轮询套餐 / 额度（避免打爆上游）
+- 不伪造健康检查、Responses 实测结果
+- Free 日限额是运维估算分母，不是 xAI 官方账本
 
 ## 安装
 
 ### 前置条件
 
-- CPA 已启用插件（`plugins.enabled: true`），并支持原生插件 ABI、Management API 与 usage 回调
-- 持有有效的 CPA management key
-- 运行平台为 **Linux amd64**（当前仅发布该平台包）
-- CPA 主机能访问 GitHub（`api.github.com`、`github.com`、`raw.githubusercontent.com` 及 Release 资源域名）。出网不稳时，请在 CPA 配置 `proxy-url` 后再走方式 A
+- CPA 已启用插件（`plugins.enabled: true`），支持原生插件 ABI、Management API、usage 回调
+- 有效的 CPA management key
+- 平台：**Linux amd64**
+- 方式 A 需要 CPA 主机能访问 GitHub（`api.github.com`、`github.com`、`raw.githubusercontent.com`、Release 资源域名）。出网不稳时配置 `proxy-url`
 
-### 安装方式 A（推荐）：把本仓库 registry 加入 CPA 插件商店
+### 安装方式 A（推荐）：插件商店
 
-向 CPA 注册商店目录源（`store-sources`），让插件商店能**列出**本插件；安装时 CPA 再按 `repository` 从 **GitHub Releases** 拉取 zip。
+商店目录用 `registry.json` 列出插件；安装时 CPA 从 GitHub Releases 下载 **zip 资产**（不是裸 `.so`）。
 
 ```text
 store-sources  →  registry.json（目录 / 元数据）
-plugin.repository  →  GitHub Releases（真正下载 .so）
+plugin.repository  →  GitHub Releases 资产
+  cpa-grok-panel_<version>_linux_amd64.zip   ← 商店必需
+  （zip 根目录内为 cpa-grok-panel.so）
 ```
 
-#### 1. 商店目录 URL
+#### 1. 商店源 URL
 
 ```text
 https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
@@ -74,198 +77,226 @@ https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
 | --- | --- |
 | `id` | `cpa-grok-panel` |
 | `name` | Grok 账号面板 |
-| `version` | 与最新 Release 对齐（例如 `0.4.0`） |
+| `version` | 与最新 Release 对齐（如 `0.4.0`） |
 | `repository` | `https://github.com/magicvr/cpa-grok-panel` |
-
-确认可访问：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
 ```
 
-#### 2. 在 CPA 配置中添加 `store-sources`
+#### 2. 写入 CPA `store-sources`
 
-编辑 `config.yaml`（路径以你的部署为准），合并如下内容：
+编辑 `config.yaml`（路径以你的部署为准），**追加**源，不要整段覆盖其它源：
 
 ```yaml
 plugins:
   enabled: true
-  # dir: plugins          # 保持现有插件目录即可
   store-sources:
-    # 可与其它商店源并存；追加本 URL，勿整段覆盖
     - https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
   configs:
     cpa-grok-panel:
       enabled: true
 ```
 
-- `store-sources` 为字符串数组，每项是 registry.json 的 HTTPS URL
-- 已有其它源时**追加**本 URL
-- `configs.cpa-grok-panel.enabled: true` 表示安装后允许启用；若 CPA 安装时会自动写入，也可先只加 `store-sources`
-- 修改后按 CPA 版本要求**重载配置或重启**，使商店源生效
+- `store-sources`：registry.json 的 HTTPS URL 列表
+- 管理页若有「插件商店源」输入框，粘贴同一 URL 即可
+- 改完后按 CPA 要求**重载配置或重启**，商店源才生效
 
-> 管理页若提供「插件商店源 / store sources」设置，粘贴同一 URL 即可，效果等价。以你当前 CPA 管理页字段为准。
+#### 3. 安装
 
-#### 3. 在插件商店安装
+1. 打开 CPA 管理页（如 `http://<cpa-host>:<port>/management.html`），用 management key 登录  
+2. **插件 / 插件商店** → 找到 **Grok 账号面板**（id `cpa-grok-panel`）  
+3. 选择版本（一般最新，如 `0.4.0`）并安装  
+4. **完整停止并重新启动整个 CPA 进程**（原生 `.so`：热更新 / 只重载配置可能仍加载旧库）
 
-1. 打开 CPA 管理页（例如 `http://<cpa-host>:<port>/management.html`），用 management key 登录
-2. 进入 **插件 / 插件商店**
-3. 刷新后应看到 **Grok 账号面板** / id **`cpa-grok-panel`**
-4. 选择版本（一般选最新，例如 `0.4.0`）并安装
-5. 安装成功后 **完整停止并重新启动整个 CPA 进程**  
-   本插件是原生 `.so`：仅热更新、只重载配置或不杀进程替换动态库，可能导致仍加载旧库或注册异常
-
-也可用 Management API（需已在商店目录中解析到该插件）：
+Management API 示例：
 
 ```http
 POST /v0/management/plugin-store/cpa-grok-panel/install
-Authorization: Bearer <management-key>
+Authorization: Bearer <management_key>
 Content-Type: application/json
 
 {"version":"0.4.0"}
 ```
 
-版本号请与 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 上已发布 tag 一致（去掉前缀 `v` 的 semver）。
+版本号为去掉 `v` 前缀的 semver，须与 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 已发布 tag 一致。
 
 #### 4. 打开面板
 
-- 管理页菜单：**Grok 账号**（侧栏出现时）
-- 或直接访问：
+- 侧栏菜单：**Grok 账号**
+- 或：`/v0/resource/plugins/cpa-grok-panel/panel`
 
-  ```text
-  /v0/resource/plugins/cpa-grok-panel/panel
-  ```
+### 安装方式 B：手动上传 Release zip
 
-#### 5. 方式 A 常见问题
+适合不改 `store-sources`、离线拷包或商店链路不通。
 
-| 现象 | 常见原因 | 处理 |
-| --- | --- | --- |
-| 商店搜不到 | 未写入 / 未生效 `store-sources`，或 URL 写错 | 核对 URL 与配置重载；`curl` 验证 registry.json |
-| 能列出但安装失败（GitHub 404） | 仓库不可见、Release 不存在、或 CPA 拿不到公开资源 | 确认仓库公开且对应版本已发 Release；检查出网 / 代理 |
-| 安装失败（403 / rate limit） | 未认证访问 GitHub API 配额或代理拦截 | 等待重试、配置 `proxy-url`、检查出口 IP |
-| 安装成功但 `registered: false` | 动态库未完整加载或 reconfigure 异常 | **完整重启 CPA**；再查 `GET /v0/management/plugins` |
-| 面板仍是旧版本 | 热替换 `.so` 或浏览器缓存 | 完整重启 + 浏览器强刷；看面板副标题版本号 |
-
-### 安装方式 B：手动下载 GitHub Release 安装
-
-适合：暂不改 `store-sources`、离线拷包，或商店链路不通。
-
-1. 打开 [GitHub Releases](https://github.com/magicvr/cpa-grok-panel/releases)，下载平台包，例如：
-   - `cpa-grok-panel_0.4.0_linux_amd64.zip`
-   - （可选）同 Release 下的 `checksums.txt`
-2. 在 CPA **插件管理**中本地安装 / 上传该 zip  
-   **不要**改压缩包内部结构：包根目录应直接是 `cpa-grok-panel.so`
-3. 安装完成后 **完整停止并重新启动 CPA**
-4. 打开面板（路径与方式 A 相同）
+1. 在 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 下载  
+   - **`cpa-grok-panel_0.4.0_linux_amd64.zip`**（商店与手动安装都用这个名字）  
+   - （可选）`checksums.txt`  
+2. CPA **插件管理**里本地安装 / 上传该 zip  
+   - zip **根目录**必须是 `cpa-grok-panel.so`，不要改包内结构  
+3. **完整重启 CPA**  
+4. 打开面板（路径同方式 A）
 
 ### 安装方式对照
 
-| | 方式 A（商店源） | 方式 B（手动包） |
+| | 方式 A（商店） | 方式 B（手动 zip） |
 | --- | --- | --- |
-| 改 CPA 配置 | 是：追加 `store-sources` | 否 |
-| 升级 | 商店内选版本 | 每次手动下新 zip |
-| 出网 | 需访问 GitHub（目录 + Release） | 可在有网机器下载后拷到 CPA 主机 |
-| 安装后 | **完整重启 CPA** | 同左 |
+| 改配置 | 追加 `store-sources` | 否 |
+| 升级 | 商店选版本 | 每次下新 zip |
+| 出网 | 需访问 GitHub | 可先下载再拷到 CPA 主机 |
+| 装完后 | **完整重启 CPA** | 同左 |
+
+### 安装常见问题
+
+| 现象 | 常见原因 | 处理 |
+| --- | --- | --- |
+| 商店搜不到 | `store-sources` 未写 / 未生效 | 核对 URL，重载或重启；`curl` 测 registry |
+| `plugin_install_failed` 且 message 含 **`..._linux_amd64.zip not found`** | Release 只传了裸 `.so`，缺商店约定 zip 名 | 使用带 zip 的 Release；维护者见下方 [发版打包](#发版打包) |
+| 安装失败 GitHub 404 | 无对应 tag/Release 或仓库不可见 | 确认公开仓库与版本已发 Release |
+| 403 / rate limit | GitHub API 配额或代理拦截 | 配 `proxy-url`、换出口或稍后重试 |
+| `registered: false` / 菜单没有 | `.so` 未完整加载 | **完整重启 CPA**；查 `GET /v0/management/plugins` |
+| 面板版本旧 | 热替换或浏览器缓存 | 完整重启 + 强刷；看面板副标题版本号 |
 
 ## 使用
 
 ### 首次打开
 
-进入面板 **设置** 页，填写 CPA management key 并保存。密钥只写入当前浏览器 `localStorage`，不进插件 state；清理浏览器数据或换浏览器后需重新填写。
+进入 **设置**，填写 CPA management key 并保存。密钥只在当前浏览器 `localStorage`，不写插件 state；清站点数据或换浏览器需重填。
 
 ### 账号列表
 
-- 按文件名搜索；按启停、是否降权、机器人检测结果筛选
-- 分页 20 / 50 / 100；可跳转首页、末页或指定页
-- 可按账号文件、状态、机器人、优先级、总 Token、成功 / 失败数排序
-- 顶部汇总：账号数、已降权数、成功 / 失败请求数、累计 Token
-- 「已降权」判定：`priority <= demotion_priority`
+- 搜索文件名；按启停、是否降权、机器人结果筛选  
+- 分页 20 / 50 / 100  
+- 可排序：账号文件、**套餐**、状态、机器人、优先级、**用量**、成功 / 失败数  
+- 顶部汇总：账号数、已降权、成功 / 失败请求、累计 Token  
+- 「已降权」：`priority <= demotion_priority`
+
+### 套餐与用量
+
+| 项 | 行为 |
+| --- | --- |
+| **套餐列** | 显示缓存类型：`unknown` / `Free` / `SuperGrok` / `SuperGrok Heavy` |
+| **刷新套餐** | 行内「刷新套餐」或批量「批量刷新套餐」；**仅管理员手动**，列表自动刷新不会拉 billing |
+| **刷新成功** | SuperGrok / SuperGrok Heavy 按证据映射；其余成功结果记为 **Free** |
+| **刷新失败** | 记为 **unknown**（并保留错误信息供悬停查看） |
+| **缓存** | 写入插件 state；**直到下次手动刷新**才覆盖，列表轮询不会改写套餐类型 |
+| **用量列** | 上：`用量/限额`；下：进度条。Free 或无官方限额时：用量 = 本插件日 token，限额 = 设置「Free 用户日限额」（默认 2M） |
+
+技术路径：面板用 management key 调用 CPA `POST /v0/management/api-call`，以指定 `authIndex` 请求 Grok billing（与 CPA 自带配额页同源能力），再 `POST` 插件 `/accounts/quota` 落盘。
 
 ### 单账号操作
 
 | 操作 | 行为 |
 | --- | --- |
-| **启用 / 停用** | 通过 CPA Management API 修改运行状态 |
-| **降权** | 经 fields API 写入降权目标，成功后保存写前优先级作为恢复基线 |
-| **解除降权** | 优先恢复已记录基线；无可靠基线时用「默认恢复优先级」 |
-| **人工解除降权优待** | 立即恢复并将冷却阶梯重置为 0；机器人账号也可人工解除 |
-| **诊断清理** | 启停、手动降权 / 解除降权成功后清空连败、上次失败时间与失败码；自动降权保留诊断 |
-| **安全删除** | 须输入精确文件名确认；删除前重新核对映射，映射已变则跳过 |
+| **启用 / 停用** | Management status API |
+| **降权** | fields 写目标优先级，成功后保存写前优先级为基线 |
+| **解除降权** | 优先恢复基线；无基线用「默认恢复优先级」 |
+| **刷新套餐** | 见上表；不自动执行 |
+| **诊断清理** | 启停、手动降权 / 解除成功后清空连败与失败码；自动降权保留诊断 |
+| **安全删除** | 须输入精确文件名；映射变化则跳过 |
 
 ### 批量操作
 
-- 表头复选框选当前页；「全部选中」选当前筛选结果；「清除选中」取消全部
-- 支持批量启用、停用、降权、解除降权、设置优先级、安全删除
-- 批量设置优先级要求输入整数，经 fields API 按精确文件名写入
-- 有限并发执行，显示进度与成功 / 跳过 / 失败数；默认并发 10，可在设置页改为 1–50
-- 批量删除须输入 `DELETE`，且每个账号删除前再次校验映射
+- 表头选当前页；「全部选中」= 当前筛选结果；「清除选中」取消全部  
+- 支持：启用、停用、降权、解除降权、设置优先级、**刷新套餐**、安全删除  
+- 批量设置优先级：输入整数，经 fields API 按精确文件名写入  
+- 有限并发（默认 10，设置页 1–50）；套餐刷新并发更保守（约 3）  
+- 批量删除须输入 `DELETE`，且每项删除前再校验映射  
 
-### 自动刷新
+### 自动刷新（列表）
 
-默认开启，间隔 5 秒；仅在页面可见且无账号操作时执行。设置页可关闭，或将间隔调为 2–60 秒。关闭后账号页右上角显示手动「刷新」。
+默认开启、间隔 5 秒；仅页面可见且无账号操作时执行。**只刷新列表 / 设置 / meta，不刷新套餐。**  
+可在设置页关闭或改为 2–60 秒；关闭后账号页显示手动「刷新」。
 
-### 自动降权
+### 自动降权与冷却
 
-- 归因到账号的 HTTP 401/403 **始终**计入连续失败阈值（不再单次立即降权）
-- 可计数状态共用阈值，默认 `3`；429 / 5xx 默认不计数，可在设置页分别开启
-- 默认降权优先级 `-100`；`priority <= demotion_priority` 即视为已降权
-- 优先走可选的 Management fields HTTP 写入，未配置时回退 `host.auth.save`；两种路径都会重读账号列表校验
-- 已记录为 `applied` 但宿主优先级仍高于降权目标时，列表读取或 worker 周期会重新请求降权，并标记「记录陈旧 / host 未降权」
-- 「优先级冷却恢复」默认开启；自动恢复保留当前冷却阶梯，下次降权继续递增；**机器人账号不会自动恢复**
+- 401/403 始终计入连败阈值（默认 3）；429 / 5xx 默认不计，可分别开启  
+- 默认降权目标 `-100`；优先 Management fields，未配 `CPA_GROK_MANAGEMENT_*` 时回退 `host.auth.save`，写后 re-list 校验  
+- `applied` 但宿主优先级回漂时会重新请求降权，并提示「记录陈旧 / host 未降权」  
+- 冷却恢复默认开：`6h → 12h → 24h`；机器人账号不自动恢复，可人工解除  
 
 ### 每日清零
 
-默认关闭，默认时间 `00:00`，使用插件进程所在服务器本地时区。启用后清零请求数、Token 累计与连续失败计数。启动时若当天已过设定时间且尚未执行，会补执行一次。
+默认关，默认 `00:00`（插件进程本地时区）。清零请求数、Token 累计与连败。启动时若当天已过点且未执行，会补一次。
 
 ### 诊断列与机器人列
 
-**诊断列**直接显示连续归因失败次数、上次失败码，以及处理中 / 已降权 / 失败标记。悬停可查看上次失败时间、降权状态、目标优先级、恢复基线、触发时间与降权失败码。
+**诊断**：连败次数、上次失败码，以及处理中 / 已降权 / 失败标记；悬停看时间、目标、基线等。
 
-**机器人列**只读解析账号 `access_token` 的 JWT payload：
+**机器人**（只读解析 `access_token` JWT payload，不写 state）：
 
 | 显示 | 条件 |
 | --- | --- |
-| 红色「是」 | `bot_flag_source` 为数字 `1` 或字符串 `"1"` |
-| 绿色「否」 | 有效 token 且无标记 |
-| 灰色「—」 | 无 token、无效 JWT，或单账号凭据读取失败 |
-
-列表读凭据使用有限并发，**不会**写入插件 state。
+| 红「是」 | `bot_flag_source` 为 `1` / `"1"` |
+| 绿「否」 | 有效 token 且无标记 |
+| 灰「—」 | 无 token、无效 JWT 或读失败 |
 
 ## 设置与环境变量
 
-面板保存过设置后，以持久化 state 中的 settings 为准。以下 `CPA_GROK_*` 环境变量**仅在插件首次启动且尚无持久化设置时**作为初始值：
+面板保存过设置后，以 state 中的 settings 为准。下列环境变量**仅在首次启动且尚无持久化设置时**作初始值：
 
-| 环境变量 | 默认值 | 说明 |
+| 环境变量 | 默认 | 说明 |
 | --- | ---: | --- |
-| `CPA_GROK_BATCH_CONCURRENCY` | `10` | 浏览器批量操作并发，范围 1–50 |
-| `CPA_GROK_FAILURE_THRESHOLD` | `3` | 连续失败阈值，范围 1–100 |
-| `CPA_GROK_DEMOTION_PRIORITY` | `-100` | 自动 / 手动降权目标优先级 |
-| `CPA_GROK_DEFAULT_RESTORE_PRIORITY` | `0` | 无可靠基线时的恢复优先级 |
-| `CPA_GROK_COOLDOWN_RESTORE` | `true` | 是否默认开启优先级冷却恢复 |
-| `CPA_GROK_COUNT_429` | `false` | 是否将 429 计入连败阈值 |
-| `CPA_GROK_COUNT_5XX` | `false` | 是否将 5xx 计入连败阈值 |
-| `CPA_GROK_MANAGEMENT_BASE_URL` | 未设置 | 自动降权 / 冷却恢复使用的 CPA 地址，例如 `http://127.0.0.1:8317`；需与 key 同时设置 |
-| `CPA_GROK_MANAGEMENT_KEY` | 未设置 | 调用 Management fields API 的 key；未成对设置时回退 `host.auth.save` |
+| `CPA_GROK_BATCH_CONCURRENCY` | `10` | 批量操作并发 1–50 |
+| `CPA_GROK_FAILURE_THRESHOLD` | `3` | 连败阈值 1–100 |
+| `CPA_GROK_DEMOTION_PRIORITY` | `-100` | 降权目标优先级 |
+| `CPA_GROK_DEFAULT_RESTORE_PRIORITY` | `0` | 无基线时的恢复优先级 |
+| `CPA_GROK_COOLDOWN_RESTORE` | `true` | 是否默认开冷却恢复 |
+| `CPA_GROK_COUNT_429` | `false` | 429 是否计入连败 |
+| `CPA_GROK_COUNT_5XX` | `false` | 5xx 是否计入连败 |
+| `CPA_GROK_MANAGEMENT_BASE_URL` | 未设置 | 自动降权 / 冷却恢复用的 CPA 地址（如 `http://127.0.0.1:8317`） |
+| `CPA_GROK_MANAGEMENT_KEY` | 未设置 | Management fields 用 key；须与 BASE 成对，否则回退 `host.auth.save` |
 
-自动刷新与每日清零可在设置页直接改，无需重启。Management 地址与 key 由插件进程环境读取，变更后需重启。
+设置页还可改：自动刷新、每日清零、**Free 用户日限额（token，默认 2000000）** 等，热生效、无需重启。  
+`CPA_GROK_MANAGEMENT_*` 变更后需重启插件进程。
 
-## 开发与构建
+## 开发与发版
 
-插件使用 Go + CGO，以 `c-shared` 模式构建原生动态库。
+### 构建与测试
 
 ```bash
-# Linux amd64
+# Linux amd64 动态库
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
-  go build -buildmode=c-shared -o cpa-grok-panel.so .
+  go build -trimpath -ldflags='-s -w' -buildmode=c-shared -o dist/cpa-grok-panel.so .
 
-# 测试
 go test ./...
+```
+
+### 发版打包
+
+CPA 插件商店**只认**下列资产名（与历史 0.3.x 一致）：
+
+```text
+cpa-grok-panel_<semver>_linux_amd64.zip   # zip 根目录：cpa-grok-panel.so
+checksums.txt                             # 建议一并上传
+```
+
+**不要只上传裸 `cpa-grok-panel.so`**，否则商店会报：
+
+```text
+plugin_install_failed: release asset cpa-grok-panel_<ver>_linux_amd64.zip not found
+```
+
+一键打包：
+
+```bash
+./scripts/package_release.sh 0.4.0
+# 生成：
+#   dist/cpa-grok-panel_0.4.0_linux_amd64.zip
+#   dist/checksums.txt
+#   dist/cpa-grok-panel.so
+
+gh release upload v0.4.0 \
+  dist/cpa-grok-panel_0.4.0_linux_amd64.zip \
+  dist/checksums.txt \
+  --clobber
 ```
 
 ## 相关文档
 
-- 架构、CPA 集成、接口与持久化：[docs/design/](docs/design/)
-- 能力探测与评审记录：[docs/reviews/](docs/reviews/)
-- 发行版与变更：[Releases](https://github.com/magicvr/cpa-grok-panel/releases)
+- 架构与集成：[docs/design/](docs/design/)
+- 评审与探测：[docs/reviews/](docs/reviews/)
+- 发行版：[Releases](https://github.com/magicvr/cpa-grok-panel/releases)
 
-README 以当前 **v0.4.0** 可安装版本为准。
+README 以当前可安装版本 **v0.4.0** 为准。
