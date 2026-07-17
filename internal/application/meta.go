@@ -18,10 +18,10 @@ func DefaultSettings() Settings {
 	return Settings{Revision: 1, AutoRefreshEnabled: true, AutoRefreshIntervalSeconds: 5,
 		DailyUsageResetEnabled: false, DailyUsageResetTime: "00:00",
 		OperationConcurrency: 1, BatchOperationConcurrency: 10, AttributedFailureThreshold: 3,
-		// 401/403 are always immediate; this list is for documentation / future extras.
+		// 401/403 always count toward the shared consecutive-failure threshold.
 		AttributedFailureStatuses: []int{401, 403}, DemotionPriority: -100, ProtectionLevel: "strict",
 		DefaultRestorePriority: 0, CooldownRestoreEnabled: true,
-		// 429/5xx participate in the consecutive-threshold path (default off → only 401/403 auto-demote).
+		// 429/5xx participate in the same threshold path when enabled.
 		// Set CPA_GROK_COUNT_429 / CPA_GROK_COUNT_5XX=true to also demote after N consecutive such failures.
 		CountStatus429: false, CountStatus5XX: false,
 		DefaultTokenCapacity: 1_000_000, PerAccountTokenCapacity: map[string]uint64{},

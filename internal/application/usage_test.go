@@ -11,7 +11,7 @@ import (
 	stateinfra "github.com/magicvr/cpa-grok-panel/internal/infrastructure/state"
 )
 
-func TestParseCPAUsageRecordRequestsImmediateDemotion(t *testing.T) {
+func TestParseCPAUsageRecordCounts401TowardThreshold(t *testing.T) {
 	payload := []byte(`{"AuthIndex":"a1","Provider":"xai","AuthType":"oauth","Failed":true,"Failure":{"StatusCode":401,"Body":"unauthorized"},"Detail":{"InputTokens":0,"OutputTokens":0,"TotalTokens":0}}`)
 	event, err := application.ParseUsageEvent(payload)
 	if err != nil {
@@ -26,12 +26,18 @@ func TestParseCPAUsageRecordRequestsImmediateDemotion(t *testing.T) {
 
 	store := stateinfra.OpenMemory(time.Now().UTC())
 	service := application.NewUsageServiceWithDemotion(store, time.Now, application.DefaultSettings(), nil)
-	result, err := service.Handle(event)
-	if err != nil {
-		t.Fatal(err)
+	for hit := 1; hit <= 3; hit++ {
+		event.EventID = fmt.Sprintf("401-%d", hit)
+		result, err := service.Handle(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.DemotionRequested != (hit == 3) {
+			t.Fatalf("hit=%d result=%+v state=%+v", hit, result, store.View().Accounts["a1"].Demotion)
+		}
 	}
-	if !result.DemotionRequested || store.View().Accounts["a1"].Demotion.State != "requested" {
-		t.Fatalf("result=%+v state=%+v", result, store.View().Accounts["a1"].Demotion)
+	if store.View().Accounts["a1"].Demotion.State != "requested" {
+		t.Fatalf("state=%+v", store.View().Accounts["a1"].Demotion)
 	}
 }
 
@@ -132,7 +138,7 @@ func TestUsageServiceWeakDedupe(t *testing.T) {
 	}
 }
 
-func TestUsageDemotion401Immediate(t *testing.T) {
+func TestUsageDemotion401NeedsThreshold(t *testing.T) {
 	dir := t.TempDir()
 	store, err := stateinfra.Open(dir, time.Now().UTC())
 	if err != nil {
@@ -141,49 +147,53 @@ func TestUsageDemotion401Immediate(t *testing.T) {
 	defer store.Close()
 	settings := application.DefaultSettings()
 	settings.AttributedFailureThreshold = 3
+	settings.AttributedFailureStatuses = nil
+	settings.CountStatus429 = false
+	settings.CountStatus5XX = false
 	svc := application.NewUsageServiceWithDemotion(store, time.Now, settings, nil)
-	event := domain.UsageEvent{AuthIndex: "a1", Outcome: "failure", StatusCode: 401, Provider: "xai", OccurredAt: time.Now().UTC()}
-	result, err := svc.Handle(event)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.DemotionRequested {
-		t.Fatalf("401 should demote immediately: %+v state=%+v", result, store.View().Accounts["a1"].Demotion)
+	for hit := 1; hit <= 3; hit++ {
+		event := domain.UsageEvent{AuthIndex: "a1", EventID: fmt.Sprintf("401-%d", hit), Outcome: "failure", StatusCode: 401, Provider: "xai", OccurredAt: time.Now().UTC()}
+		result, err := svc.Handle(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.DemotionRequested != (hit == 3) {
+			t.Fatalf("hit=%d result=%+v state=%+v", hit, result, store.View().Accounts["a1"].Demotion)
+		}
 	}
 }
 
-func TestUsageDemotion401CanRequestAgainAfterApplied(t *testing.T) {
+func TestAppliedDemotionPriorityDriftReconcilesToRequested(t *testing.T) {
 	store := stateinfra.OpenMemory(time.Now().UTC())
+	baseline, target := 0, -100
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["repeat-401"] = domain.AccountState{
+			ExactFileName: "xai-repeat.json",
+			Failure:       domain.FailureState{ConsecutiveAttributedFailures: 3, LastFailureCode: "http_401"},
+			Demotion:      domain.DemotionState{State: "applied", BaselinePriority: &baseline, TargetPriority: &target},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	host := &accountHost{
 		files:     []domain.AuthFile{xaiFile("repeat-401", "xai-repeat.json", 0)},
 		documents: map[string]cpaabi.AuthDocument{"repeat-401": {"priority": 0, "disabled": false}},
 	}
-	settings := application.DefaultSettings()
-	usage := application.NewUsageServiceWithDemotion(store, time.Now, settings, nil)
-	accounts := application.NewAccountsService(host, store, time.Now, settings)
+	accounts := application.NewAccountsService(host, store, time.Now, application.DefaultSettings())
 
-	first := domain.UsageEvent{AuthIndex: "repeat-401", EventID: "401-1", Outcome: "failure", StatusCode: 401, Provider: "xai", AuthType: "oauth", OccurredAt: time.Now().UTC()}
-	if result, err := usage.Handle(first); err != nil || !result.DemotionRequested {
-		t.Fatalf("first result=%+v err=%v", result, err)
-	}
-	if err := accounts.ApplyRequestedDemotion("repeat-401", settings.DemotionPriority); err != nil {
+	if _, _, err := accounts.List(""); err != nil {
 		t.Fatal(err)
 	}
-	if host.files[0].Priority != settings.DemotionPriority || store.View().Accounts["repeat-401"].Demotion.State != "applied" {
+	state := store.View().Accounts["repeat-401"]
+	if state.Demotion.State != "requested" || state.Demotion.FailureCode != "priority_drift" {
+		t.Fatalf("state=%+v", state)
+	}
+	if err := accounts.ApplyRequestedDemotion("repeat-401", target); err != nil {
+		t.Fatal(err)
+	}
+	if host.files[0].Priority != target || store.View().Accounts["repeat-401"].Demotion.State != "applied" {
 		t.Fatalf("priority=%d state=%+v", host.files[0].Priority, store.View().Accounts["repeat-401"].Demotion)
-	}
-
-	host.files[0].Priority = 0
-	host.documents["repeat-401"]["priority"] = 0
-	second := first
-	second.EventID = "401-2"
-	second.OccurredAt = second.OccurredAt.Add(time.Second)
-	result, err := usage.Handle(second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.DemotionRequested || store.View().Accounts["repeat-401"].Demotion.State != "requested" {
-		t.Fatalf("second result=%+v priority=%d state=%+v", result, host.files[0].Priority, store.View().Accounts["repeat-401"].Demotion)
 	}
 }
 

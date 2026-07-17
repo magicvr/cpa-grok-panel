@@ -61,6 +61,7 @@ func (worker *DemotionWorker) run() {
 }
 
 func (worker *DemotionWorker) processRequested() {
+	_ = worker.accounts.ReconcileDemotions()
 	for authIndex, account := range worker.store.View().Accounts {
 		if account.Demotion.Normalized().State == "requested" {
 			_ = worker.accounts.ApplyRequestedDemotion(authIndex, worker.settings().DemotionPriority)

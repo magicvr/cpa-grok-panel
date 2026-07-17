@@ -56,6 +56,7 @@ func Registration() map[string]any {
 		{"Method": "POST", "Path": APIPrefix + "/accounts/restore-priority", "Description": "恢复账号优先级"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/set-enabled", "Description": "启用或停用账号"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/clear-diagnostic", "Description": "清空账号失败诊断"},
+		{"Method": "POST", "Path": APIPrefix + "/accounts/priority-written", "Description": "确认 Management 优先级写入并更新插件状态"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/clear-state", "Description": "删除账号后清理插件本地状态"},
 	}
 	resources := []map[string]any{
@@ -138,6 +139,16 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 			return accountErrorResponse(err)
 		}
 		return jsonResponse(200, map[string]any{"cleared": true})
+	case method == "POST" && matchesPath(path, "/accounts/priority-written"):
+		var body priorityWrittenRequest
+		if err := decodeStrictBody(request.Body, &body); err != nil {
+			return apiError(400, "invalid_argument", err.Error(), false)
+		}
+		account, err := router.accounts.ConfirmPriorityWrite(body.AuthIndex, body.ExactFileName, body.Operation, body.Priority, body.PreviousPriority)
+		if err != nil {
+			return accountErrorResponse(err)
+		}
+		return jsonResponse(200, map[string]any{"account": account})
 	case method == "POST" && matchesPath(path, "/accounts/clear-state"):
 		var body accountTargetRequest
 		if err := decodeStrictBody(request.Body, &body); err != nil {
@@ -165,6 +176,14 @@ type setEnabledRequest struct {
 	AuthIndex     string `json:"auth_index"`
 	ExactFileName string `json:"exact_file_name"`
 	Enabled       *bool  `json:"enabled"`
+}
+
+type priorityWrittenRequest struct {
+	AuthIndex        string `json:"auth_index"`
+	ExactFileName    string `json:"exact_file_name"`
+	Operation        string `json:"operation"`
+	Priority         int    `json:"priority"`
+	PreviousPriority *int   `json:"previous_priority,omitempty"`
 }
 
 type settingsUpdateRequest struct {
