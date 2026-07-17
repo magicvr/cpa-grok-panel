@@ -20,7 +20,7 @@ func DefaultSettings() Settings {
 		OperationConcurrency: 1, BatchOperationConcurrency: 10, AttributedFailureThreshold: 3,
 		// 401/403 always count toward the shared consecutive-failure threshold.
 		AttributedFailureStatuses: []int{401, 403}, DemotionPriority: -100, ProtectionLevel: "strict",
-		DefaultRestorePriority: 0, CooldownRestoreEnabled: true,
+		DefaultRestorePriority: 0, CooldownRestoreEnabled: true, FreeUserDailyTokenLimit: 2_000_000,
 		// 429/5xx participate in the same threshold path when enabled.
 		// Set CPA_GROK_COUNT_429 / CPA_GROK_COUNT_5XX=true to also demote after N consecutive such failures.
 		CountStatus429: false, CountStatus5XX: false,

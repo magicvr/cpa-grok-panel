@@ -18,7 +18,7 @@ import (
 const (
 	SchemaVersion = 1
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.3.10"
+	PluginVersion = "0.4.0"
 )
 
 type DedupeState struct {
@@ -145,6 +145,9 @@ func decodeSnapshot(data []byte, snapshot *Snapshot) error {
 	}
 	if _, exists := raw.Settings["cooldown_restore_enabled"]; !exists {
 		snapshot.Settings.CooldownRestoreEnabled = true
+	}
+	if _, exists := raw.Settings["free_user_daily_token_limit"]; !exists {
+		snapshot.Settings.FreeUserDailyTokenLimit = 2_000_000
 	}
 	return nil
 }

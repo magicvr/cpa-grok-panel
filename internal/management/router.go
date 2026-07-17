@@ -7,9 +7,11 @@ import (
 	"io"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/magicvr/cpa-grok-panel/internal/application"
 	"github.com/magicvr/cpa-grok-panel/internal/cpaabi"
+	"github.com/magicvr/cpa-grok-panel/internal/domain"
 	stateinfra "github.com/magicvr/cpa-grok-panel/internal/infrastructure/state"
 	"github.com/magicvr/cpa-grok-panel/web"
 )
@@ -58,6 +60,7 @@ func Registration() map[string]any {
 		{"Method": "POST", "Path": APIPrefix + "/accounts/clear-diagnostic", "Description": "清空账号失败诊断"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/priority-written", "Description": "确认 Management 优先级写入并更新插件状态"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/clear-state", "Description": "删除账号后清理插件本地状态"},
+		{"Method": "POST", "Path": APIPrefix + "/accounts/quota", "Description": "保存账号额度快照"},
 	}
 	resources := []map[string]any{
 		{"Path": ResourcePanelPath, "Menu": "Grok 账号", "Description": "Grok 账号管理面板"},
@@ -158,6 +161,53 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 			return accountErrorResponse(err)
 		}
 		return jsonResponse(200, map[string]any{"cleared": true})
+	case method == "POST" && matchesPath(path, "/accounts/quota"):
+		var body quotaSnapshotRequest
+		if err := decodeStrictBody(request.Body, &body); err != nil {
+			return apiError(400, "invalid_argument", err.Error(), false)
+		}
+		if strings.TrimSpace(body.AuthIndex) == "" {
+			return apiError(400, "invalid_argument", "quota 快照缺少 auth_index", false)
+		}
+		plan := strings.TrimSpace(body.Quota.Plan)
+		if plan == "" {
+			plan = "unknown"
+			body.Quota.Plan = plan
+		}
+		// Allowed plans only.
+		switch plan {
+		case "SuperGrok", "SuperGrok Heavy", "Free", "unknown":
+		default:
+			return apiError(400, "invalid_argument", "plan 必须是 SuperGrok / SuperGrok Heavy / Free / unknown", false)
+		}
+		source := strings.TrimSpace(body.Quota.Source)
+		switch source {
+		case "billing", "local_estimate", "refresh_failed", "":
+			if source == "" {
+				if plan == "unknown" {
+					body.Quota.Source = "refresh_failed"
+				} else if plan == "Free" && body.Quota.Limit <= 0 {
+					body.Quota.Source = "local_estimate"
+				} else {
+					body.Quota.Source = "billing"
+				}
+			}
+		default:
+			return apiError(400, "invalid_argument", "quota source 不受支持", false)
+		}
+		// Manual refresh always overwrites the full cached snapshot (plan permanence until next manual refresh).
+		if body.Quota.FetchedAt.IsZero() {
+			body.Quota.FetchedAt = time.Now().UTC()
+		}
+		if err := router.store.Update(func(snapshot *stateinfra.Snapshot) error {
+			state := snapshot.Accounts[body.AuthIndex]
+			state.Quota = body.Quota
+			snapshot.Accounts[body.AuthIndex] = state
+			return nil
+		}); err != nil {
+			return apiError(503, "state_write_failed", "保存套餐/额度快照失败: "+err.Error(), true)
+		}
+		return jsonResponse(200, map[string]any{"saved": true, "quota": body.Quota})
 	case method != "GET" && method != "POST" && method != "PUT" && method != "PATCH":
 		return apiError(405, "method_not_allowed", "请求方法不受支持", false)
 	case method == "POST" || method == "PUT" || method == "PATCH":
@@ -170,6 +220,11 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 type accountTargetRequest struct {
 	AuthIndex     string `json:"auth_index"`
 	ExactFileName string `json:"exact_file_name"`
+}
+
+type quotaSnapshotRequest struct {
+	AuthIndex string               `json:"auth_index"`
+	Quota     domain.QuotaSnapshot `json:"quota"`
 }
 
 type setEnabledRequest struct {
@@ -198,6 +253,7 @@ type settingsUpdateRequest struct {
 	DemotionPriority           *int    `json:"demotion_priority"`
 	DefaultRestorePriority     *int    `json:"default_restore_priority"`
 	CooldownRestoreEnabled     *bool   `json:"cooldown_restore_enabled"`
+	FreeUserDailyTokenLimit    *uint64 `json:"free_user_daily_token_limit"`
 }
 
 type settingsResponse struct {
@@ -219,7 +275,7 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 	if update.AutoRefreshEnabled == nil && update.AutoRefreshIntervalSeconds == nil && update.DailyUsageResetEnabled == nil && update.DailyUsageResetTime == nil &&
 		update.BatchOperationConcurrency == nil &&
 		update.AttributedFailureThreshold == nil && update.CountStatus429 == nil && update.CountStatus5XX == nil &&
-		update.DemotionPriority == nil && update.DefaultRestorePriority == nil && update.CooldownRestoreEnabled == nil {
+		update.DemotionPriority == nil && update.DefaultRestorePriority == nil && update.CooldownRestoreEnabled == nil && update.FreeUserDailyTokenLimit == nil {
 		return application.Settings{}, fmt.Errorf("至少提供一个可配置字段")
 	}
 	if update.AutoRefreshIntervalSeconds != nil && (*update.AutoRefreshIntervalSeconds < 2 || *update.AutoRefreshIntervalSeconds > 60) {
@@ -242,6 +298,9 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 	}
 	if update.DefaultRestorePriority != nil && (*update.DefaultRestorePriority < minPriority || *update.DefaultRestorePriority > maxPriority) {
 		return application.Settings{}, fmt.Errorf("default_restore_priority 必须在 %d..%d 范围内", minPriority, maxPriority)
+	}
+	if update.FreeUserDailyTokenLimit != nil && *update.FreeUserDailyTokenLimit < 1 {
+		return application.Settings{}, fmt.Errorf("free_user_daily_token_limit 必须大于等于 1")
 	}
 
 	var result application.Settings
@@ -282,6 +341,9 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		}
 		if update.CooldownRestoreEnabled != nil {
 			settings.CooldownRestoreEnabled = *update.CooldownRestoreEnabled
+		}
+		if update.FreeUserDailyTokenLimit != nil {
+			settings.FreeUserDailyTokenLimit = *update.FreeUserDailyTokenLimit
 		}
 		settings.Revision++
 		if settings.Revision < 1 {
