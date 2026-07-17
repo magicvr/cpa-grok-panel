@@ -100,9 +100,7 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 		account.Failure.ConsecutiveAttributedFailures = 0
 		return false
 	}
-	immediate := isImmediateDemotionStatus(event.StatusCode)
-	countable := immediate || countsThresholdStatus(settings, event.StatusCode)
-	if !countable {
+	if !countsThresholdStatus(settings, event.StatusCode) {
 		// Non-attributed failure: clear streak (same as success-side hygiene).
 		account.Failure.ConsecutiveAttributedFailures = 0
 		return false
@@ -116,7 +114,7 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 	account.Failure.LastFailureCode = fmt.Sprintf("http_%d", event.StatusCode)
 
 	account.Failure.ConsecutiveAttributedFailures++
-	if !immediate && account.Failure.ConsecutiveAttributedFailures < settings.AttributedFailureThreshold {
+	if account.Failure.ConsecutiveAttributedFailures < settings.AttributedFailureThreshold {
 		return false
 	}
 
@@ -124,7 +122,7 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 	if demotion.State == "requested" {
 		return false
 	}
-	if demotion.State == "applied" && !immediate {
+	if demotion.State == "applied" {
 		return false
 	}
 	triggeredAt := now.UTC()
@@ -137,18 +135,13 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 	return true
 }
 
-// 401/403 demote immediately (single attributed failure).
-func isImmediateDemotionStatus(status int) bool {
-	return status == 401 || status == 403
-}
-
-// Other statuses enter the consecutive-threshold path (default threshold=3).
+// All attributed statuses enter the consecutive-threshold path.
 func countsThresholdStatus(settings Settings, status int) bool {
 	if status == 401 || status == 403 {
-		return false
+		return true
 	}
 	for _, allowed := range settings.AttributedFailureStatuses {
-		if status == allowed && status != 401 && status != 403 {
+		if status == allowed {
 			return true
 		}
 	}
@@ -163,7 +156,7 @@ func countsThresholdStatus(settings Settings, status int) bool {
 
 // countsStatus is kept for diagnostics / tests: any status that can contribute to demotion.
 func (service *UsageService) countsStatus(status int) bool {
-	return isImmediateDemotionStatus(status) || countsThresholdStatus(service.settings(), status)
+	return countsThresholdStatus(service.settings(), status)
 }
 
 func (service *UsageService) settings() Settings {

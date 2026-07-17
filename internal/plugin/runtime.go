@@ -116,6 +116,15 @@ func (runtime *Runtime) ensureReady(dataDir string) error {
 		return fmt.Errorf("initialize settings: %w", err)
 	}
 	accounts := application.NewAccountsService(runtime.host, store, time.Now, settings)
+	priorityWriter, err := application.NewManagementPriorityWriter(
+		os.Getenv("CPA_GROK_MANAGEMENT_BASE_URL"), os.Getenv("CPA_GROK_MANAGEMENT_KEY"),
+		time.Duration(settings.OperationTimeoutSeconds)*time.Second,
+	)
+	if err != nil {
+		_ = store.Close()
+		return fmt.Errorf("configure Management priority writer: %w", err)
+	}
+	accounts.SetPriorityWriter(priorityWriter)
 	worker := application.NewDemotionWorker(accounts, store, settings)
 	cooldownWorker := application.NewCooldownRestoreWorker(accounts, store)
 	usageResetWorker := application.NewUsageResetWorker(store, settings)

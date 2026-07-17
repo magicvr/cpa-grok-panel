@@ -262,6 +262,38 @@ func TestClearDiagnosticRequiresMatchingStoredFileName(t *testing.T) {
 	}
 }
 
+func TestConfirmPriorityWriteUpdatesStateOnlyAfterVerifiedHostWrite(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	host := &accountHost{files: []domain.AuthFile{xaiFile("idx-confirm", "xai-confirm.json", 9)}}
+	service := application.NewAccountsService(host, store, time.Now)
+	previous := 9
+
+	if _, err := service.ConfirmPriorityWrite("idx-confirm", "xai-confirm.json", "demote", -100, &previous); application.AsAccountError(err).Code != "write_verification_failed" {
+		t.Fatalf("error=%v", err)
+	}
+	if _, exists := store.View().Accounts["idx-confirm"]; exists {
+		t.Fatalf("state changed before verified host write: %+v", store.View().Accounts["idx-confirm"])
+	}
+
+	host.files[0].Priority = -100
+	if _, err := service.ConfirmPriorityWrite("idx-confirm", "xai-confirm.json", "demote", -100, &previous); err != nil {
+		t.Fatal(err)
+	}
+	state := store.View().Accounts["idx-confirm"]
+	if state.Demotion.State != "applied" || state.Demotion.BaselinePriority == nil || *state.Demotion.BaselinePriority != previous || state.Demotion.TargetPriority == nil || *state.Demotion.TargetPriority != -100 {
+		t.Fatalf("state=%+v", state)
+	}
+
+	host.files[0].Priority = 17
+	if _, err := service.ConfirmPriorityWrite("idx-confirm", "xai-confirm.json", "set", 17, nil); err != nil {
+		t.Fatal(err)
+	}
+	state = store.View().Accounts["idx-confirm"]
+	if state.Demotion.State != "none" || state.Failure != (domain.FailureState{}) {
+		t.Fatalf("state=%+v", state)
+	}
+}
+
 func TestDemoteRecordsBaselineAndUsesConfiguredTarget(t *testing.T) {
 	store := stateinfra.OpenMemory(time.Now().UTC())
 	host := &accountHost{
@@ -348,6 +380,37 @@ func TestDemotionWorkerUsesUpdatedTarget(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("priority=%d state=%+v", host.files[0].Priority, store.View().Accounts["idx-worker"].Demotion)
+}
+
+func TestApplyRequestedDemotionPrefersConfiguredPriorityWriter(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	baseline := 5
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-writer"] = domain.AccountState{Demotion: domain.DemotionState{State: "requested", BaselinePriority: &baseline}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	host := &accountHost{
+		files:     []domain.AuthFile{xaiFile("idx-writer", "xai-writer.json", baseline)},
+		documents: map[string]cpaabi.AuthDocument{"idx-writer": {"priority": baseline}},
+	}
+	writer := &recordingPriorityWriter{host: host}
+	service := application.NewAccountsService(host, store, time.Now)
+	service.SetPriorityWriter(writer)
+
+	if err := service.ApplyRequestedDemotion("idx-writer", -100); err != nil {
+		t.Fatal(err)
+	}
+	if writer.name != "xai-writer.json" || writer.priority != -100 {
+		t.Fatalf("writer name=%q priority=%d", writer.name, writer.priority)
+	}
+	if host.savedName != "" {
+		t.Fatalf("host.auth.save was called: %q", host.savedName)
+	}
+	if state := store.View().Accounts["idx-writer"].Demotion.State; state != "applied" {
+		t.Fatalf("state=%s", state)
+	}
 }
 
 func TestApplyRequestedDemotionAlreadyAtTargetMarksApplied(t *testing.T) {
@@ -537,6 +600,22 @@ func TestCooldownRestoreSkipsExplicitBotButManualRestoreStillWorks(t *testing.T)
 	if host.files[0].Priority != baseline || state.Demotion.State != "restored" || state.Demotion.RestoreCooldownHours != 0 || state.Failure != (domain.FailureState{}) {
 		t.Fatalf("manual restore priority=%d state=%+v", host.files[0].Priority, state)
 	}
+}
+
+type recordingPriorityWriter struct {
+	host     *accountHost
+	name     string
+	priority int
+}
+
+func (writer *recordingPriorityWriter) SetPriority(name string, priority int) error {
+	writer.name, writer.priority = name, priority
+	for index := range writer.host.files {
+		if writer.host.files[index].Name == name {
+			writer.host.files[index].Priority = priority
+		}
+	}
+	return nil
 }
 
 type accountHost struct {

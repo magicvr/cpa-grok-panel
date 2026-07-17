@@ -8,7 +8,7 @@
 
 ---
 
-`cpa-grok-panel` 是 CLIProxyAPI（CPA）的 Grok/xAI OAuth 账号运维面板。v0.3.7 新增“优先级冷却恢复”：降权后按 6h → 12h → 24h 阶梯自动恢复，明确标记为机器人的账号除外。
+`cpa-grok-panel` 是 CLIProxyAPI（CPA）的 Grok/xAI OAuth 账号运维面板。v0.3.8 新增“优先级冷却恢复”：降权后按 6h → 12h → 24h 阶梯自动恢复，明确标记为机器人的账号除外。
 
 插件 id：`cpa-grok-panel`。
 
@@ -16,8 +16,8 @@
 
 - **账号列表**：读取 CPA 中的 xAI OAuth 账号，展示机器人标记、启停状态、优先级、请求数和 Token 用量。
 - **用量统计**：累计 CPA `usage` 回调中的真实 input、output 和 total token，不根据请求内容估算。
-- **账号操作**：支持单账号和批量启用、停用、降权、解除降权。
-- **自动降权**：401/403 立即请求降权；429 和 5xx 可选择计入连续失败阈值。
+- **账号操作**：支持单账号和批量启用、停用、降权、解除降权，以及批量设置优先级。
+- **自动降权**：401/403 始终计入连续失败；429 和 5xx 可选择计入同一阈值路径，默认连续 3 次后请求降权。
 - **优先级冷却恢复**：默认开启，降权后按 6h → 12h → 24h（封顶 24h）恢复优先级并清空失败诊断；再次降权递增冷却。
 - **安全删除**：删除前重新校验 `auth_index` 与精确文件名映射；删除成功后清理插件本地账号状态。
 - **每日清零**：可按服务器本地时区每天清零请求数、Token 累计和连续失败计数。
@@ -57,7 +57,7 @@ https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
 | --- | --- |
 | `id` | `cpa-grok-panel` |
 | `name` | Grok 账号面板 |
-| `version` | 与最新 Release 对齐（例如 `0.3.7`） |
+| `version` | 与最新 Release 对齐（例如 `0.3.8`） |
 | `repository` | `https://github.com/magicvr/cpa-grok-panel` |
 
 可用浏览器或下面命令确认目录可访问、内容正确：
@@ -96,7 +96,7 @@ plugins:
 1. 打开 CPA 管理页（例如 `http://<cpa-host>:<port>/management.html`），使用 management key 登录。
 2. 进入 **插件 / 插件商店**（Plugin Store）相关页面。
 3. 刷新商店列表后，应能看到 **Grok 账号面板** / id **`cpa-grok-panel`**。
-4. 选择需要的版本（一般选最新，例如 `0.3.7`）并点击安装。
+4. 选择需要的版本（一般选最新，例如 `0.3.8`）并点击安装。
 5. 安装成功后，**完整停止并重新启动整个 CPA 进程**。  
    本插件是原生 `.so`：仅热更新、只重载配置或不杀进程替换动态库，可能导致仍加载旧库或注册状态异常。
 
@@ -107,7 +107,7 @@ POST /v0/management/plugin-store/cpa-grok-panel/install
 Authorization: Bearer <management-key>
 Content-Type: application/json
 
-{"version":"0.3.7"}
+{"version":"0.3.8"}
 ```
 
 版本号请与 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 上已发布的 tag（去掉前缀 `v` 后的 semver）一致。
@@ -137,7 +137,7 @@ Content-Type: application/json
 
 1. 打开 [GitHub Releases](https://github.com/magicvr/cpa-grok-panel/releases)，下载当前平台包，例如：
 
-   - `cpa-grok-panel_0.3.7_linux_amd64.zip`
+   - `cpa-grok-panel_0.3.8_linux_amd64.zip`
    - （可选校验）同 Release 下的 `checksums.txt`
 
 2. 在 CPA **插件管理**中选择本地安装 / 上传该 zip。  
@@ -176,8 +176,8 @@ Content-Type: application/json
 ### 单账号操作
 
 - **启用/停用**：通过 CPA Management API 修改账号运行状态。
-- **降权**：保存当前优先级作为恢复基线，再写入降权目标优先级。
-- **解除降权**：优先恢复已记录的基线；没有可靠基线时使用“默认恢复优先级”。
+- **降权**：通过 CPA Management fields API 写入降权目标，成功后保存写前优先级作为恢复基线。
+- **解除降权**：通过 CPA Management fields API 优先恢复已记录的基线；没有可靠基线时使用“默认恢复优先级”。
 - **人工解除降权优待**：立即恢复并将冷却阶梯重置为 0；即使账号标记为机器人也可人工解除降权。
 - **诊断清理**：启停、手动降权或解除降权成功后清空连败、上次失败时间和失败码；自动降权保留诊断。
 - **安全删除**：必须输入账号的精确文件名确认。插件会在删除前重新核对账号映射，映射已变化时跳过删除。
@@ -185,7 +185,7 @@ Content-Type: application/json
 ### 批量操作
 
 - 表头复选框选择当前页；“全部选中”选择当前筛选结果；“清除选中”取消所有选择。
-- 支持批量启用、停用、降权、解除降权和安全删除。
+- 支持批量启用、停用、降权、解除降权、设置优先级和安全删除；批量设置优先级要求输入整数，并通过 CPA Management fields API 按精确文件名写入。
 - 批量操作使用有限并发执行并显示完成进度以及成功、跳过和失败数量；默认并发为 10，可在设置页调整为 1–50。批量删除要求输入 `DELETE`，且每个账号删除前都会再次校验映射。
 
 ### 自动刷新
@@ -194,11 +194,11 @@ Content-Type: application/json
 
 ### 自动降权
 
-- 归因到账号的 HTTP 401/403 会立即触发降权。
-- 其它状态通过连续失败阈值处理；默认阈值为 3。
-- 429 和 5xx 默认不计入阈值，可在设置页分别开启。
+- 归因到账号的 HTTP 401/403 始终计入连续失败阈值，不再单次立即降权。
+- 所有可计数状态共用连续失败阈值，默认阈值为 3；429 和 5xx 默认不计数，可在设置页分别开启。
 - 默认降权优先级为 `-100`。面板以 `priority <= demotion_priority` 判定账号已降权。
-- 降权写入前后都会校验账号和优先级，避免覆盖已经变化的文件。
+- 自动降权优先使用可选的 Management fields HTTP 写入，未配置时回退到 `host.auth.save`；两种路径都会重新读取账号列表校验结果。
+- 已记录为 `applied` 但宿主优先级高于当前降权目标时，列表读取或 worker 周期会重新请求降权，面板也会标记“记录陈旧/host未降权”。
 - “优先级冷却恢复”默认开启；自动恢复保留当前冷却阶梯，下一次降权继续递增，明确标记为机器人的账号不会自动恢复。
 
 ### 每日清零
@@ -218,14 +218,16 @@ Content-Type: application/json
 | 环境变量 | 默认值 | 说明 |
 | --- | ---: | --- |
 | `CPA_GROK_BATCH_CONCURRENCY` | `10` | 首次无持久化设置时的浏览器批量操作并发数，范围 1–50 |
-| `CPA_GROK_FAILURE_THRESHOLD` | `3` | 非 401/403 的连续失败阈值，范围 1–100 |
+| `CPA_GROK_FAILURE_THRESHOLD` | `3` | 所有可计数状态共用的连续失败阈值，范围 1–100 |
 | `CPA_GROK_DEMOTION_PRIORITY` | `-100` | 自动或手动降权的目标优先级 |
 | `CPA_GROK_DEFAULT_RESTORE_PRIORITY` | `0` | 没有可靠基线时的恢复优先级 |
 | `CPA_GROK_COOLDOWN_RESTORE` | `true` | 是否默认开启优先级冷却恢复 |
 | `CPA_GROK_COUNT_429` | `false` | 是否将 429 计入连续失败阈值 |
 | `CPA_GROK_COUNT_5XX` | `false` | 是否将 5xx 计入连续失败阈值 |
+| `CPA_GROK_MANAGEMENT_BASE_URL` | 未设置 | 自动降权/冷却恢复使用的 CPA 地址，例如 `http://127.0.0.1:8317`；需与 key 同时设置 |
+| `CPA_GROK_MANAGEMENT_KEY` | 未设置 | 自动降权/冷却恢复调用 Management fields API 的 key；未成对设置时回退 `host.auth.save` |
 
-自动刷新和每日清零可直接在设置页配置，无需重启插件。
+自动刷新和每日清零可直接在设置页配置，无需重启插件。Management 地址和 key 由插件进程环境读取，变更后需重启。
 
 ## 开发与构建
 
@@ -242,4 +244,4 @@ CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
 go test ./...
 ```
 
-架构、CPA 集成、接口和持久化等设计资料仍保留在 [docs/design/](docs/design/)；README 以当前 v0.3.7 的可安装版本为准。
+架构、CPA 集成、接口和持久化等设计资料仍保留在 [docs/design/](docs/design/)；README 以当前 v0.3.8 的可安装版本为准。

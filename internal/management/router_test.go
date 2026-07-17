@@ -49,7 +49,7 @@ func TestRouterPanelPath(t *testing.T) {
 	if !strings.Contains(body, "Grok") {
 		t.Fatalf("not html panel: %s", string(resp.Body)[:80])
 	}
-	for _, marker := range []string{"v0.3.7", "优先级冷却恢复", "cooldown_restore_enabled", "6h → 12h → 24h", "data-sort=\"bot\"", "id=\"bot-filter\"", "matchesBot", "clearDiagnostic", "/accounts/clear-diagnostic", ">诊断<", "bot_flag_known", "首页", "末页", "跳转", "page-input", "清除选中", "全部选中", "批量启用", "批量停用", "批量降权", "批量解除降权", "批量安全删除", "批量操作并发数", "batch_operation_concurrency", "runConcurrent", "每日清零"} {
+	for _, marker := range []string{"v0.3.8", "优先级冷却恢复", "cooldown_restore_enabled", "6h → 12h → 24h", "data-sort=\"bot\"", "id=\"bot-filter\"", "matchesBot", "clearDiagnostic", "/accounts/clear-diagnostic", ">诊断<", "bot_flag_known", "首页", "末页", "跳转", "page-input", "清除选中", "全部选中", "批量启用", "批量停用", "批量降权", "批量解除降权", "批量设置优先级", "data-batch-action=\"set-priority\"", "批量安全删除", "批量操作并发数", "batch_operation_concurrency", "runConcurrent", "每日清零"} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("panel missing %q", marker)
 		}
@@ -85,6 +85,23 @@ func TestRouterClearDiagnostic(t *testing.T) {
 	}
 	state := store.View().Accounts["idx-1"]
 	if state.Failure != (domain.FailureState{}) || state.Usage.TotalTokens != 99 {
+		t.Fatalf("state=%+v", state)
+	}
+}
+
+func TestRouterConfirmsManagementPriorityWrite(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	host := &writableHost{files: []domain.AuthFile{{
+		AuthIndex: "idx-1", Name: "xai-a.json", Provider: "xai", Type: "xai", AccountType: "oauth", Priority: -100,
+	}}}
+	router := management.NewRouter(application.NewAccountsService(host, store, time.Now), store)
+	body := []byte(`{"auth_index":"idx-1","exact_file_name":"xai-a.json","operation":"demote","priority":-100,"previous_priority":7}`)
+	response := router.Handle(management.Request{Method: "POST", Path: management.APIPrefix + "/accounts/priority-written", Body: body})
+	if response.StatusCode != 200 {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
+	state := store.View().Accounts["idx-1"].Demotion
+	if state.State != "applied" || state.BaselinePriority == nil || *state.BaselinePriority != 7 {
 		t.Fatalf("state=%+v", state)
 	}
 }
