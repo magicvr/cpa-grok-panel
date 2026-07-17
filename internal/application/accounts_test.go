@@ -529,8 +529,65 @@ func TestApplyRequestedDemotionVerificationFailureIsRetryable(t *testing.T) {
 		t.Fatalf("error=%+v", accountErr)
 	}
 	state := store.View().Accounts["idx-verify"].Demotion
-	if state.State != "failed" || state.FailureCode != "demotion_verify_failed" {
+	if state.State != "requested" || state.FailureCode != "demotion_verify_failed" {
 		t.Fatalf("state=%+v", state)
+	}
+
+	host.ignorePrioritySave = false
+	if err := service.ApplyRequestedDemotion("idx-verify", application.DefaultSettings().DemotionPriority); err != nil {
+		t.Fatalf("retry: %v", err)
+	}
+	state = store.View().Accounts["idx-verify"].Demotion
+	if state.State != "applied" || state.FailureCode != "" {
+		t.Fatalf("retried state=%+v", state)
+	}
+}
+
+func TestApplyRequestedDemotionMissingAccountIsTerminal(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	baseline := 0
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-gone"] = domain.AccountState{Demotion: domain.DemotionState{State: "requested", BaselinePriority: &baseline}}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := application.NewAccountsService(&accountHost{}, store, time.Now)
+
+	err := service.ApplyRequestedDemotion("idx-gone", application.DefaultSettings().DemotionPriority)
+	accountErr := application.AsAccountError(err)
+	if err == nil || accountErr.Retryable || accountErr.Code != "account_not_found" {
+		t.Fatalf("error=%+v", accountErr)
+	}
+	state := store.View().Accounts["idx-gone"].Demotion
+	if state.State != "failed" || state.FailureCode != "account_not_found" {
+		t.Fatalf("state=%+v", state)
+	}
+}
+
+func TestApplyRequestedDemotionChangedMappingIsTerminal(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	baseline := 0
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-mapped"] = domain.AccountState{
+			ExactFileName: "xai-old.json",
+			Demotion:      domain.DemotionState{State: "requested", BaselinePriority: &baseline},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	host := &accountHost{files: []domain.AuthFile{xaiFile("idx-mapped", "xai-new.json", baseline)}}
+	service := application.NewAccountsService(host, store, time.Now)
+
+	err := service.ApplyRequestedDemotion("idx-mapped", application.DefaultSettings().DemotionPriority)
+	accountErr := application.AsAccountError(err)
+	if err == nil || accountErr.Retryable || accountErr.Code != "account_mapping_changed" {
+		t.Fatalf("error=%+v", accountErr)
+	}
+	state := store.View().Accounts["idx-mapped"].Demotion
+	if state.State != "failed" || state.FailureCode != "account_mapping_changed" || host.savedName != "" {
+		t.Fatalf("state=%+v saved=%q", state, host.savedName)
 	}
 }
 
@@ -751,7 +808,10 @@ func (host *accountHost) SaveAuthFile(name string, document cpaabi.AuthDocument)
 		if disabled, ok := document["disabled"].(bool); ok {
 			host.files[index].Disabled = disabled
 		}
-		if priority, ok := numberAsInt(document["priority"]); ok && !host.ignorePrioritySave {
+		if host.ignorePrioritySave {
+			return nil
+		}
+		if priority, ok := numberAsInt(document["priority"]); ok {
 			host.files[index].Priority = priority
 		}
 		host.documents[host.files[index].AuthIndex] = cloneDocument(document)

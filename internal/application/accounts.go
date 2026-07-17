@@ -359,16 +359,17 @@ func (service *AccountsService) Demote(authIndex, exactFileName string) (domain.
 		return domain.AccountView{}, &AccountError{Code: "state_write_failed", Message: err.Error(), HTTPStatus: 503, Retryable: true}
 	}
 	if err := service.writePriority(file, targetPriority, document); err != nil {
-		service.recordDemotionFailure(authIndex, "auth_save_failed", true)
+		service.recordDemotionFailure(authIndex, AsAccountError(err).Code, false)
 		return domain.AccountView{}, err
 	}
 	verified, err := service.resolveExact(authIndex, exactFileName)
 	if err != nil {
-		service.recordDemotionFailure(authIndex, "demotion_verify_failed", true)
+		failureCode := demotionVerificationFailureCode(err)
+		service.recordDemotionFailure(authIndex, failureCode, isPermanentDemotionFailure(failureCode))
 		return domain.AccountView{}, err
 	}
 	if verified.Priority != targetPriority {
-		service.recordDemotionFailure(authIndex, "demotion_verify_failed", true)
+		service.recordDemotionFailure(authIndex, "demotion_verify_failed", false)
 		return domain.AccountView{}, &AccountError{Code: "write_verification_failed", Message: "降权写后校验不一致", HTTPStatus: 502, Retryable: true}
 	}
 	if err := service.markDemotionApplied(authIndex, exactFileName); err != nil {
@@ -388,7 +389,13 @@ func (service *AccountsService) ApplyRequestedDemotion(authIndex string, targetP
 	}
 	file, err := service.resolveByAuthIndex(authIndex)
 	if err != nil {
-		service.recordDemotionFailure(authIndex, AsAccountError(err).Code, true)
+		failureCode := AsAccountError(err).Code
+		service.recordDemotionFailure(authIndex, failureCode, isPermanentDemotionFailure(failureCode))
+		return err
+	}
+	if account.ExactFileName != "" && account.ExactFileName != file.Name {
+		err := &AccountError{Code: "account_mapping_changed", Message: "账号文件映射已变化，请刷新列表", HTTPStatus: 409}
+		service.recordDemotionFailure(authIndex, err.Code, true)
 		return err
 	}
 	if demotion.TargetPriority == nil {
@@ -430,7 +437,7 @@ func (service *AccountsService) ApplyRequestedDemotion(authIndex string, targetP
 			snapshot.Accounts[authIndex] = state
 			return nil
 		}); err != nil {
-			service.recordDemotionFailure(authIndex, "state_write_failed", true)
+			service.recordDemotionFailure(authIndex, "state_write_failed", false)
 			return &AccountError{Code: "state_write_failed", Message: err.Error(), HTTPStatus: 503, Retryable: true}
 		}
 	}
@@ -438,7 +445,7 @@ func (service *AccountsService) ApplyRequestedDemotion(authIndex string, targetP
 	if service.priorityWriter == nil {
 		document, err = service.host.GetAuthFile(authIndex)
 		if err != nil {
-			service.recordDemotionFailure(authIndex, "auth_get_failed", true)
+			service.recordDemotionFailure(authIndex, "auth_get_failed", false)
 			return hostError("auth_get_failed", err)
 		}
 		if priority, ok := documentInt(document, "priority"); ok && priority != file.Priority {
@@ -448,20 +455,25 @@ func (service *AccountsService) ApplyRequestedDemotion(authIndex string, targetP
 		}
 	}
 	if err := service.writePriority(file, *demotion.TargetPriority, document); err != nil {
-		service.recordDemotionFailure(authIndex, "auth_save_failed", true)
+		service.recordDemotionFailure(authIndex, AsAccountError(err).Code, false)
 		return err
 	}
 	verified, err := service.resolveExact(authIndex, file.Name)
 	if err != nil {
-		service.recordDemotionFailure(authIndex, "demotion_verify_failed", true)
+		failureCode := demotionVerificationFailureCode(err)
+		terminal := isPermanentDemotionFailure(failureCode)
+		service.recordDemotionFailure(authIndex, failureCode, terminal)
+		if terminal {
+			return err
+		}
 		return &AccountError{Code: "demotion_verify_failed", Message: err.Error(), HTTPStatus: 502, Retryable: true}
 	}
 	if verified.Priority != *demotion.TargetPriority {
-		service.recordDemotionFailure(authIndex, "demotion_verify_failed", true)
+		service.recordDemotionFailure(authIndex, "demotion_verify_failed", false)
 		return &AccountError{Code: "write_verification_failed", Message: "降权写后校验不一致", HTTPStatus: 502, Retryable: true}
 	}
 	if err := service.markDemotionApplied(authIndex, file.Name); err != nil {
-		service.recordDemotionFailure(authIndex, "state_write_failed", true)
+		service.recordDemotionFailure(authIndex, "state_write_failed", false)
 		return &AccountError{Code: "state_write_failed", Message: err.Error(), HTTPStatus: 503, Retryable: true}
 	}
 	return nil
@@ -653,11 +665,30 @@ func (service *AccountsService) recordDemotionFailure(authIndex, code string, te
 		state := snapshot.Accounts[authIndex]
 		if terminal {
 			state.Demotion.State = "failed"
+		} else {
+			state.Demotion.State = "requested"
 		}
 		state.Demotion.FailureCode = code
 		snapshot.Accounts[authIndex] = state
 		return nil
 	})
+}
+
+func demotionVerificationFailureCode(err error) string {
+	code := AsAccountError(err).Code
+	if isPermanentDemotionFailure(code) {
+		return code
+	}
+	return "demotion_verify_failed"
+}
+
+func isPermanentDemotionFailure(code string) bool {
+	switch code {
+	case "priority_superseded", "account_not_found", "account_mapping_changed":
+		return true
+	default:
+		return false
+	}
 }
 
 func hostError(code string, err error) *AccountError {

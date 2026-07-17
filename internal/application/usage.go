@@ -49,6 +49,9 @@ func NewUsageServiceWithDemotion(store *stateinfra.Store, now func() time.Time, 
 }
 
 func (service *UsageService) Handle(event domain.UsageEvent) (UsageResult, error) {
+	if strings.TrimSpace(event.AuthIndex) == "" {
+		return UsageResult{}, fmt.Errorf("auth_index is required")
+	}
 	if event.OccurredAt.IsZero() {
 		event.OccurredAt = service.now().UTC()
 	}
