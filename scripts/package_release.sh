@@ -2,7 +2,7 @@
 # Package CPA plugin store asset:
 #   cpa-grok-panel_<semver>_linux_amd64.zip  (contains cpa-grok-panel.so at zip root)
 # Usage: scripts/package_release.sh [version]
-# Example: scripts/package_release.sh 0.4.0
+# Example: scripts/package_release.sh 0.4.1
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
