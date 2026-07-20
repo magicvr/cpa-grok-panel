@@ -92,7 +92,7 @@ func TestOpenLegacySettingsAppliesNewDefaults(t *testing.T) {
 	}
 	defer store.Close()
 	settings := store.View().Settings
-	if settings == nil || !settings.AutoRefreshEnabled || settings.AutoRefreshIntervalSeconds != 5 || settings.BatchOperationConcurrency != 10 || settings.DailyUsageResetEnabled || settings.DailyUsageResetTime != "00:00" || !settings.CooldownRestoreEnabled {
+	if settings == nil || !settings.AutoRefreshEnabled || settings.AutoRefreshIntervalSeconds != 5 || settings.BatchOperationConcurrency != 10 || settings.DailyUsageResetEnabled || settings.DailyUsageResetTime != "00:00" || !settings.CooldownRestoreEnabled || !settings.CooldownRestoreSkipBots {
 		t.Fatalf("normalized settings=%+v", settings)
 	}
 	if !settings.SoftDemotionEnabled || settings.SoftDemotionPriority != -10 || settings.SoftDebtThreshold != 2 || settings.HardDebtThreshold != 4.5 || settings.DebtFail401 != 1.5 || settings.DebtFail429 != 0.5 || settings.DebtSuccessDecay != 1 || !settings.HalfOpenEnabled || settings.HalfOpenSuccessThreshold != 2 {

@@ -248,7 +248,8 @@ func (service *AccountsService) RestorePriority(authIndex, exactFileName string)
 
 // RestorePriorityAfterCooldown moves an eligible soft/hard account into the
 // half-open observation class. When half-open is disabled it keeps the legacy
-// direct-to-baseline behavior. Explicit bot accounts never auto-restore.
+// direct-to-baseline behavior. When CooldownRestoreSkipBots is enabled (default),
+// explicit bot accounts are never auto-restored; manual restore remains available.
 func (service *AccountsService) RestorePriorityAfterCooldown(authIndex string) (bool, error) {
 	service.write.Lock()
 	defer service.write.Unlock()
@@ -281,8 +282,10 @@ func (service *AccountsService) RestorePriorityAfterCooldown(authIndex string) (
 	if err != nil {
 		return false, hostError("auth_get_failed", err)
 	}
-	if bot := detectBotFlag(document); bot.known && bot.flagged {
-		return false, nil
+	if settings.CooldownRestoreSkipBots {
+		if bot := detectBotFlag(document); bot.known && bot.flagged {
+			return false, nil
+		}
 	}
 	if priority, ok := documentInt(document, "priority"); ok && priority != file.Priority {
 		return false, &AccountError{Code: "priority_superseded", Message: "当前优先级已被其他操作修改，请刷新后确认", HTTPStatus: 409}

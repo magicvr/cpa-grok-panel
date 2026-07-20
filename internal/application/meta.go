@@ -22,7 +22,8 @@ func DefaultSettings() Settings {
 		AttributedFailureStatuses: []int{401, 403}, DemotionPriority: -100, ProtectionLevel: "strict",
 		SoftDemotionEnabled: true, SoftDemotionPriority: -10, SoftDebtThreshold: 2.0, HardDebtThreshold: 4.5,
 		DebtFail401: 1.5, DebtFail429: 0.5, DebtSuccessDecay: 1.0,
-		DefaultRestorePriority: 0, CooldownRestoreEnabled: true, HalfOpenEnabled: true, HalfOpenSuccessThreshold: 2,
+		DefaultRestorePriority: 0, CooldownRestoreEnabled: true, CooldownRestoreSkipBots: true,
+		HalfOpenEnabled: true, HalfOpenSuccessThreshold: 2,
 		FreeUserDailyTokenLimit: 2_000_000,
 		// 429/5xx participate in the same threshold path when enabled.
 		// Set CPA_GROK_COUNT_429 / CPA_GROK_COUNT_5XX=true to also demote after N consecutive such failures.
@@ -57,6 +58,7 @@ func LoadSettings() Settings {
 	settings.DebtSuccessDecay = envFloat("CPA_GROK_DEBT_SUCCESS_DECAY", settings.DebtSuccessDecay, 0, 1_000_000)
 	settings.DefaultRestorePriority = envInt("CPA_GROK_DEFAULT_RESTORE_PRIORITY", settings.DefaultRestorePriority, -1_000_000, 1_000_000)
 	settings.CooldownRestoreEnabled = envBool("CPA_GROK_COOLDOWN_RESTORE", settings.CooldownRestoreEnabled)
+	settings.CooldownRestoreSkipBots = envBool("CPA_GROK_COOLDOWN_RESTORE_SKIP_BOTS", settings.CooldownRestoreSkipBots)
 	settings.HalfOpenEnabled = envBool("CPA_GROK_HALF_OPEN", settings.HalfOpenEnabled)
 	settings.HalfOpenSuccessThreshold = envInt("CPA_GROK_HALF_OPEN_SUCCESS_THRESHOLD", settings.HalfOpenSuccessThreshold, 1, 100)
 	settings.CountStatus429 = envBool("CPA_GROK_COUNT_429", false)

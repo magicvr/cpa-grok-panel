@@ -146,6 +146,9 @@ func decodeSnapshot(data []byte, snapshot *Snapshot) error {
 	if _, exists := raw.Settings["cooldown_restore_enabled"]; !exists {
 		snapshot.Settings.CooldownRestoreEnabled = true
 	}
+	if _, exists := raw.Settings["cooldown_restore_skip_bots"]; !exists {
+		snapshot.Settings.CooldownRestoreSkipBots = true
+	}
 	if _, exists := raw.Settings["soft_demotion_enabled"]; !exists {
 		snapshot.Settings.SoftDemotionEnabled = true
 	}

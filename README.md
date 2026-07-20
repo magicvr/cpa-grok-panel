@@ -215,7 +215,7 @@ Content-Type: application/json
 - debt 默认达到 `2.0` 进入 soft `-10`；hard streak 达 3 次或 debt 达 `4.5` 进入 hard `-100`
 - 429 可选计入 streak，并在开启时默认增加 `0.5` debt；5xx 可选计入 streak
 - priority 写入由 worker 异步执行，优先 Management fields，未配 `CPA_GROK_MANAGEMENT_*` 时回退 `host.auth.save`，写后 re-list 校验
-- 冷却恢复默认开：`6h → 12h → 24h` 后进入 half-open `-10`；默认成功 2 次回 baseline，归因失败立即回 hard；机器人账号不自动恢复
+- 冷却恢复默认开：`6h → 12h → 24h` 后进入 half-open `-10`；默认成功 2 次回 baseline，归因失败立即回 hard；默认跳过显式机器人（可关 `cooldown_restore_skip_bots`），手动解除降权始终可用
 
 ### 每日清零
 
@@ -251,6 +251,7 @@ Content-Type: application/json
 | `CPA_GROK_DEBT_SUCCESS_DECAY` | `1.0` | 成功请求 debt 衰减 |
 | `CPA_GROK_DEFAULT_RESTORE_PRIORITY` | `0` | 无基线时的恢复优先级 |
 | `CPA_GROK_COOLDOWN_RESTORE` | `true` | 是否默认开冷却恢复 |
+| `CPA_GROK_COOLDOWN_RESTORE_SKIP_BOTS` | `true` | 自动冷却恢复是否跳过显式机器人 |
 | `CPA_GROK_HALF_OPEN` | `true` | 冷却后是否进入 half-open 观察档 |
 | `CPA_GROK_HALF_OPEN_SUCCESS_THRESHOLD` | `2` | half-open 回 baseline 所需成功数 |
 | `CPA_GROK_COUNT_429` | `false` | 429 是否计入连败 |

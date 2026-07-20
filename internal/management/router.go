@@ -261,6 +261,7 @@ type settingsUpdateRequest struct {
 	DemotionPriority           *int     `json:"demotion_priority"`
 	DefaultRestorePriority     *int     `json:"default_restore_priority"`
 	CooldownRestoreEnabled     *bool    `json:"cooldown_restore_enabled"`
+	CooldownRestoreSkipBots    *bool    `json:"cooldown_restore_skip_bots"`
 	HalfOpenEnabled            *bool    `json:"half_open_enabled"`
 	HalfOpenSuccessThreshold   *int     `json:"half_open_success_threshold"`
 	FreeUserDailyTokenLimit    *uint64  `json:"free_user_daily_token_limit"`
@@ -288,7 +289,8 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		update.SoftDemotionEnabled == nil && update.SoftDemotionPriority == nil && update.SoftDebtThreshold == nil && update.HardDebtThreshold == nil &&
 		update.DebtFail401 == nil && update.DebtFail429 == nil && update.DebtSuccessDecay == nil &&
 		update.DemotionPriority == nil && update.DefaultRestorePriority == nil && update.CooldownRestoreEnabled == nil &&
-		update.HalfOpenEnabled == nil && update.HalfOpenSuccessThreshold == nil && update.FreeUserDailyTokenLimit == nil {
+		update.CooldownRestoreSkipBots == nil && update.HalfOpenEnabled == nil && update.HalfOpenSuccessThreshold == nil &&
+		update.FreeUserDailyTokenLimit == nil {
 		return application.Settings{}, fmt.Errorf("至少提供一个可配置字段")
 	}
 	if update.AutoRefreshIntervalSeconds != nil && (*update.AutoRefreshIntervalSeconds < 2 || *update.AutoRefreshIntervalSeconds > 60) {
@@ -395,6 +397,9 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		}
 		if update.CooldownRestoreEnabled != nil {
 			settings.CooldownRestoreEnabled = *update.CooldownRestoreEnabled
+		}
+		if update.CooldownRestoreSkipBots != nil {
+			settings.CooldownRestoreSkipBots = *update.CooldownRestoreSkipBots
 		}
 		if update.HalfOpenEnabled != nil {
 			settings.HalfOpenEnabled = *update.HalfOpenEnabled
