@@ -18,7 +18,7 @@ import (
 const (
 	SchemaVersion = 1
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.4.2"
+	PluginVersion = "0.5.0"
 )
 
 type DedupeState struct {
@@ -145,6 +145,33 @@ func decodeSnapshot(data []byte, snapshot *Snapshot) error {
 	}
 	if _, exists := raw.Settings["cooldown_restore_enabled"]; !exists {
 		snapshot.Settings.CooldownRestoreEnabled = true
+	}
+	if _, exists := raw.Settings["soft_demotion_enabled"]; !exists {
+		snapshot.Settings.SoftDemotionEnabled = true
+	}
+	if _, exists := raw.Settings["soft_demotion_priority"]; !exists {
+		snapshot.Settings.SoftDemotionPriority = -10
+	}
+	if _, exists := raw.Settings["soft_debt_threshold"]; !exists {
+		snapshot.Settings.SoftDebtThreshold = 2.0
+	}
+	if _, exists := raw.Settings["hard_debt_threshold"]; !exists {
+		snapshot.Settings.HardDebtThreshold = 4.5
+	}
+	if _, exists := raw.Settings["debt_fail_401"]; !exists {
+		snapshot.Settings.DebtFail401 = 1.5
+	}
+	if _, exists := raw.Settings["debt_fail_429"]; !exists {
+		snapshot.Settings.DebtFail429 = 0.5
+	}
+	if _, exists := raw.Settings["debt_success_decay"]; !exists {
+		snapshot.Settings.DebtSuccessDecay = 1.0
+	}
+	if _, exists := raw.Settings["half_open_enabled"]; !exists {
+		snapshot.Settings.HalfOpenEnabled = true
+	}
+	if _, exists := raw.Settings["half_open_success_threshold"]; !exists {
+		snapshot.Settings.HalfOpenSuccessThreshold = 2
 	}
 	if _, exists := raw.Settings["free_user_daily_token_limit"]; !exists {
 		snapshot.Settings.FreeUserDailyTokenLimit = 2_000_000

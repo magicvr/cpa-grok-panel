@@ -650,7 +650,9 @@ func TestCooldownRestoreLadderIncrementsAndAutomaticRestorePreservesIt(t *testin
 		files:     []domain.AuthFile{xaiFile("idx-cooldown", "xai-cooldown.json", 10)},
 		documents: map[string]cpaabi.AuthDocument{"idx-cooldown": {"priority": 10, "disabled": false}},
 	}
-	service := application.NewAccountsService(host, store, func() time.Time { return now })
+	settings := application.DefaultSettings()
+	settings.HalfOpenEnabled = false
+	service := application.NewAccountsService(host, store, func() time.Time { return now }, settings)
 
 	for cycle, wantHours := range []int{6, 12, 24} {
 		if _, err := service.Demote("idx-cooldown", "xai-cooldown.json"); err != nil {

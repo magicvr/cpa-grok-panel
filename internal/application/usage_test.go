@@ -32,7 +32,7 @@ func TestParseCPAUsageRecordCounts401TowardThreshold(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if result.DemotionRequested != (hit == 3) {
+		if result.DemotionRequested != (hit >= 2) {
 			t.Fatalf("hit=%d result=%+v state=%+v", hit, result, store.View().Accounts["a1"].Demotion)
 		}
 	}
@@ -167,7 +167,7 @@ func TestUsageDemotion401NeedsThreshold(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if result.DemotionRequested != (hit == 3) {
+		if result.DemotionRequested != (hit >= 2) {
 			t.Fatalf("hit=%d result=%+v state=%+v", hit, result, store.View().Accounts["a1"].Demotion)
 		}
 	}

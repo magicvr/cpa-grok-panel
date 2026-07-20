@@ -7,7 +7,7 @@
 **CLIProxyAPI（CPA）** 的 Grok / xAI OAuth 账号运维面板。
 
 在 CPA 管理页集中查看账号状态、Token 用量与套餐缓存，并安全地启用 / 停用 / 降权 / 删除账号。  
-插件 id：`cpa-grok-panel` · 当前文档对应 **v0.4.2**（Linux amd64）。
+插件 id：`cpa-grok-panel` · 当前文档对应 **v0.5.0**（Linux amd64）。
 
 ## 友链
 
@@ -35,8 +35,8 @@
 | **用量列** | 展示 `用量/限额` + 进度条；付费且有官方限额时用 billing；Free / 无线额时用本插件日 token 与 Free 日限额（默认 2M） |
 | **用量统计** | 累计 CPA `usage` 回调中的真实 input / output / total token |
 | **账号操作** | 单账号与批量：启用、停用、降权、解除降权、设置优先级 |
-| **自动降权** | 401/403 始终计入连败；429 / 5xx 可选；默认连续 3 次后降权 |
-| **优先级冷却恢复** | 默认开启；降权后 `6h → 12h → 24h` 阶梯恢复并清空诊断；机器人账号不自动恢复 |
+| **Soft / hard 自动降权** | failure debt 与 hard streak 双轨；默认 debt 2.0 进入 soft `-10`，连败 3 次或 debt 4.5 进入 hard `-100` |
+| **Half-open 冷却恢复** | soft/hard 经 `6h → 12h → 24h` 冷却后先进入 `-10` 观察档；默认累计成功 2 次回 baseline，归因失败立即回 hard |
 | **安全删除** | 删除前校验 `auth_index` 与精确文件名；成功后清理插件本地 state |
 | **每日清零** | 可按服务器本地时区每天清零请求数、Token 累计与连败计数 |
 | **持久化** | 设置、统计、套餐缓存写入插件 state，重启后保留 |
@@ -77,7 +77,7 @@ https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
 | --- | --- |
 | `id` | `cpa-grok-panel` |
 | `name` | Grok 账号面板 |
-| `version` | 与最新 Release 对齐（如 `0.4.2`） |
+| `version` | 与最新 Release 对齐（如 `0.5.0`） |
 | `repository` | `https://github.com/magicvr/cpa-grok-panel` |
 
 ```bash
@@ -106,7 +106,7 @@ plugins:
 
 1. 打开 CPA 管理页（如 `http://<cpa-host>:<port>/management.html`），用 management key 登录  
 2. **插件 / 插件商店** → 找到 **Grok 账号面板**（id `cpa-grok-panel`）  
-3. 选择版本（一般最新，如 `0.4.2`）并安装  
+3. 选择版本（一般最新，如 `0.5.0`）并安装
 4. **完整停止并重新启动整个 CPA 进程**（原生 `.so`：热更新 / 只重载配置可能仍加载旧库）
 
 Management API 示例：
@@ -116,7 +116,7 @@ POST /v0/management/plugin-store/cpa-grok-panel/install
 Authorization: Bearer <management_key>
 Content-Type: application/json
 
-{"version":"0.4.2"}
+{"version":"0.5.0"}
 ```
 
 版本号为去掉 `v` 前缀的 semver，须与 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 已发布 tag 一致。
@@ -131,7 +131,7 @@ Content-Type: application/json
 适合不改 `store-sources`、离线拷包或商店链路不通。
 
 1. 在 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 下载  
-   - **`cpa-grok-panel_0.4.2_linux_amd64.zip`**（商店与手动安装都用这个名字）  
+   - **`cpa-grok-panel_0.5.0_linux_amd64.zip`**（商店与手动安装都用这个名字）
    - （可选）`checksums.txt`  
 2. CPA **插件管理**里本地安装 / 上传该 zip  
    - zip **根目录**必须是 `cpa-grok-panel.so`，不要改包内结构  
@@ -170,7 +170,7 @@ Content-Type: application/json
 - 分页 20 / 50 / 100  
 - 可排序：账号文件、**套餐**、状态、机器人、优先级、**用量**、成功 / 失败数  
 - 顶部汇总：账号数、已降权、成功 / 失败请求、累计 Token  
-- 「已降权」：`priority <= demotion_priority`
+- 「已降权」：宿主 priority 处于 hard 档，或插件记录为已应用的 `soft / hard / half_open` class
 
 ### 套餐与用量
 
@@ -193,7 +193,7 @@ Content-Type: application/json
 | **降权** | fields 写目标优先级，成功后保存写前优先级为基线 |
 | **解除降权** | 优先恢复基线；无基线用「默认恢复优先级」 |
 | **刷新套餐** | 见上表；不自动执行 |
-| **诊断清理** | 启停、手动降权 / 解除成功后清空连败与失败码；自动降权保留诊断 |
+| **诊断清理** | 启停、手动降权 / 解除成功后清空 streak、debt 与失败码；自动降权保留诊断 |
 | **安全删除** | 须输入精确文件名；映射变化则跳过 |
 
 ### 批量操作
@@ -211,18 +211,19 @@ Content-Type: application/json
 
 ### 自动降权与冷却
 
-- 401/403 始终计入连败阈值（默认 3）；429 / 5xx 默认不计，可分别开启  
-- 默认降权目标 `-100`；优先 Management fields，未配 `CPA_GROK_MANAGEMENT_*` 时回退 `host.auth.save`，写后 re-list 校验  
-- `applied` 但宿主优先级回漂时会重新请求降权，并提示「记录陈旧 / host 未降权」  
-- 冷却恢复默认开：`6h → 12h → 24h`；机器人账号不自动恢复，可人工解除  
+- 401/403 每次默认增加 `1.5` failure debt；成功默认衰减 `1.0`，不会直接清空历史；非归因失败不改 debt
+- debt 默认达到 `2.0` 进入 soft `-10`；hard streak 达 3 次或 debt 达 `4.5` 进入 hard `-100`
+- 429 可选计入 streak，并在开启时默认增加 `0.5` debt；5xx 可选计入 streak
+- priority 写入由 worker 异步执行，优先 Management fields，未配 `CPA_GROK_MANAGEMENT_*` 时回退 `host.auth.save`，写后 re-list 校验
+- 冷却恢复默认开：`6h → 12h → 24h` 后进入 half-open `-10`；默认成功 2 次回 baseline，归因失败立即回 hard；机器人账号不自动恢复
 
 ### 每日清零
 
-默认关，默认 `00:00`（插件进程本地时区）。清零请求数、Token 累计与连败。启动时若当天已过点且未执行，会补一次。
+默认关，默认 `00:00`（插件进程本地时区）。清零请求数、Token 累计与 hard streak；failure debt 保留。启动时若当天已过点且未执行，会补一次。
 
 ### 诊断列与机器人列
 
-**诊断**：连败次数、上次失败码，以及处理中 / 已降权 / 失败标记；悬停看时间、目标、基线等。
+**诊断**：直接展示 failure debt、hard streak 与 `none / soft / hard / half_open` class；悬停可看证据时间、目标、基线、冷却与 half-open 成功数。
 
 **机器人**（只读解析 `access_token` JWT payload，不写 state）：
 
@@ -240,9 +241,18 @@ Content-Type: application/json
 | --- | ---: | --- |
 | `CPA_GROK_BATCH_CONCURRENCY` | `10` | 批量操作并发 1–50 |
 | `CPA_GROK_FAILURE_THRESHOLD` | `3` | 连败阈值 1–100 |
-| `CPA_GROK_DEMOTION_PRIORITY` | `-100` | 降权目标优先级 |
+| `CPA_GROK_DEMOTION_PRIORITY` | `-100` | hard 降权目标优先级 |
+| `CPA_GROK_SOFT_DEMOTION` | `true` | 是否启用 soft 降权 |
+| `CPA_GROK_SOFT_DEMOTION_PRIORITY` | `-10` | soft / half-open 观察档优先级 |
+| `CPA_GROK_SOFT_DEBT_THRESHOLD` | `2.0` | soft debt 阈值 |
+| `CPA_GROK_HARD_DEBT_THRESHOLD` | `4.5` | hard debt 阈值 |
+| `CPA_GROK_DEBT_FAIL_401` | `1.5` | 401/403 debt 加分 |
+| `CPA_GROK_DEBT_FAIL_429` | `0.5` | 开启 429 计数时的 debt 加分 |
+| `CPA_GROK_DEBT_SUCCESS_DECAY` | `1.0` | 成功请求 debt 衰减 |
 | `CPA_GROK_DEFAULT_RESTORE_PRIORITY` | `0` | 无基线时的恢复优先级 |
 | `CPA_GROK_COOLDOWN_RESTORE` | `true` | 是否默认开冷却恢复 |
+| `CPA_GROK_HALF_OPEN` | `true` | 冷却后是否进入 half-open 观察档 |
+| `CPA_GROK_HALF_OPEN_SUCCESS_THRESHOLD` | `2` | half-open 回 baseline 所需成功数 |
 | `CPA_GROK_COUNT_429` | `false` | 429 是否计入连败 |
 | `CPA_GROK_COUNT_5XX` | `false` | 5xx 是否计入连败 |
 | `CPA_GROK_MANAGEMENT_BASE_URL` | 未设置 | 自动降权 / 冷却恢复用的 CPA 地址（如 `http://127.0.0.1:8317`） |
@@ -260,7 +270,8 @@ Content-Type: application/json
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
   go build -trimpath -ldflags='-s -w' -buildmode=c-shared -o dist/cpa-grok-panel.so .
 
-go test ./...
+CGO_ENABLED=1 go test ./...
+go vet ./...
 ```
 
 ### 发版打包
@@ -281,14 +292,14 @@ plugin_install_failed: release asset cpa-grok-panel_<ver>_linux_amd64.zip not fo
 一键打包：
 
 ```bash
-./scripts/package_release.sh 0.4.2
+./scripts/package_release.sh 0.5.0
 # 生成：
-#   dist/cpa-grok-panel_0.4.2_linux_amd64.zip
+#   dist/cpa-grok-panel_0.5.0_linux_amd64.zip
 #   dist/checksums.txt
 #   dist/cpa-grok-panel.so
 
-gh release upload v0.4.2 \
-  dist/cpa-grok-panel_0.4.2_linux_amd64.zip \
+gh release upload v0.5.0 \
+  dist/cpa-grok-panel_0.5.0_linux_amd64.zip \
   dist/checksums.txt \
   --clobber
 ```
@@ -299,4 +310,4 @@ gh release upload v0.4.2 \
 - 评审与探测：[docs/reviews/](docs/reviews/)
 - 发行版：[Releases](https://github.com/magicvr/cpa-grok-panel/releases)
 
-README 以当前可安装版本 **v0.4.2** 为准。
+README 以当前可安装版本 **v0.5.0** 为准。
