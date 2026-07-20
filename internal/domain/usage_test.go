@@ -44,6 +44,26 @@ func TestProjectAccountManaged(t *testing.T) {
 	}
 }
 
+func TestLegacyAppliedDemotionNormalizesToHard(t *testing.T) {
+	demotion := (domain.DemotionState{State: "applied"}).Normalized()
+	if demotion.Class != domain.DemotionClassHard {
+		t.Fatalf("demotion=%+v", demotion)
+	}
+}
+
+func TestProjectAccountExposesDebtAndAppliedClass(t *testing.T) {
+	view := domain.ProjectAccount(domain.AuthFile{
+		AuthIndex: "idx", Name: "xai-a.json", Provider: "xai", Type: "xai",
+		AccountType: "oauth", Priority: -10,
+	}, domain.AccountState{
+		Failure:  domain.FailureState{DebtScore: 3.25},
+		Demotion: domain.DemotionState{State: "applied", Class: domain.DemotionClassSoft},
+	}, time.Now().UTC(), -100)
+	if view.DebtScore != 3.25 || view.Class != domain.DemotionClassSoft || !view.IsDemoted || !view.CanRestore {
+		t.Fatalf("view=%+v", view)
+	}
+}
+
 func TestProjectAccountDemotionUsesPriorityThreshold(t *testing.T) {
 	tests := []struct {
 		name      string

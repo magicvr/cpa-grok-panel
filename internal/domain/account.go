@@ -42,24 +42,54 @@ type AccountState struct {
 
 type FailureState struct {
 	ConsecutiveAttributedFailures int        `json:"consecutive_attributed_failures"`
+	DebtScore                     float64    `json:"debt_score"`
+	LastEvidenceAt                *time.Time `json:"last_evidence_at,omitempty"`
 	LastFailureAt                 *time.Time `json:"last_failure_at,omitempty"`
 	LastFailureCode               string     `json:"last_failure_code,omitempty"`
 }
 
 type DemotionState struct {
 	State                string     `json:"state"`
+	Class                string     `json:"class"`
 	BaselinePriority     *int       `json:"baseline_priority,omitempty"`
 	TargetPriority       *int       `json:"target_priority,omitempty"`
 	TriggeredAt          *time.Time `json:"triggered_at,omitempty"`
 	RestoreCooldownHours int        `json:"restore_cooldown_hours,omitempty"`
+	HalfOpenSince        *time.Time `json:"half_open_since,omitempty"`
+	HalfOpenSuccesses    int        `json:"half_open_successes,omitempty"`
 	FailureCode          string     `json:"failure_code,omitempty"`
 }
+
+const (
+	DemotionClassNone     = "none"
+	DemotionClassSoft     = "soft"
+	DemotionClassHard     = "hard"
+	DemotionClassHalfOpen = "half_open"
+)
 
 func (state DemotionState) Normalized() DemotionState {
 	if state.State == "" {
 		state.State = "none"
 	}
+	if state.Class == "" {
+		switch state.State {
+		case "requested", "applied", "failed":
+			// Pre-v0.5.0 records only represented hard demotion.
+			state.Class = DemotionClassHard
+		default:
+			state.Class = DemotionClassNone
+		}
+	}
 	return state
+}
+
+func IsActiveDemotionClass(class string) bool {
+	switch class {
+	case DemotionClassSoft, DemotionClassHard, DemotionClassHalfOpen:
+		return true
+	default:
+		return false
+	}
 }
 
 type AccountView struct {
@@ -80,6 +110,8 @@ type AccountView struct {
 	Quota         QuotaSnapshot `json:"quota"`
 	Failure       FailureState  `json:"failure"`
 	Demotion      DemotionState `json:"demotion"`
+	DebtScore     float64       `json:"debt_score"`
+	Class         string        `json:"class"`
 	IsDemoted     bool          `json:"is_demoted"`
 	CanRestore    bool          `json:"can_restore"`
 	LastSeenAt    time.Time     `json:"last_seen_at"`
@@ -111,7 +143,7 @@ func ProjectAccount(file AuthFile, state AccountState, now time.Time, demotionPr
 		usage.PeriodStartedAt = now.UTC()
 	}
 	demotion := state.Demotion.Normalized()
-	isDemoted := file.Priority <= demotionPriority
+	isDemoted := (demotion.State == "applied" && IsActiveDemotionClass(demotion.Class)) || file.Priority <= demotionPriority
 	quota := state.Quota
 	if strings.TrimSpace(quota.Plan) == "" {
 		quota.Plan = "unknown"
@@ -121,6 +153,7 @@ func ProjectAccount(file AuthFile, state AccountState, now time.Time, demotionPr
 		Enabled: !file.Disabled, Unavailable: file.Unavailable, Status: file.Status,
 		StatusMessage: file.StatusMessage, Priority: file.Priority, Provider: "xai",
 		AuthType: "oauth", Usage: usage, Quota: quota, Failure: state.Failure, Demotion: demotion,
+		DebtScore: state.Failure.DebtScore, Class: demotion.Class,
 		IsDemoted: isDemoted, CanRestore: isDemoted,
 		LastSeenAt: now.UTC(), WriteMode: "managed",
 	}

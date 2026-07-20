@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -95,8 +96,33 @@ func (service *UsageService) Handle(event domain.UsageEvent) (UsageResult, error
 }
 
 func (service *UsageService) applyFailurePolicy(account *domain.AccountState, event domain.UsageEvent, now time.Time, settings Settings) bool {
+	evidenceAt := event.OccurredAt.UTC()
+	if evidenceAt.IsZero() {
+		evidenceAt = now.UTC()
+	}
+	demotion := account.Demotion.Normalized()
+
 	if isSuccessfulOutcome(event.Outcome) {
 		account.Failure.ConsecutiveAttributedFailures = 0
+		account.Failure.DebtScore = math.Max(0, account.Failure.DebtScore-settings.DebtSuccessDecay)
+		account.Failure.LastEvidenceAt = &evidenceAt
+		if demotion.State == "applied" && demotion.Class == domain.DemotionClassHalfOpen {
+			demotion.HalfOpenSuccesses++
+			account.Demotion = demotion
+			if demotion.HalfOpenSuccesses >= settings.HalfOpenSuccessThreshold {
+				target := settings.DefaultRestorePriority
+				if demotion.BaselinePriority != nil {
+					target = *demotion.BaselinePriority
+				}
+				demotion.State = "requested"
+				demotion.Class = domain.DemotionClassNone
+				demotion.TargetPriority = &target
+				demotion.TriggeredAt = &evidenceAt
+				demotion.FailureCode = ""
+				account.Demotion = demotion
+				return true
+			}
+		}
 		return false
 	}
 	if !isPotentialXAIOAuth(event) {
@@ -104,37 +130,58 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 		return false
 	}
 	if !countsThresholdStatus(settings, event.StatusCode) {
-		// Non-attributed failure: clear streak (same as success-side hygiene).
 		account.Failure.ConsecutiveAttributedFailures = 0
 		return false
 	}
 
-	failedAt := event.OccurredAt.UTC()
-	if failedAt.IsZero() {
-		failedAt = now
-	}
-	account.Failure.LastFailureAt = &failedAt
+	account.Failure.LastEvidenceAt = &evidenceAt
+	account.Failure.LastFailureAt = &evidenceAt
 	account.Failure.LastFailureCode = fmt.Sprintf("http_%d", event.StatusCode)
-
 	account.Failure.ConsecutiveAttributedFailures++
-	if account.Failure.ConsecutiveAttributedFailures < settings.AttributedFailureThreshold {
-		return false
+	switch event.StatusCode {
+	case 401, 403:
+		account.Failure.DebtScore += settings.DebtFail401
+	case 429:
+		if settings.CountStatus429 {
+			account.Failure.DebtScore += settings.DebtFail429
+		}
 	}
 
+	if demotion.Class == domain.DemotionClassHalfOpen {
+		return requestDemotionClass(account, domain.DemotionClassHard, settings.DemotionPriority, evidenceAt)
+	}
+	if account.Failure.ConsecutiveAttributedFailures >= settings.AttributedFailureThreshold || account.Failure.DebtScore >= settings.HardDebtThreshold {
+		return requestDemotionClass(account, domain.DemotionClassHard, settings.DemotionPriority, evidenceAt)
+	}
+	if settings.SoftDemotionEnabled && account.Failure.DebtScore >= settings.SoftDebtThreshold {
+		return requestDemotionClass(account, domain.DemotionClassSoft, settings.SoftDemotionPriority, evidenceAt)
+	}
+	return false
+}
+
+func requestDemotionClass(account *domain.AccountState, class string, target int, triggeredAt time.Time) bool {
 	demotion := account.Demotion.Normalized()
-	if demotion.State == "requested" {
+	if demotion.Class == domain.DemotionClassHard && (demotion.State == "requested" || demotion.State == "applied") {
 		return false
 	}
-	if demotion.State == "applied" {
-		return false
+	if class == domain.DemotionClassSoft {
+		if demotion.Class == domain.DemotionClassSoft && (demotion.State == "requested" || demotion.State == "applied") {
+			return false
+		}
+		if demotion.Class == domain.DemotionClassHard || demotion.Class == domain.DemotionClassHalfOpen {
+			return false
+		}
 	}
-	triggeredAt := now.UTC()
-	target := settings.DemotionPriority
-	account.Demotion = domain.DemotionState{
-		State: "requested", BaselinePriority: demotion.BaselinePriority, TargetPriority: &target, TriggeredAt: &triggeredAt,
-		RestoreCooldownHours: demotion.RestoreCooldownHours,
-		FailureCode:          account.Failure.LastFailureCode,
+	demotion.State = "requested"
+	demotion.Class = class
+	demotion.TargetPriority = &target
+	demotion.TriggeredAt = &triggeredAt
+	demotion.FailureCode = account.Failure.LastFailureCode
+	if class == domain.DemotionClassHard {
+		demotion.HalfOpenSince = nil
+		demotion.HalfOpenSuccesses = 0
 	}
+	account.Demotion = demotion
 	return true
 }
 

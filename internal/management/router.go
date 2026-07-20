@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/url"
 	"strings"
 	"time"
@@ -242,18 +243,27 @@ type priorityWrittenRequest struct {
 }
 
 type settingsUpdateRequest struct {
-	AutoRefreshEnabled         *bool   `json:"auto_refresh_enabled"`
-	AutoRefreshIntervalSeconds *int    `json:"auto_refresh_interval_seconds"`
-	DailyUsageResetEnabled     *bool   `json:"daily_usage_reset_enabled"`
-	DailyUsageResetTime        *string `json:"daily_usage_reset_time"`
-	BatchOperationConcurrency  *int    `json:"batch_operation_concurrency"`
-	AttributedFailureThreshold *int    `json:"attributed_failure_threshold"`
-	CountStatus429             *bool   `json:"count_status_429"`
-	CountStatus5XX             *bool   `json:"count_status_5xx"`
-	DemotionPriority           *int    `json:"demotion_priority"`
-	DefaultRestorePriority     *int    `json:"default_restore_priority"`
-	CooldownRestoreEnabled     *bool   `json:"cooldown_restore_enabled"`
-	FreeUserDailyTokenLimit    *uint64 `json:"free_user_daily_token_limit"`
+	AutoRefreshEnabled         *bool    `json:"auto_refresh_enabled"`
+	AutoRefreshIntervalSeconds *int     `json:"auto_refresh_interval_seconds"`
+	DailyUsageResetEnabled     *bool    `json:"daily_usage_reset_enabled"`
+	DailyUsageResetTime        *string  `json:"daily_usage_reset_time"`
+	BatchOperationConcurrency  *int     `json:"batch_operation_concurrency"`
+	AttributedFailureThreshold *int     `json:"attributed_failure_threshold"`
+	CountStatus429             *bool    `json:"count_status_429"`
+	CountStatus5XX             *bool    `json:"count_status_5xx"`
+	SoftDemotionEnabled        *bool    `json:"soft_demotion_enabled"`
+	SoftDemotionPriority       *int     `json:"soft_demotion_priority"`
+	SoftDebtThreshold          *float64 `json:"soft_debt_threshold"`
+	HardDebtThreshold          *float64 `json:"hard_debt_threshold"`
+	DebtFail401                *float64 `json:"debt_fail_401"`
+	DebtFail429                *float64 `json:"debt_fail_429"`
+	DebtSuccessDecay           *float64 `json:"debt_success_decay"`
+	DemotionPriority           *int     `json:"demotion_priority"`
+	DefaultRestorePriority     *int     `json:"default_restore_priority"`
+	CooldownRestoreEnabled     *bool    `json:"cooldown_restore_enabled"`
+	HalfOpenEnabled            *bool    `json:"half_open_enabled"`
+	HalfOpenSuccessThreshold   *int     `json:"half_open_success_threshold"`
+	FreeUserDailyTokenLimit    *uint64  `json:"free_user_daily_token_limit"`
 }
 
 type settingsResponse struct {
@@ -275,7 +285,10 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 	if update.AutoRefreshEnabled == nil && update.AutoRefreshIntervalSeconds == nil && update.DailyUsageResetEnabled == nil && update.DailyUsageResetTime == nil &&
 		update.BatchOperationConcurrency == nil &&
 		update.AttributedFailureThreshold == nil && update.CountStatus429 == nil && update.CountStatus5XX == nil &&
-		update.DemotionPriority == nil && update.DefaultRestorePriority == nil && update.CooldownRestoreEnabled == nil && update.FreeUserDailyTokenLimit == nil {
+		update.SoftDemotionEnabled == nil && update.SoftDemotionPriority == nil && update.SoftDebtThreshold == nil && update.HardDebtThreshold == nil &&
+		update.DebtFail401 == nil && update.DebtFail429 == nil && update.DebtSuccessDecay == nil &&
+		update.DemotionPriority == nil && update.DefaultRestorePriority == nil && update.CooldownRestoreEnabled == nil &&
+		update.HalfOpenEnabled == nil && update.HalfOpenSuccessThreshold == nil && update.FreeUserDailyTokenLimit == nil {
 		return application.Settings{}, fmt.Errorf("至少提供一个可配置字段")
 	}
 	if update.AutoRefreshIntervalSeconds != nil && (*update.AutoRefreshIntervalSeconds < 2 || *update.AutoRefreshIntervalSeconds > 60) {
@@ -292,9 +305,29 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 	if update.AttributedFailureThreshold != nil && (*update.AttributedFailureThreshold < 1 || *update.AttributedFailureThreshold > 100) {
 		return application.Settings{}, fmt.Errorf("attributed_failure_threshold 必须在 1..100 范围内")
 	}
+	for name, value := range map[string]*float64{
+		"soft_debt_threshold": update.SoftDebtThreshold, "hard_debt_threshold": update.HardDebtThreshold,
+		"debt_fail_401": update.DebtFail401, "debt_fail_429": update.DebtFail429, "debt_success_decay": update.DebtSuccessDecay,
+	} {
+		if value != nil && (math.IsNaN(*value) || math.IsInf(*value, 0) || *value < 0 || *value > 1_000_000) {
+			return application.Settings{}, fmt.Errorf("%s 必须在 0..1000000 范围内", name)
+		}
+	}
+	if update.SoftDebtThreshold != nil && *update.SoftDebtThreshold == 0 {
+		return application.Settings{}, fmt.Errorf("soft_debt_threshold 必须大于 0")
+	}
+	if update.HardDebtThreshold != nil && *update.HardDebtThreshold == 0 {
+		return application.Settings{}, fmt.Errorf("hard_debt_threshold 必须大于 0")
+	}
+	if update.HalfOpenSuccessThreshold != nil && (*update.HalfOpenSuccessThreshold < 1 || *update.HalfOpenSuccessThreshold > 100) {
+		return application.Settings{}, fmt.Errorf("half_open_success_threshold 必须在 1..100 范围内")
+	}
 	const minPriority, maxPriority = -1_000_000, 1_000_000
 	if update.DemotionPriority != nil && (*update.DemotionPriority < minPriority || *update.DemotionPriority > maxPriority) {
 		return application.Settings{}, fmt.Errorf("demotion_priority 必须在 %d..%d 范围内", minPriority, maxPriority)
+	}
+	if update.SoftDemotionPriority != nil && (*update.SoftDemotionPriority < minPriority || *update.SoftDemotionPriority > maxPriority) {
+		return application.Settings{}, fmt.Errorf("soft_demotion_priority 必须在 %d..%d 范围内", minPriority, maxPriority)
 	}
 	if update.DefaultRestorePriority != nil && (*update.DefaultRestorePriority < minPriority || *update.DefaultRestorePriority > maxPriority) {
 		return application.Settings{}, fmt.Errorf("default_restore_priority 必须在 %d..%d 范围内", minPriority, maxPriority)
@@ -333,6 +366,27 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		if update.CountStatus5XX != nil {
 			settings.CountStatus5XX = *update.CountStatus5XX
 		}
+		if update.SoftDemotionEnabled != nil {
+			settings.SoftDemotionEnabled = *update.SoftDemotionEnabled
+		}
+		if update.SoftDemotionPriority != nil {
+			settings.SoftDemotionPriority = *update.SoftDemotionPriority
+		}
+		if update.SoftDebtThreshold != nil {
+			settings.SoftDebtThreshold = *update.SoftDebtThreshold
+		}
+		if update.HardDebtThreshold != nil {
+			settings.HardDebtThreshold = *update.HardDebtThreshold
+		}
+		if update.DebtFail401 != nil {
+			settings.DebtFail401 = *update.DebtFail401
+		}
+		if update.DebtFail429 != nil {
+			settings.DebtFail429 = *update.DebtFail429
+		}
+		if update.DebtSuccessDecay != nil {
+			settings.DebtSuccessDecay = *update.DebtSuccessDecay
+		}
 		if update.DemotionPriority != nil {
 			settings.DemotionPriority = *update.DemotionPriority
 		}
@@ -341,6 +395,12 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		}
 		if update.CooldownRestoreEnabled != nil {
 			settings.CooldownRestoreEnabled = *update.CooldownRestoreEnabled
+		}
+		if update.HalfOpenEnabled != nil {
+			settings.HalfOpenEnabled = *update.HalfOpenEnabled
+		}
+		if update.HalfOpenSuccessThreshold != nil {
+			settings.HalfOpenSuccessThreshold = *update.HalfOpenSuccessThreshold
 		}
 		if update.FreeUserDailyTokenLimit != nil {
 			settings.FreeUserDailyTokenLimit = *update.FreeUserDailyTokenLimit

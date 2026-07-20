@@ -20,7 +20,10 @@ func DefaultSettings() Settings {
 		OperationConcurrency: 1, BatchOperationConcurrency: 10, AttributedFailureThreshold: 3,
 		// 401/403 always count toward the shared consecutive-failure threshold.
 		AttributedFailureStatuses: []int{401, 403}, DemotionPriority: -100, ProtectionLevel: "strict",
-		DefaultRestorePriority: 0, CooldownRestoreEnabled: true, FreeUserDailyTokenLimit: 2_000_000,
+		SoftDemotionEnabled: true, SoftDemotionPriority: -10, SoftDebtThreshold: 2.0, HardDebtThreshold: 4.5,
+		DebtFail401: 1.5, DebtFail429: 0.5, DebtSuccessDecay: 1.0,
+		DefaultRestorePriority: 0, CooldownRestoreEnabled: true, HalfOpenEnabled: true, HalfOpenSuccessThreshold: 2,
+		FreeUserDailyTokenLimit: 2_000_000,
 		// 429/5xx participate in the same threshold path when enabled.
 		// Set CPA_GROK_COUNT_429 / CPA_GROK_COUNT_5XX=true to also demote after N consecutive such failures.
 		CountStatus429: false, CountStatus5XX: false,
@@ -45,8 +48,17 @@ func LoadSettings() Settings {
 	settings.BatchOperationConcurrency = envInt("CPA_GROK_BATCH_CONCURRENCY", settings.BatchOperationConcurrency, 1, 50)
 	settings.AttributedFailureThreshold = envInt("CPA_GROK_FAILURE_THRESHOLD", settings.AttributedFailureThreshold, 1, 100)
 	settings.DemotionPriority = envInt("CPA_GROK_DEMOTION_PRIORITY", settings.DemotionPriority, -1_000_000, 1_000_000)
+	settings.SoftDemotionEnabled = envBool("CPA_GROK_SOFT_DEMOTION", settings.SoftDemotionEnabled)
+	settings.SoftDemotionPriority = envInt("CPA_GROK_SOFT_DEMOTION_PRIORITY", settings.SoftDemotionPriority, -1_000_000, 1_000_000)
+	settings.SoftDebtThreshold = envFloat("CPA_GROK_SOFT_DEBT_THRESHOLD", settings.SoftDebtThreshold, 0, 1_000_000)
+	settings.HardDebtThreshold = envFloat("CPA_GROK_HARD_DEBT_THRESHOLD", settings.HardDebtThreshold, 0, 1_000_000)
+	settings.DebtFail401 = envFloat("CPA_GROK_DEBT_FAIL_401", settings.DebtFail401, 0, 1_000_000)
+	settings.DebtFail429 = envFloat("CPA_GROK_DEBT_FAIL_429", settings.DebtFail429, 0, 1_000_000)
+	settings.DebtSuccessDecay = envFloat("CPA_GROK_DEBT_SUCCESS_DECAY", settings.DebtSuccessDecay, 0, 1_000_000)
 	settings.DefaultRestorePriority = envInt("CPA_GROK_DEFAULT_RESTORE_PRIORITY", settings.DefaultRestorePriority, -1_000_000, 1_000_000)
 	settings.CooldownRestoreEnabled = envBool("CPA_GROK_COOLDOWN_RESTORE", settings.CooldownRestoreEnabled)
+	settings.HalfOpenEnabled = envBool("CPA_GROK_HALF_OPEN", settings.HalfOpenEnabled)
+	settings.HalfOpenSuccessThreshold = envInt("CPA_GROK_HALF_OPEN_SUCCESS_THRESHOLD", settings.HalfOpenSuccessThreshold, 1, 100)
 	settings.CountStatus429 = envBool("CPA_GROK_COUNT_429", false)
 	settings.CountStatus5XX = envBool("CPA_GROK_COUNT_5XX", false)
 	return settings
@@ -70,6 +82,14 @@ func envBool(name string, fallback bool) bool {
 		return fallback
 	}
 	return parsed
+}
+
+func envFloat(name string, fallback, minimum, maximum float64) float64 {
+	value, err := strconv.ParseFloat(strings.TrimSpace(os.Getenv(name)), 64)
+	if err != nil || value < minimum || value > maximum {
+		return fallback
+	}
+	return value
 }
 
 type Meta struct {
@@ -105,6 +125,6 @@ func BuildMeta(snapshot stateinfra.Snapshot, stateInfo ...stateinfra.Info) Meta 
 	return Meta{PluginID: stateinfra.PluginID, PluginVersion: stateinfra.PluginVersion, APIVersion: 1,
 		WriteMode: "managed", Status: "ready", StateStatus: info.Status, StateBackend: info.Backend, DataDir: info.DataDir,
 		StatisticsStartedAt: snapshot.StatisticsStartedAt, DedupeMode: dedupeMode, ConditionalWrite: false,
-		Capabilities:        []string{"usage", "auth_list", "auth_get", "auth_save", "management_routes", "set_enabled", "demote", "restore_priority", "auto_demotion", "cooldown_restore", "safe_delete", "daily_usage_reset"},
+		Capabilities:        []string{"usage", "auth_list", "auth_get", "auth_save", "management_routes", "set_enabled", "demote", "restore_priority", "auto_demotion", "soft_demotion", "half_open_restore", "cooldown_restore", "safe_delete", "daily_usage_reset"},
 		UnavailableFeatures: []Unavailable{{Feature: "checks", Reason: "host.auth.invoke 未提供"}}}
 }
