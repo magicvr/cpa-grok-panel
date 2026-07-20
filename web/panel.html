@@ -21,7 +21,7 @@
 <body>
 <main class="wrap">
   <header>
-    <div><h1>Grok 账号面板</h1><div class="sub">优先级冷却恢复 · v0.4.0</div></div>
+    <div><h1>Grok 账号面板</h1><div class="sub">优先级冷却恢复 · v0.4.1</div></div>
     <div class="actions"><button id="refresh" type="button">刷新</button></div>
   </header>
 
@@ -41,7 +41,7 @@
     <div id="notice" class="notice" role="status">正在读取数据…</div>
     <section class="panel">
       <div class="toolbar">
-        <label class="field search" for="search"><span>搜索文件名</span><input id="search" type="search" placeholder="输入部分文件名" autocomplete="off"></label>
+        <label class="field search" for="search"><span>搜索文件名</span><input id="search" name="account_file_filter" type="search" placeholder="输入部分文件名" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" role="searchbox"></label>
         <label class="field" for="status-filter"><span>状态</span><select id="status-filter"><option value="all">全部</option><option value="enabled">启用</option><option value="disabled">停用</option></select></label>
         <label class="field" for="demotion-filter"><span>降权</span><select id="demotion-filter"><option value="all">全部</option><option value="applied">已降权</option><option value="not-applied">未降权</option></select></label>
         <label class="field" for="bot-filter"><span>机器人</span><select id="bot-filter"><option value="all">全部</option><option value="flagged">是机器人</option><option value="normal">否</option><option value="unknown">无法检测</option></select></label>
@@ -147,7 +147,7 @@
           <h2>Management key</h2>
           <p class="section-copy">密钥只保存在当前浏览器的 localStorage，不写入插件 state。</p>
           <div class="key-row">
-            <label for="management-key"><span>管理密钥</span><input id="management-key" type="password" autocomplete="off" spellcheck="false"></label>
+            <label for="management-key"><span>管理密钥</span><input id="management-key" name="cpa_management_bearer" type="password" autocomplete="new-password" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other"></label>
             <div class="key-actions"><button id="clear-key" class="danger" type="button">清除</button><button id="save-key" class="secondary" type="button">保存密钥</button></div>
           </div>
           <div id="key-status" class="key-status"></div>
@@ -159,7 +159,7 @@
           <h2>当前运行信息</h2>
           <p class="section-copy">以下项目只读。</p>
           <ul class="facts">
-            <li><span>插件版本</span><span id="fact-version">0.4.0</span></li>
+            <li><span>插件版本</span><span id="fact-version">0.4.1</span></li>
             <li><span>write_mode</span><span id="fact-write-mode">—</span></li>
             <li><span>始终计数状态</span><span>401 / 403</span></li>
             <li><span>设置 revision</span><span id="fact-revision">—</span></li>
