@@ -49,7 +49,7 @@ func TestRouterPanelPath(t *testing.T) {
 	if !strings.Contains(body, "Grok") {
 		t.Fatalf("not html panel: %s", string(resp.Body)[:80])
 	}
-	for _, marker := range []string{"v0.5.0", "account_file_filter", "cpa_management_bearer", "data-1p-ignore", "优先级冷却恢复", "cooldown_restore_enabled", "6h → 12h → 24h", "data-sort=\"bot\"", "id=\"bot-filter\"", "matchesBot", "id=\"plan-filter\"", "matchesPlan", "批量刷新套餐", "clearDiagnostic", "/accounts/clear-diagnostic", ">诊断<", "bot_flag_known", "首页", "末页", "跳转", "page-input", "清除选中", "全部选中", "批量启用", "批量停用", "批量降权", "批量解除降权", "批量设置优先级", "data-batch-action=\"set-priority\"", "批量安全删除", "批量操作并发数", "batch_operation_concurrency", "runConcurrent", "每日清零", "allItems.find", "Number.isInteger(previousPriority)", "item.demotion?.baseline_priority", "clearDiagnostic(target)", "class=\"cpa-page-shell\"", "padding-top:70px", "padding-right:34.5px", "padding-bottom:40px", "padding-left:34.5px", ".wrap{width:100%;padding:0;margin:0}", "soft_demotion_enabled", "soft_demotion_priority", "soft_debt_threshold", "hard_debt_threshold", "debt_fail_401", "debt_fail_429", "debt_success_decay", "half_open_enabled", "half_open_success_threshold", "failure debt", "half-open 成功"} {
+	for _, marker := range []string{"v0.5.1", "account_file_filter", "cpa_management_bearer", "data-1p-ignore", "优先级冷却恢复", "cooldown_restore_enabled", "cooldown_restore_skip_bots", "冷却恢复跳过机器人", "6h → 12h → 24h", "data-sort=\"bot\"", "id=\"bot-filter\"", "matchesBot", "id=\"plan-filter\"", "matchesPlan", "批量刷新套餐", "clearDiagnostic", "/accounts/clear-diagnostic", ">诊断<", "bot_flag_known", "首页", "末页", "跳转", "page-input", "清除选中", "全部选中", "批量启用", "批量停用", "批量降权", "批量解除降权", "批量设置优先级", "data-batch-action=\"set-priority\"", "批量安全删除", "批量操作并发数", "batch_operation_concurrency", "runConcurrent", "每日清零", "allItems.find", "Number.isInteger(previousPriority)", "item.demotion?.baseline_priority", "clearDiagnostic(target)", "class=\"cpa-page-shell\"", "padding:70px 40px 40px 40px", ".wrap{width:100%;padding:0;margin:0}", "cpa-grok-panel.theme_preference", "data-panel-theme", "html[data-panel-theme=\"light\"]", "外观 / 主题", "跟随系统（跟随 CPA）", "soft_demotion_enabled", "soft_demotion_priority", "soft_debt_threshold", "hard_debt_threshold", "debt_fail_401", "debt_fail_429", "debt_success_decay", "half_open_enabled", "half_open_success_threshold", "failure debt", "half-open 成功"} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("panel missing %q", marker)
 		}
@@ -212,7 +212,7 @@ func TestRouterUpdateSettingsThenGet(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := management.NewRouter(application.NewAccountsService(fakeLister{}, store, time.Now, defaults), store, defaults)
-	body := []byte(`{"auto_refresh_enabled":false,"auto_refresh_interval_seconds":12,"batch_operation_concurrency":17,"daily_usage_reset_enabled":true,"daily_usage_reset_time":"03:45","attributed_failure_threshold":7,"count_status_429":true,"count_status_5xx":true,"soft_demotion_enabled":false,"soft_demotion_priority":-20,"soft_debt_threshold":3.5,"hard_debt_threshold":8.5,"debt_fail_401":2.5,"debt_fail_429":0.75,"debt_success_decay":1.25,"demotion_priority":-250,"default_restore_priority":12,"cooldown_restore_enabled":false,"half_open_enabled":false,"half_open_success_threshold":4}`)
+	body := []byte(`{"auto_refresh_enabled":false,"auto_refresh_interval_seconds":12,"batch_operation_concurrency":17,"daily_usage_reset_enabled":true,"daily_usage_reset_time":"03:45","attributed_failure_threshold":7,"count_status_429":true,"count_status_5xx":true,"soft_demotion_enabled":false,"soft_demotion_priority":-20,"soft_debt_threshold":3.5,"hard_debt_threshold":8.5,"debt_fail_401":2.5,"debt_fail_429":0.75,"debt_success_decay":1.25,"demotion_priority":-250,"default_restore_priority":12,"cooldown_restore_enabled":false,"cooldown_restore_skip_bots":false,"half_open_enabled":false,"half_open_success_threshold":4}`)
 	response := router.Handle(management.Request{Method: "PUT", Path: "/v0/management/cpa-grok-panel/api/v1/settings", Body: body})
 	if response.StatusCode != 200 {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
@@ -229,7 +229,7 @@ func TestRouterUpdateSettingsThenGet(t *testing.T) {
 	if err := json.Unmarshal(response.Body, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.AutoRefreshEnabled || got.AutoRefreshIntervalSeconds != 12 || got.BatchOperationConcurrency != 17 || !got.DailyUsageResetEnabled || got.DailyUsageResetTime != "03:45" || got.AttributedFailureThreshold != 7 || !got.CountStatus429 || !got.CountStatus5XX || got.SoftDemotionEnabled || got.SoftDemotionPriority != -20 || got.SoftDebtThreshold != 3.5 || got.HardDebtThreshold != 8.5 || got.DebtFail401 != 2.5 || got.DebtFail429 != 0.75 || got.DebtSuccessDecay != 1.25 || got.DemotionPriority != -250 || got.DefaultRestorePriority != 12 || got.CooldownRestoreEnabled || got.HalfOpenEnabled || got.HalfOpenSuccessThreshold != 4 {
+	if got.AutoRefreshEnabled || got.AutoRefreshIntervalSeconds != 12 || got.BatchOperationConcurrency != 17 || !got.DailyUsageResetEnabled || got.DailyUsageResetTime != "03:45" || got.AttributedFailureThreshold != 7 || !got.CountStatus429 || !got.CountStatus5XX || got.SoftDemotionEnabled || got.SoftDemotionPriority != -20 || got.SoftDebtThreshold != 3.5 || got.HardDebtThreshold != 8.5 || got.DebtFail401 != 2.5 || got.DebtFail429 != 0.75 || got.DebtSuccessDecay != 1.25 || got.DemotionPriority != -250 || got.DefaultRestorePriority != 12 || got.CooldownRestoreEnabled || got.CooldownRestoreSkipBots || got.HalfOpenEnabled || got.HalfOpenSuccessThreshold != 4 {
 		t.Fatalf("settings=%+v", got.Settings)
 	}
 	if got.Revision != defaults.Revision+1 || got.Source != "state" {
@@ -284,6 +284,9 @@ func TestDefaultAutoRefreshSettings(t *testing.T) {
 	if !settings.CooldownRestoreEnabled {
 		t.Fatal("cooldown restore should default to enabled")
 	}
+	if !settings.CooldownRestoreSkipBots {
+		t.Fatal("cooldown restore skip bots should default to true")
+	}
 	if !settings.SoftDemotionEnabled || settings.SoftDemotionPriority != -10 || settings.SoftDebtThreshold != 2 || settings.HardDebtThreshold != 4.5 || settings.DebtFail401 != 1.5 || settings.DebtFail429 != 0.5 || settings.DebtSuccessDecay != 1 || !settings.HalfOpenEnabled || settings.HalfOpenSuccessThreshold != 2 {
 		t.Fatalf("soft demotion defaults=%+v", settings)
 	}
@@ -320,6 +323,10 @@ func TestLoadSettingsCooldownRestoreFromEnvironment(t *testing.T) {
 	t.Setenv("CPA_GROK_COOLDOWN_RESTORE", "false")
 	if application.LoadSettings().CooldownRestoreEnabled {
 		t.Fatal("cooldown restore environment default was not applied")
+	}
+	t.Setenv("CPA_GROK_COOLDOWN_RESTORE_SKIP_BOTS", "false")
+	if application.LoadSettings().CooldownRestoreSkipBots {
+		t.Fatal("cooldown restore skip bots environment default was not applied")
 	}
 }
 

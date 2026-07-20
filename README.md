@@ -7,7 +7,7 @@
 **CLIProxyAPI（CPA）** 的 Grok / xAI OAuth 账号运维面板。
 
 在 CPA 管理页集中查看账号状态、Token 用量与套餐缓存，并安全地启用 / 停用 / 降权 / 删除账号。  
-插件 id：`cpa-grok-panel` · 当前文档对应 **v0.5.0**（Linux amd64）。
+插件 id：`cpa-grok-panel` · 当前文档对应 **v0.5.1**（Linux **amd64 / arm64**）。
 
 ## 友链
 
@@ -35,14 +35,17 @@
 | **用量列** | 展示 `用量/限额` + 进度条；付费且有官方限额时用 billing；Free / 无线额时用本插件日 token 与 Free 日限额（默认 2M） |
 | **用量统计** | 累计 CPA `usage` 回调中的真实 input / output / total token |
 | **账号操作** | 单账号与批量：启用、停用、降权、解除降权、设置优先级 |
-| **Soft / hard 自动降权** | failure debt 与 hard streak 双轨；默认 debt 2.0 进入 soft `-10`，连败 3 次或 debt 4.5 进入 hard `-100` |
-| **Half-open 冷却恢复** | soft/hard 经 `6h → 12h → 24h` 冷却后先进入 `-10` 观察档；默认累计成功 2 次回 baseline，归因失败立即回 hard |
+| **优先级调度（soft/hard）** | failure debt + hard streak 双轨，降低坏 auth 被 CPA 反复选中导致的尾延迟；默认 debt≥2.0 → soft `-10`，连败 3 或 debt≥4.5 → hard `-100` |
+| **Half-open 冷却恢复** | `6h → 12h → 24h` 后先进入观察档 soft priority；默认成功 2 次回 baseline，归因失败立即回 hard |
+| **冷却跳过机器人** | 默认自动恢复跳过显式 bot（`cooldown_restore_skip_bots`，可关）；手动解除降权始终可用 |
+| **外观主题** | 设置页：跟随 CPA / 暗色 / 亮色（默认跟随 CPA 管理页 `cli-proxy-theme` / `data-theme`） |
 | **安全删除** | 删除前校验 `auth_index` 与精确文件名；成功后清理插件本地 state |
-| **每日清零** | 可按服务器本地时区每天清零请求数、Token 累计与连败计数 |
+| **每日清零** | 可按服务器本地时区每天清零请求数、Token 累计与 hard streak（debt 保留） |
 | **持久化** | 设置、统计、套餐缓存写入插件 state，重启后保留 |
 
 **不做的事**
 
+- 不替代 CPA 请求路由 / 负载均衡（只通过 priority 旋钮影响选路）
 - 不自动轮询套餐 / 额度（避免打爆上游）
 - 不伪造健康检查、Responses 实测结果
 - Free 日限额是运维估算分母，不是 xAI 官方账本
@@ -53,7 +56,7 @@
 
 - CPA 已启用插件（`plugins.enabled: true`），支持原生插件 ABI、Management API、usage 回调
 - 有效的 CPA management key
-- 平台：**Linux amd64**
+- 平台：**Linux amd64**（商店主路径）或 **Linux arm64**（Release 另有 `…_linux_arm64.zip` 时）
 - 方式 A 需要 CPA 主机能访问 GitHub（`api.github.com`、`github.com`、`raw.githubusercontent.com`、Release 资源域名）。出网不稳时配置 `proxy-url`
 
 ### 安装方式 A（推荐）：插件商店
@@ -63,8 +66,9 @@
 ```text
 store-sources  →  registry.json（目录 / 元数据）
 plugin.repository  →  GitHub Releases 资产
-  cpa-grok-panel_<version>_linux_amd64.zip   ← 商店必需
-  （zip 根目录内为 cpa-grok-panel.so）
+  cpa-grok-panel_<version>_linux_amd64.zip   ← 商店常用（x86_64）
+  cpa-grok-panel_<version>_linux_arm64.zip   ← arm64 主机
+  （zip 根目录内均为 cpa-grok-panel.so）
 ```
 
 #### 1. 商店源 URL
@@ -77,7 +81,7 @@ https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
 | --- | --- |
 | `id` | `cpa-grok-panel` |
 | `name` | Grok 账号面板 |
-| `version` | 与最新 Release 对齐（如 `0.5.0`） |
+| `version` | 与最新 Release 对齐（如 `0.5.1`） |
 | `repository` | `https://github.com/magicvr/cpa-grok-panel` |
 
 ```bash
@@ -106,7 +110,7 @@ plugins:
 
 1. 打开 CPA 管理页（如 `http://<cpa-host>:<port>/management.html`），用 management key 登录  
 2. **插件 / 插件商店** → 找到 **Grok 账号面板**（id `cpa-grok-panel`）  
-3. 选择版本（一般最新，如 `0.5.0`）并安装
+3. 选择版本（一般最新，如 `0.5.1`）并安装
 4. **完整停止并重新启动整个 CPA 进程**（原生 `.so`：热更新 / 只重载配置可能仍加载旧库）
 
 Management API 示例：
@@ -116,7 +120,7 @@ POST /v0/management/plugin-store/cpa-grok-panel/install
 Authorization: Bearer <management_key>
 Content-Type: application/json
 
-{"version":"0.5.0"}
+{"version":"0.5.1"}
 ```
 
 版本号为去掉 `v` 前缀的 semver，须与 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 已发布 tag 一致。
@@ -130,8 +134,9 @@ Content-Type: application/json
 
 适合不改 `store-sources`、离线拷包或商店链路不通。
 
-1. 在 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 下载  
-   - **`cpa-grok-panel_0.5.0_linux_amd64.zip`**（商店与手动安装都用这个名字）
+1. 在 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 按 CPA 主机架构下载  
+   - **x86_64：** `cpa-grok-panel_0.5.1_linux_amd64.zip`  
+   - **arm64：** `cpa-grok-panel_0.5.1_linux_arm64.zip`  
    - （可选）`checksums.txt`  
 2. CPA **插件管理**里本地安装 / 上传该 zip  
    - zip **根目录**必须是 `cpa-grok-panel.so`，不要改包内结构  
@@ -209,13 +214,22 @@ Content-Type: application/json
 默认开启、间隔 5 秒；仅页面可见且无账号操作时执行。**只刷新列表 / 设置 / meta，不刷新套餐。**  
 可在设置页关闭或改为 2–60 秒；关闭后账号页显示手动「刷新」。
 
-### 自动降权与冷却
+### 优先级调度（自动降权与冷却）
 
-- 401/403 每次默认增加 `1.5` failure debt；成功默认衰减 `1.0`，不会直接清空历史；非归因失败不改 debt
-- debt 默认达到 `2.0` 进入 soft `-10`；hard streak 达 3 次或 debt 达 `4.5` 进入 hard `-100`
-- 429 可选计入 streak，并在开启时默认增加 `0.5` debt；5xx 可选计入 streak
-- priority 写入由 worker 异步执行，优先 Management fields，未配 `CPA_GROK_MANAGEMENT_*` 时回退 `host.auth.save`，写后 re-list 校验
-- 冷却恢复默认开：`6h → 12h → 24h` 后进入 half-open `-10`；默认成功 2 次回 baseline，归因失败立即回 hard；机器人账号不自动恢复
+目标：让持续/间歇失败的 auth 少被 CPA 选中，避免「多试几次才成功 → 总耗时爆炸」。插件**不实现 CPA 路由**，只写 `priority`。
+
+| 轨道 | 信号 | 默认动作 |
+| --- | --- | --- |
+| **Debt（失败债务）** | 401/403 默认 `+1.5`；可选 429 `+0.5`；成功 `-1.0`（衰减，不清空历史） | ≥ `2.0` → **soft** `priority=-10` |
+| **Hard streak** | 归因失败连败计数；成功清零 streak（debt 仍衰减） | ≥ `3` 或 debt ≥ `4.5` → **hard** `priority=-100` |
+| **Half-open 恢复** | 冷却阶梯 `6h → 12h → 24h` | 先回到 soft 观察档；成功累计默认 2 次 → baseline；归因失败 → 立刻 hard |
+| **机器人** | JWT `bot_flag_source` | 默认**自动恢复跳过** bot（`cooldown_restore_skip_bots=true`，可关）；手动解除降权始终可用 |
+
+其它要点：
+
+- 非归因失败不改 debt；未知身份不降权
+- priority 由 worker **异步** PATCH（优先 Management fields；无 `CPA_GROK_MANAGEMENT_*` 时回退 `host.auth.save`），写后 re-list
+- 设计说明：`docs/design/11-soft-demotion-half-open.md`
 
 ### 每日清零
 
@@ -251,6 +265,7 @@ Content-Type: application/json
 | `CPA_GROK_DEBT_SUCCESS_DECAY` | `1.0` | 成功请求 debt 衰减 |
 | `CPA_GROK_DEFAULT_RESTORE_PRIORITY` | `0` | 无基线时的恢复优先级 |
 | `CPA_GROK_COOLDOWN_RESTORE` | `true` | 是否默认开冷却恢复 |
+| `CPA_GROK_COOLDOWN_RESTORE_SKIP_BOTS` | `true` | 自动冷却恢复是否跳过显式机器人 |
 | `CPA_GROK_HALF_OPEN` | `true` | 冷却后是否进入 half-open 观察档 |
 | `CPA_GROK_HALF_OPEN_SUCCESS_THRESHOLD` | `2` | half-open 回 baseline 所需成功数 |
 | `CPA_GROK_COUNT_429` | `false` | 429 是否计入连败 |
@@ -258,7 +273,8 @@ Content-Type: application/json
 | `CPA_GROK_MANAGEMENT_BASE_URL` | 未设置 | 自动降权 / 冷却恢复用的 CPA 地址（如 `http://127.0.0.1:8317`） |
 | `CPA_GROK_MANAGEMENT_KEY` | 未设置 | Management fields 用 key；须与 BASE 成对，否则回退 `host.auth.save` |
 
-设置页还可改：自动刷新、每日清零、**Free 用户日限额（token，默认 2000000）** 等，热生效、无需重启。  
+设置页还可改：自动刷新、每日清零、**Free 用户日限额（token，默认 2000000）**、**自动恢复时是否跳过机器人** 等，热生效、无需重启。  
+浏览器本地（不写插件 state）：**外观 / 主题** = 跟随 CPA / 暗色 / 亮色（默认跟随 CPA）。  
 `CPA_GROK_MANAGEMENT_*` 变更后需重启插件进程。
 
 ## 开发与发版
@@ -266,9 +282,13 @@ Content-Type: application/json
 ### 构建与测试
 
 ```bash
-# Linux amd64 动态库
+# Linux amd64
 CGO_ENABLED=1 GOOS=linux GOARCH=amd64 \
   go build -trimpath -ldflags='-s -w' -buildmode=c-shared -o dist/cpa-grok-panel.so .
+
+# Linux arm64（需 aarch64-linux-gnu-gcc）
+CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc \
+  go build -trimpath -ldflags='-s -w' -buildmode=c-shared -o dist/cpa-grok-panel_arm64.so .
 
 CGO_ENABLED=1 go test ./...
 go vet ./...
@@ -276,30 +296,28 @@ go vet ./...
 
 ### 发版打包
 
-CPA 插件商店**只认**下列资产名（与历史 0.3.x 一致）：
+商店 / 手动安装认 **按架构命名的 zip**（zip 根目录必须是 `cpa-grok-panel.so`）：
 
 ```text
-cpa-grok-panel_<semver>_linux_amd64.zip   # zip 根目录：cpa-grok-panel.so
-checksums.txt                             # 建议一并上传
+cpa-grok-panel_<semver>_linux_amd64.zip
+cpa-grok-panel_<semver>_linux_arm64.zip   # 有交叉编译链时一并产出
+checksums.txt
 ```
 
-**不要只上传裸 `cpa-grok-panel.so`**，否则商店会报：
+**不要只上传裸 `cpa-grok-panel.so`**，否则商店会报 zip not found。
 
-```text
-plugin_install_failed: release asset cpa-grok-panel_<ver>_linux_amd64.zip not found
-```
-
-一键打包：
+一键打包（本机有 `aarch64-linux-gnu-gcc` 时会同时打 arm64）：
 
 ```bash
-./scripts/package_release.sh 0.5.0
-# 生成：
-#   dist/cpa-grok-panel_0.5.0_linux_amd64.zip
+./scripts/package_release.sh 0.5.1
+# 生成例如：
+#   dist/cpa-grok-panel_0.5.1_linux_amd64.zip
+#   dist/cpa-grok-panel_0.5.1_linux_arm64.zip
 #   dist/checksums.txt
-#   dist/cpa-grok-panel.so
 
-gh release upload v0.5.0 \
-  dist/cpa-grok-panel_0.5.0_linux_amd64.zip \
+gh release upload v0.5.1 \
+  dist/cpa-grok-panel_0.5.1_linux_amd64.zip \
+  dist/cpa-grok-panel_0.5.1_linux_arm64.zip \
   dist/checksums.txt \
   --clobber
 ```
@@ -310,4 +328,4 @@ gh release upload v0.5.0 \
 - 评审与探测：[docs/reviews/](docs/reviews/)
 - 发行版：[Releases](https://github.com/magicvr/cpa-grok-panel/releases)
 
-README 以当前可安装版本 **v0.5.0** 为准。
+README 以当前可安装版本 **v0.5.1** 为准。

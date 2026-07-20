@@ -22,6 +22,7 @@ type Settings struct {
 	DemotionPriority           int               `json:"demotion_priority"`
 	DefaultRestorePriority     int               `json:"default_restore_priority"`
 	CooldownRestoreEnabled     bool              `json:"cooldown_restore_enabled"`
+	CooldownRestoreSkipBots    bool              `json:"cooldown_restore_skip_bots"`
 	HalfOpenEnabled            bool              `json:"half_open_enabled"`
 	HalfOpenSuccessThreshold   int               `json:"half_open_success_threshold"`
 	ProtectionLevel            string            `json:"protection_level"`
