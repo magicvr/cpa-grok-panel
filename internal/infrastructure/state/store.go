@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/magicvr/cpa-grok-panel/internal/config"
@@ -18,7 +17,7 @@ import (
 const (
 	SchemaVersion = 1
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.5.1"
+	PluginVersion = "0.5.2"
 )
 
 type DedupeState struct {
@@ -65,17 +64,17 @@ func Open(dir string, now time.Time) (*Store, error) {
 	if err := os.MkdirAll(locksDir, 0o700); err != nil {
 		return nil, fmt.Errorf("create locks dir: %w", err)
 	}
-	lockFile, err := os.OpenFile(filepath.Join(locksDir, "instance.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	lf, err := os.OpenFile(filepath.Join(locksDir, "instance.lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		// Non-fatal: continue without lock file if FS rejects create.
-		lockFile = nil
-	} else if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		lf = nil
+	} else if err := lockFile(lf); err != nil {
 		// Another process holds the lock; still open store so register does not fail hard.
-		_ = lockFile.Close()
-		lockFile = nil
+		_ = lf.Close()
+		lf = nil
 	}
 
-	store := &Store{dir: dir, path: filepath.Join(dir, "state.json"), lockFile: lockFile}
+	store := &Store{dir: dir, path: filepath.Join(dir, "state.json"), lockFile: lf}
 	store.snapshot = newSnapshot(now)
 	if err := store.load(); err != nil {
 		_ = store.Close()
@@ -282,13 +281,10 @@ func (store *Store) save(snapshot Snapshot) error {
 	if err := os.Rename(store.path+".tmp", store.path); err != nil {
 		return fmt.Errorf("replace state: %w", err)
 	}
-	directory, err := os.Open(store.dir)
-	if err == nil {
-		err = directory.Sync()
+	// Directory fsync is best-effort; Windows often denies Sync on directory handles.
+	if directory, err := os.Open(store.dir); err == nil {
+		_ = directory.Sync()
 		_ = directory.Close()
-	}
-	if err != nil {
-		return fmt.Errorf("sync state directory: %w", err)
 	}
 	return nil
 }
@@ -323,7 +319,7 @@ func (store *Store) Close() error {
 	if store.lockFile == nil {
 		return nil
 	}
-	_ = syscall.Flock(int(store.lockFile.Fd()), syscall.LOCK_UN)
+	_ = unlockFile(store.lockFile)
 	err := store.lockFile.Close()
 	store.lockFile = nil
 	return err

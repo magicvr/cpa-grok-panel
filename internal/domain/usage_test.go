@@ -44,6 +44,18 @@ func TestProjectAccountManaged(t *testing.T) {
 	}
 }
 
+func TestProjectAccountPrefersHigherHostRequestCounts(t *testing.T) {
+	view := domain.ProjectAccount(domain.AuthFile{
+		AuthIndex: "idx", Name: "xai-a.json", Provider: "xai", Type: "xai",
+		AccountType: "oauth", Success: 12, Failed: 3,
+	}, domain.AccountState{
+		Usage: domain.UsageCounters{SuccessfulRequests: 1, FailedRequests: 5, TotalTokens: 99},
+	}, time.Now().UTC(), -100)
+	if view.Usage.SuccessfulRequests != 12 || view.Usage.FailedRequests != 5 || view.Usage.TotalTokens != 99 {
+		t.Fatalf("usage=%+v", view.Usage)
+	}
+}
+
 func TestLegacyAppliedDemotionNormalizesToHard(t *testing.T) {
 	demotion := (domain.DemotionState{State: "applied"}).Normalized()
 	if demotion.Class != domain.DemotionClassHard {

@@ -18,6 +18,9 @@ type AuthFile struct {
 	Unavailable   bool   `json:"unavailable,omitempty"`
 	Status        string `json:"status,omitempty"`
 	StatusMessage string `json:"status_message,omitempty"`
+	// Host runtime request counters from CPA auth list (not plugin usage ledger).
+	Success int64 `json:"success,omitempty"`
+	Failed  int64 `json:"failed,omitempty"`
 }
 
 type QuotaSnapshot struct {
@@ -142,6 +145,11 @@ func ProjectAccount(file AuthFile, state AccountState, now time.Time, demotionPr
 	if usage.PeriodStartedAt.IsZero() {
 		usage.PeriodStartedAt = now.UTC()
 	}
+	// CPA xAI stream success often never hits usage.handle (no EnsurePublished on
+	// the happy path), while failures always do. Prefer host list counters when
+	// they are higher so the panel reflects real request outcomes.
+	usage.SuccessfulRequests = maxUint64(usage.SuccessfulRequests, nonNegInt64(file.Success))
+	usage.FailedRequests = maxUint64(usage.FailedRequests, nonNegInt64(file.Failed))
 	demotion := state.Demotion.Normalized()
 	isDemoted := (demotion.State == "applied" && IsActiveDemotionClass(demotion.Class)) || file.Priority <= demotionPriority
 	quota := state.Quota
@@ -157,4 +165,18 @@ func ProjectAccount(file AuthFile, state AccountState, now time.Time, demotionPr
 		IsDemoted: isDemoted, CanRestore: isDemoted,
 		LastSeenAt: now.UTC(), WriteMode: "managed",
 	}
+}
+
+func nonNegInt64(value int64) uint64 {
+	if value <= 0 {
+		return 0
+	}
+	return uint64(value)
+}
+
+func maxUint64(a, b uint64) uint64 {
+	if a > b {
+		return a
+	}
+	return b
 }
