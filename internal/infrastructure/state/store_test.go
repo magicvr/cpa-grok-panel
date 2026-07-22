@@ -14,7 +14,7 @@ import (
 
 func TestNewStateUsesCurrentPluginVersion(t *testing.T) {
 	store := stateinfra.OpenMemory(time.Now().UTC())
-	if got, want := store.View().PluginVersion, "0.5.1"; got != want {
+	if got, want := store.View().PluginVersion, "0.5.2"; got != want {
 		t.Fatalf("PluginVersion=%q want=%q", got, want)
 	}
 }
@@ -52,7 +52,7 @@ func TestOpenLegacyStateWithoutSettings(t *testing.T) {
 	if strings.Contains(string(data), `"settings"`) {
 		t.Fatalf("fixture unexpectedly contains settings: %s", data)
 	}
-	data = bytes.ReplaceAll(data, []byte(`"plugin_version": "0.5.1"`), []byte(`"plugin_version": "0.2.8"`))
+	data = bytes.ReplaceAll(data, []byte(`"plugin_version": "0.5.2"`), []byte(`"plugin_version": "0.2.8"`))
 	if err := os.WriteFile(filepath.Join(dir, "state.json"), data, 0o600); err != nil {
 		t.Fatal(err)
 	}
