@@ -62,6 +62,7 @@ func Registration() map[string]any {
 		{"Method": "POST", "Path": APIPrefix + "/accounts/priority-written", "Description": "确认 Management 优先级写入并更新插件状态"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/clear-state", "Description": "删除账号后清理插件本地状态"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/quota", "Description": "保存账号额度快照"},
+		{"Method": "POST", "Path": APIPrefix + "/accounts/resign", "Description": "用 refresh_token 重签并写回 CPA auth 文件"},
 	}
 	resources := []map[string]any{
 		{"Path": ResourcePanelPath, "Menu": "Grok 账号", "Description": "Grok 账号管理面板"},
@@ -162,6 +163,16 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 			return accountErrorResponse(err)
 		}
 		return jsonResponse(200, map[string]any{"cleared": true})
+	case method == "POST" && matchesPath(path, "/accounts/resign"):
+		var body accountTargetRequest
+		if err := decodeStrictBody(request.Body, &body); err != nil {
+			return apiError(400, "invalid_argument", err.Error(), false)
+		}
+		account, err := router.accounts.Resign(body.AuthIndex, body.ExactFileName)
+		if err != nil {
+			return accountErrorResponse(err)
+		}
+		return jsonResponse(200, map[string]any{"account": account})
 	case method == "POST" && matchesPath(path, "/accounts/quota"):
 		var body quotaSnapshotRequest
 		if err := decodeStrictBody(request.Body, &body); err != nil {

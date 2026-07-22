@@ -6,7 +6,7 @@
 #   cpa-grok-panel_<semver>_windows_arm64.zip  (aarch64-w64-mingw32-gcc / llvm-mingw)
 # Zip root contains cpa-grok-panel.so (linux) or cpa-grok-panel.dll (windows).
 # Usage: scripts/package_release.sh [version]
-# Example: scripts/package_release.sh 0.5.3
+# Example: scripts/package_release.sh 0.5.4
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
