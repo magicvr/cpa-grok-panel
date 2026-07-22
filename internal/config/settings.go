@@ -32,4 +32,8 @@ type Settings struct {
 	OperationTimeoutSeconds    int               `json:"operation_timeout_seconds"`
 	WriteMode                  string            `json:"write_mode"`
 	FreeUserDailyTokenLimit    uint64            `json:"free_user_daily_token_limit"`
+	// OutboundProxyURL is the optional HTTP(S)/SOCKS proxy for plugin-process
+	// egress such as batch token resign (POST auth.x.ai). Empty = use process
+	// CPA_GROK_OUTBOUND_PROXY then HTTPS_PROXY/HTTP_PROXY. Not CPA host proxy-url.
+	OutboundProxyURL string `json:"outbound_proxy_url"`
 }

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -22,6 +23,9 @@ const (
 	// DefaultXAITokenURL is the public xAI OAuth token endpoint.
 	DefaultXAITokenURL = "https://auth.x.ai/oauth2/token"
 	defaultTokenHTTPTimeout = 20 * time.Second
+	// EnvOutboundProxy is the plugin-specific outbound proxy for token resign (and similar).
+	// Higher priority than process HTTPS_PROXY/HTTP_PROXY when building the default client.
+	EnvOutboundProxy = "CPA_GROK_OUTBOUND_PROXY"
 )
 
 // tokenFieldPaths mirrors bot_flag nesting for OAuth token fields.
@@ -50,9 +54,17 @@ type TokenRefresher interface {
 }
 
 // HTTPTokenRefresher performs grant_type=refresh_token against the xAI token endpoint.
+//
+// Outbound routing (when Client is nil):
+//  1. ProxyURL if non-empty (settings outbound_proxy_url or env CPA_GROK_OUTBOUND_PROXY)
+//  2. else http.ProxyFromEnvironment (HTTPS_PROXY / HTTP_PROXY / NO_PROXY)
+//
+// Note: this does NOT read CPA host config proxy-url; package refresh goes through CPA
+// api-call (host egress), while resign POSTs auth.x.ai from the plugin process itself.
 type HTTPTokenRefresher struct {
-	URL    string
-	Client *http.Client
+	URL      string
+	Client   *http.Client
+	ProxyURL string // explicit proxy; never log credentials from this value
 }
 
 func (refresher *HTTPTokenRefresher) Refresh(ctx context.Context, refreshToken, clientID string) (TokenRefreshResult, error) {
@@ -62,7 +74,11 @@ func (refresher *HTTPTokenRefresher) Refresh(ctx context.Context, refreshToken, 
 	}
 	client := refresher.Client
 	if client == nil {
-		client = &http.Client{Timeout: defaultTokenHTTPTimeout}
+		built, err := NewOutboundHTTPClient(refresher.ProxyURL, defaultTokenHTTPTimeout)
+		if err != nil {
+			return TokenRefreshResult{}, fmt.Errorf("build outbound http client: %w", err)
+		}
+		client = built
 	}
 	form := url.Values{}
 	form.Set("grant_type", "refresh_token")
@@ -75,7 +91,7 @@ func (refresher *HTTPTokenRefresher) Refresh(ctx context.Context, refreshToken, 
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	response, err := client.Do(request)
 	if err != nil {
-		return TokenRefreshResult{}, fmt.Errorf("token endpoint request failed: %w", err)
+		return TokenRefreshResult{}, mapTokenRequestError(err)
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
@@ -117,36 +133,96 @@ func (refresher *HTTPTokenRefresher) Refresh(ctx context.Context, refreshToken, 
 	return result, nil
 }
 
+// NewOutboundHTTPClient builds an HTTP client for plugin-process egress (e.g. auth.x.ai).
+// proxyURL, when non-empty, forces that proxy; otherwise ProxyFromEnvironment is used.
+// Do not log proxyURL — it may contain credentials.
+func NewOutboundHTTPClient(proxyURL string, timeout time.Duration) (*http.Client, error) {
+	if timeout <= 0 {
+		timeout = defaultTokenHTTPTimeout
+	}
+	transport := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+	}
+	if explicit := strings.TrimSpace(proxyURL); explicit != "" {
+		parsed, err := url.Parse(explicit)
+		if err != nil {
+			return nil, fmt.Errorf("invalid outbound proxy url: %w", err)
+		}
+		if parsed.Scheme == "" || parsed.Host == "" {
+			return nil, fmt.Errorf("invalid outbound proxy url: missing scheme or host")
+		}
+		transport.Proxy = http.ProxyURL(parsed)
+	}
+	return &http.Client{Timeout: timeout, Transport: transport}, nil
+}
+
+// ResolveOutboundProxyURL picks the plugin outbound proxy (settings > CPA_GROK_OUTBOUND_PROXY).
+// Empty means fall back to process HTTPS_PROXY/HTTP_PROXY via ProxyFromEnvironment.
+func ResolveOutboundProxyURL(settings Settings) string {
+	if settings.OutboundProxyURL != "" {
+		return strings.TrimSpace(settings.OutboundProxyURL)
+	}
+	return strings.TrimSpace(os.Getenv(EnvOutboundProxy))
+}
+
+func mapTokenRequestError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, context.DeadlineExceeded) || isTimeoutError(err) {
+		return &AccountError{
+			Code:       "token_refresh_failed",
+			Message:    "访问 auth.x.ai 超时（请检查出站代理/网络）",
+			HTTPStatus: 502,
+			Retryable:  true,
+		}
+	}
+	if errors.Is(err, context.Canceled) {
+		return &AccountError{
+			Code:       "token_refresh_failed",
+			Message:    "访问 auth.x.ai 已取消（请检查出站代理/网络）",
+			HTTPStatus: 502,
+			Retryable:  true,
+		}
+	}
+	return &AccountError{
+		Code:       "token_refresh_failed",
+		Message:    fmt.Sprintf("token endpoint request failed: %v", err),
+		HTTPStatus: 502,
+		Retryable:  true,
+	}
+}
+
+func isTimeoutError(err error) bool {
+	var timeout interface{ Timeout() bool }
+	if errors.As(err, &timeout) && timeout.Timeout() {
+		return true
+	}
+	// net/url wraps often include "context deadline exceeded" without unwrapping to DeadlineExceeded
+	// on older paths; also "Client.Timeout exceeded".
+	msg := err.Error()
+	return strings.Contains(msg, "context deadline exceeded") ||
+		strings.Contains(msg, "Client.Timeout exceeded") ||
+		strings.Contains(msg, "i/o timeout")
+}
+
 // Resign refreshes OAuth tokens for one account via refresh_token grant and
 // writes the updated document back to the same auth file name.
 // It does not mint via SSO, re-login with password, or clear demotion state.
+//
+// Locking: short write locks around resolve/get and save only. The HTTP call
+// runs outside the lock so batch concurrent resign is not serialized on network I/O.
 func (service *AccountsService) Resign(authIndex, exactFileName string) (domain.AccountView, error) {
-	service.write.Lock()
-	defer service.write.Unlock()
-
-	file, err := service.resolveExact(authIndex, exactFileName)
+	refreshToken, clientID, previousAccess, refresher, err := service.prepareResign(authIndex, exactFileName)
 	if err != nil {
 		return domain.AccountView{}, err
 	}
-	document, err := service.host.GetAuthFile(authIndex)
-	if err != nil {
-		return domain.AccountView{}, hostError("auth_get_failed", err)
-	}
-	refreshToken := extractTokenField(document, "refresh_token")
-	if refreshToken == "" {
-		return domain.AccountView{}, &AccountError{
-			Code: "missing_refresh_token", Message: "账号 auth 文件缺少 refresh_token", HTTPStatus: 400, Retryable: false,
-		}
-	}
-	clientID := extractTokenField(document, "client_id")
-	if clientID == "" {
-		clientID = DefaultXAIOAuthClientID
-	}
 
-	refresher := service.tokenRefresher
-	if refresher == nil {
-		refresher = &HTTPTokenRefresher{URL: service.tokenURL, Client: service.httpClient}
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTokenHTTPTimeout)
 	defer cancel()
 	tokens, err := refresher.Refresh(ctx, refreshToken, clientID)
@@ -155,12 +231,59 @@ func (service *AccountsService) Resign(authIndex, exactFileName string) (domain.
 		if errors.As(err, &accountErr) {
 			return domain.AccountView{}, accountErr
 		}
-		return domain.AccountView{}, &AccountError{
-			Code: "token_refresh_failed", Message: err.Error(), HTTPStatus: 502, Retryable: true,
-		}
+		return domain.AccountView{}, mapTokenRequestError(err)
 	}
 
-	previousAccess := extractTokenField(document, "access_token")
+	return service.commitResign(authIndex, exactFileName, previousAccess, tokens)
+}
+
+func (service *AccountsService) prepareResign(authIndex, exactFileName string) (refreshToken, clientID, previousAccess string, refresher TokenRefresher, err error) {
+	service.write.Lock()
+	defer service.write.Unlock()
+
+	if _, err := service.resolveExact(authIndex, exactFileName); err != nil {
+		return "", "", "", nil, err
+	}
+	document, err := service.host.GetAuthFile(authIndex)
+	if err != nil {
+		return "", "", "", nil, hostError("auth_get_failed", err)
+	}
+	refreshToken = extractTokenField(document, "refresh_token")
+	if refreshToken == "" {
+		return "", "", "", nil, &AccountError{
+			Code: "missing_refresh_token", Message: "账号 auth 文件缺少 refresh_token", HTTPStatus: 400, Retryable: false,
+		}
+	}
+	clientID = extractTokenField(document, "client_id")
+	if clientID == "" {
+		clientID = DefaultXAIOAuthClientID
+	}
+	previousAccess = extractTokenField(document, "access_token")
+
+	refresher = service.tokenRefresher
+	if refresher == nil {
+		refresher = &HTTPTokenRefresher{
+			URL:      service.tokenURL,
+			Client:   service.httpClient,
+			ProxyURL: ResolveOutboundProxyURL(service.settings()),
+		}
+	}
+	return refreshToken, clientID, previousAccess, refresher, nil
+}
+
+func (service *AccountsService) commitResign(authIndex, exactFileName, previousAccess string, tokens TokenRefreshResult) (domain.AccountView, error) {
+	service.write.Lock()
+	defer service.write.Unlock()
+
+	// Re-resolve mapping before save (same safety as demote/verify paths).
+	file, err := service.resolveExact(authIndex, exactFileName)
+	if err != nil {
+		return domain.AccountView{}, err
+	}
+	document, err := service.host.GetAuthFile(authIndex)
+	if err != nil {
+		return domain.AccountView{}, hostError("auth_get_failed", err)
+	}
 	applyTokenRefresh(document, tokens, service.now().UTC())
 	if err := service.host.SaveAuthFile(file.Name, document); err != nil {
 		return domain.AccountView{}, hostError("auth_save_failed", err)

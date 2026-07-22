@@ -276,6 +276,7 @@ type settingsUpdateRequest struct {
 	HalfOpenEnabled            *bool    `json:"half_open_enabled"`
 	HalfOpenSuccessThreshold   *int     `json:"half_open_success_threshold"`
 	FreeUserDailyTokenLimit    *uint64  `json:"free_user_daily_token_limit"`
+	OutboundProxyURL           *string  `json:"outbound_proxy_url"`
 }
 
 type settingsResponse struct {
@@ -301,7 +302,7 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		update.DebtFail401 == nil && update.DebtFail429 == nil && update.DebtSuccessDecay == nil &&
 		update.DemotionPriority == nil && update.DefaultRestorePriority == nil && update.CooldownRestoreEnabled == nil &&
 		update.CooldownRestoreSkipBots == nil && update.HalfOpenEnabled == nil && update.HalfOpenSuccessThreshold == nil &&
-		update.FreeUserDailyTokenLimit == nil {
+		update.FreeUserDailyTokenLimit == nil && update.OutboundProxyURL == nil {
 		return application.Settings{}, fmt.Errorf("至少提供一个可配置字段")
 	}
 	if update.AutoRefreshIntervalSeconds != nil && (*update.AutoRefreshIntervalSeconds < 2 || *update.AutoRefreshIntervalSeconds > 60) {
@@ -347,6 +348,11 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 	}
 	if update.FreeUserDailyTokenLimit != nil && *update.FreeUserDailyTokenLimit < 1 {
 		return application.Settings{}, fmt.Errorf("free_user_daily_token_limit 必须大于等于 1")
+	}
+	if update.OutboundProxyURL != nil {
+		if err := application.ValidateOutboundProxyURL(*update.OutboundProxyURL); err != nil {
+			return application.Settings{}, err
+		}
 	}
 
 	var result application.Settings
@@ -420,6 +426,9 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		}
 		if update.FreeUserDailyTokenLimit != nil {
 			settings.FreeUserDailyTokenLimit = *update.FreeUserDailyTokenLimit
+		}
+		if update.OutboundProxyURL != nil {
+			settings.OutboundProxyURL = strings.TrimSpace(*update.OutboundProxyURL)
 		}
 		settings.Revision++
 		if settings.Revision < 1 {

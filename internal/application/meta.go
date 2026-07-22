@@ -2,6 +2,7 @@ package application
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -29,7 +30,30 @@ func DefaultSettings() Settings {
 		// Set CPA_GROK_COUNT_429 / CPA_GROK_COUNT_5XX=true to also demote after N consecutive such failures.
 		CountStatus429: false, CountStatus5XX: false,
 		DefaultTokenCapacity: 1_000_000, PerAccountTokenCapacity: map[string]uint64{},
-		HealthStaleAfterSeconds: 86400, OperationTimeoutSeconds: 60, WriteMode: "managed"}
+		HealthStaleAfterSeconds: 86400, OperationTimeoutSeconds: 60, WriteMode: "managed",
+		OutboundProxyURL: ""}
+}
+
+// ValidateOutboundProxyURL accepts empty (env fallback) or a parseable absolute proxy URL.
+// Does not log the value (may contain credentials).
+func ValidateOutboundProxyURL(value string) error {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return fmt.Errorf("outbound_proxy_url 无效: %w", err)
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("outbound_proxy_url 须含 scheme 与 host（如 http://127.0.0.1:10808）")
+	}
+	switch strings.ToLower(parsed.Scheme) {
+	case "http", "https", "socks5", "socks5h":
+		return nil
+	default:
+		return fmt.Errorf("outbound_proxy_url scheme 须为 http/https/socks5/socks5h")
+	}
 }
 
 var dailyUsageResetTimePattern = regexp.MustCompile(`^\d{2}:\d{2}$`)
