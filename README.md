@@ -2,12 +2,12 @@
 
 [![Release](https://img.shields.io/github/v/release/magicvr/cpa-grok-panel)](https://github.com/magicvr/cpa-grok-panel/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Platform](https://img.shields.io/badge/platform-Linux%20amd64-blue)](https://github.com/magicvr/cpa-grok-panel/releases)
+[![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-blue)](https://github.com/magicvr/cpa-grok-panel/releases)
 
 **CLIProxyAPI（CPA）** 的 Grok / xAI OAuth 账号运维面板。
 
 在 CPA 管理页集中查看账号状态、Token 用量与套餐缓存，并安全地启用 / 停用 / 降权 / 删除账号。  
-插件 id：`cpa-grok-panel` · 当前文档对应 **v0.5.2**（Linux **amd64 / arm64**）。
+插件 id：`cpa-grok-panel` · 当前文档对应 **v0.5.3**（Linux **amd64 / arm64** · Windows **amd64 / arm64**）。
 
 ## 友链
 
@@ -57,7 +57,7 @@
 
 - CPA 已启用插件（`plugins.enabled: true`），支持原生插件 ABI、Management API、usage 回调
 - 有效的 CPA management key
-- 平台：**Linux amd64**（商店主路径）或 **Linux arm64**（Release 另有 `…_linux_arm64.zip` 时）
+- 平台：**Linux amd64 / arm64**；**Windows amd64 / arm64**（商店按 CPA 本机 GOOS/GOARCH 选 `…_{goos}_{goarch}.zip`）
 - 方式 A 需要 CPA 主机能访问 GitHub（`api.github.com`、`github.com`、`raw.githubusercontent.com`、Release 资源域名）。出网不稳时配置 `proxy-url`
 
 ### 安装方式 A（推荐）：插件商店
@@ -67,8 +67,10 @@
 ```text
 store-sources  →  registry.json（目录 / 元数据）
 plugin.repository  →  GitHub Releases 资产
-  cpa-grok-panel_<version>_linux_amd64.zip   ← 商店常用（x86_64）
-  cpa-grok-panel_<version>_linux_arm64.zip   ← arm64 主机
+  cpa-grok-panel_<version>_linux_amd64.zip
+  cpa-grok-panel_<version>_linux_arm64.zip
+  cpa-grok-panel_<version>_windows_amd64.zip  ← Windows x64（zip 内 .dll）
+  cpa-grok-panel_<version>_windows_arm64.zip  ← Windows ARM64
   （zip 根目录内均为 cpa-grok-panel.so）
 ```
 
@@ -82,7 +84,7 @@ https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
 | --- | --- |
 | `id` | `cpa-grok-panel` |
 | `name` | Grok 账号面板 |
-| `version` | 与最新 Release 对齐（如 `0.5.2`） |
+| `version` | 与最新 Release 对齐（如 `0.5.3`） |
 | `repository` | `https://github.com/magicvr/cpa-grok-panel` |
 
 ```bash
@@ -111,7 +113,7 @@ plugins:
 
 1. 打开 CPA 管理页（如 `http://<cpa-host>:<port>/management.html`），用 management key 登录  
 2. **插件 / 插件商店** → 找到 **Grok 账号面板**（id `cpa-grok-panel`）  
-3. 选择版本（一般最新，如 `0.5.2`）并安装
+3. 选择版本（一般最新，如 `0.5.3`）并安装
 4. **完整停止并重新启动整个 CPA 进程**（原生 `.so`：热更新 / 只重载配置可能仍加载旧库）
 
 Management API 示例：
@@ -121,7 +123,7 @@ POST /v0/management/plugin-store/cpa-grok-panel/install
 Authorization: Bearer <management_key>
 Content-Type: application/json
 
-{"version":"0.5.2"}
+{"version":"0.5.3"}
 ```
 
 版本号为去掉 `v` 前缀的 semver，须与 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 已发布 tag 一致。
@@ -136,8 +138,10 @@ Content-Type: application/json
 适合不改 `store-sources`、离线拷包或商店链路不通。
 
 1. 在 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 按 CPA 主机架构下载  
-   - **x86_64：** `cpa-grok-panel_0.5.2_linux_amd64.zip`  
-   - **arm64：** `cpa-grok-panel_0.5.2_linux_arm64.zip`  
+   - **Linux x86_64：** `cpa-grok-panel_0.5.3_linux_amd64.zip`  
+   - **Linux arm64：** `cpa-grok-panel_0.5.3_linux_arm64.zip`  
+   - **Windows x64：** `cpa-grok-panel_0.5.3_windows_amd64.zip`（根目录 `cpa-grok-panel.dll`）  
+   - **Windows ARM64：** `cpa-grok-panel_0.5.3_windows_arm64.zip`  
    - （可选）`checksums.txt`  
 2. CPA **插件管理**里本地安装 / 上传该 zip  
    - zip **根目录**必须是 `cpa-grok-panel.so`，不要改包内结构  
@@ -310,15 +314,15 @@ checksums.txt
 一键打包（本机有 `aarch64-linux-gnu-gcc` 时会同时打 arm64）：
 
 ```bash
-./scripts/package_release.sh 0.5.2
+./scripts/package_release.sh 0.5.3
 # 生成例如：
-#   dist/cpa-grok-panel_0.5.2_linux_amd64.zip
-#   dist/cpa-grok-panel_0.5.2_linux_arm64.zip
+#   dist/cpa-grok-panel_0.5.3_linux_amd64.zip
+#   dist/cpa-grok-panel_0.5.3_linux_arm64.zip
 #   dist/checksums.txt
 
-gh release upload v0.5.2 \
-  dist/cpa-grok-panel_0.5.2_linux_amd64.zip \
-  dist/cpa-grok-panel_0.5.2_linux_arm64.zip \
+gh release upload v0.5.3 \
+  dist/cpa-grok-panel_0.5.3_linux_amd64.zip \
+  dist/cpa-grok-panel_0.5.3_linux_arm64.zip \
   dist/checksums.txt \
   --clobber
 ```
@@ -329,4 +333,4 @@ gh release upload v0.5.2 \
 - 评审与探测：[docs/reviews/](docs/reviews/)
 - 发行版：[Releases](https://github.com/magicvr/cpa-grok-panel/releases)
 
-README 以当前可安装版本 **v0.5.2** 为准。
+README 以当前可安装版本 **v0.5.3** 为准。
