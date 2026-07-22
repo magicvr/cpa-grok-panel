@@ -3,9 +3,11 @@ package application_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -192,6 +194,132 @@ func TestHTTPTokenRefresherUsesDefaultClientIDFallbackInResign(t *testing.T) {
 	}
 }
 
+func TestHTTPTokenRefresherUsesExplicitProxy(t *testing.T) {
+	// Token endpoint that would only be reached if the client ignored Proxy.
+	tokenHit := false
+	tokenServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenHit = true
+		_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "should-not"})
+	}))
+	defer tokenServer.Close()
+
+	proxyHits := 0
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxyHits++
+		// Absolute-form request to the token URL when using HTTP proxy.
+		if r.Method != http.MethodPost {
+			t.Fatalf("proxy method=%s", r.Method)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "via-proxy", "refresh_token": "rt-p", "expires_in": 60, "token_type": "Bearer",
+		})
+	}))
+	defer proxy.Close()
+
+	refresher := &application.HTTPTokenRefresher{URL: tokenServer.URL, ProxyURL: proxy.URL}
+	result, err := refresher.Refresh(context.Background(), "rt", "cid")
+	if err != nil {
+		t.Fatalf("Refresh: %v", err)
+	}
+	if result.AccessToken != "via-proxy" {
+		t.Fatalf("token=%q", result.AccessToken)
+	}
+	if proxyHits != 1 {
+		t.Fatalf("proxyHits=%d", proxyHits)
+	}
+	if tokenHit {
+		t.Fatal("token server should not be hit when proxy is set")
+	}
+}
+
+func TestHTTPTokenRefresherMapsDeadlineExceeded(t *testing.T) {
+	refresher := &application.HTTPTokenRefresher{
+		URL: "http://127.0.0.1:1",
+		Client: &http.Client{
+			Timeout: 50 * time.Millisecond,
+			Transport: &http.Transport{
+				// Force hang until client timeout: dial a blackhole with short timeout path.
+				Proxy: func(*http.Request) (*url.URL, error) {
+					return nil, context.DeadlineExceeded
+				},
+			},
+		},
+	}
+	_, err := refresher.Refresh(context.Background(), "rt", "cid")
+	accountErr := application.AsAccountError(err)
+	if accountErr.Code != "token_refresh_failed" {
+		t.Fatalf("code=%q err=%v", accountErr.Code, err)
+	}
+	if !strings.Contains(accountErr.Message, "访问 auth.x.ai 超时") {
+		t.Fatalf("message=%q", accountErr.Message)
+	}
+	if !accountErr.Retryable {
+		t.Fatal("expected retryable")
+	}
+}
+
+func TestResignConcurrentDoesNotHoldWriteLockOverNetwork(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	const n = 4
+	files := make([]domain.AuthFile, 0, n)
+	docs := map[string]cpaabi.AuthDocument{}
+	for i := 0; i < n; i++ {
+		idx := fmt.Sprintf("idx-c%d", i)
+		name := fmt.Sprintf("xai-c%d.json", i)
+		files = append(files, xaiFile(idx, name, 1))
+		docs[idx] = cpaabi.AuthDocument{"refresh_token": "rt", "access_token": "old"}
+	}
+	host := &accountHost{files: files, documents: docs}
+	service := application.NewAccountsService(host, store, time.Now().UTC)
+
+	// Slow refresher: if Resign held write.Lock across Refresh, concurrent
+	// Resign would serialize to ~n * delay (here ≥ 4*120ms).
+	delay := 120 * time.Millisecond
+	service.SetTokenRefresher(slowTokenRefresher{
+		delay:  delay,
+		result: application.TokenRefreshResult{AccessToken: "new", RefreshToken: "rt2"},
+	})
+
+	start := time.Now()
+	errCh := make(chan error, n)
+	for i := 0; i < n; i++ {
+		i := i
+		go func() {
+			_, err := service.Resign(fmt.Sprintf("idx-c%d", i), fmt.Sprintf("xai-c%d.json", i))
+			errCh <- err
+		}()
+	}
+	for i := 0; i < n; i++ {
+		if err := <-errCh; err != nil {
+			t.Fatalf("Resign: %v", err)
+		}
+	}
+	elapsed := time.Since(start)
+	// Parallel should finish near one delay, not n delays. Allow headroom for CI.
+	if elapsed >= time.Duration(n)*delay-20*time.Millisecond {
+		t.Fatalf("elapsed=%v suggests serial lock-over-network (n*delay≈%v)", elapsed, time.Duration(n)*delay)
+	}
+}
+
+func TestNewOutboundHTTPClientRejectsInvalidProxy(t *testing.T) {
+	if _, err := application.NewOutboundHTTPClient("not-a-url", time.Second); err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestResolveOutboundProxyURLPrefersSettings(t *testing.T) {
+	t.Setenv(application.EnvOutboundProxy, "http://env-proxy:1")
+	settings := application.DefaultSettings()
+	settings.OutboundProxyURL = "http://settings-proxy:2"
+	if got := application.ResolveOutboundProxyURL(settings); got != "http://settings-proxy:2" {
+		t.Fatalf("got %q", got)
+	}
+	settings.OutboundProxyURL = ""
+	if got := application.ResolveOutboundProxyURL(settings); got != "http://env-proxy:1" {
+		t.Fatalf("env fallback got %q", got)
+	}
+}
+
 type stubTokenRefresher struct {
 	result application.TokenRefreshResult
 	err    error
@@ -199,6 +327,16 @@ type stubTokenRefresher struct {
 
 func (s stubTokenRefresher) Refresh(context.Context, string, string) (application.TokenRefreshResult, error) {
 	return s.result, s.err
+}
+
+type slowTokenRefresher struct {
+	delay  time.Duration
+	result application.TokenRefreshResult
+}
+
+func (s slowTokenRefresher) Refresh(context.Context, string, string) (application.TokenRefreshResult, error) {
+	time.Sleep(s.delay)
+	return s.result, nil
 }
 
 func intPtr(v int) *int { return &v }
