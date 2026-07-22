@@ -28,6 +28,9 @@ func TestUsageResetWorkerResetsOnceAfterConfiguredLocalTime(t *testing.T) {
 				EventsWithMissingUsage: 1, EventsWithInconsistentUsage: 1,
 				PeriodStartedAt: periodStarted, LastEventID: "event-before-reset", DedupeMode: "exact",
 			},
+			HostRequestBaseline: &domain.HostRequestBaseline{
+				Success: 100, Failed: 20, BoundPeriodStartedAt: periodStarted,
+			},
 			Failure:  domain.FailureState{ConsecutiveAttributedFailures: 3, LastFailureCode: "http_500"},
 			Demotion: domain.DemotionState{State: "applied", BaselinePriority: &baseline},
 		}
@@ -59,6 +62,9 @@ func TestUsageResetWorkerResetsOnceAfterConfiguredLocalTime(t *testing.T) {
 	}
 	if account.Demotion.State != "applied" || account.Demotion.BaselinePriority == nil || *account.Demotion.BaselinePriority != baseline {
 		t.Fatalf("demotion state=%+v", account.Demotion)
+	}
+	if account.HostRequestBaseline != nil {
+		t.Fatalf("host request baseline should be cleared on daily reset: %+v", account.HostRequestBaseline)
 	}
 	if snapshot.LastUsageResetDate != "2026-07-15" || !snapshot.StatisticsStartedAt.Equal(current.UTC()) {
 		t.Fatalf("snapshot reset markers=%+v", snapshot)

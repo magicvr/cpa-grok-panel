@@ -7,7 +7,7 @@
 **CLIProxyAPI（CPA）** 的 Grok / xAI OAuth 账号运维面板。
 
 在 CPA 管理页集中查看账号状态、Token 用量与套餐缓存，并安全地启用 / 停用 / 降权 / 删除账号。  
-插件 id：`cpa-grok-panel` · 当前文档对应 **v0.5.1**（Linux **amd64 / arm64**）。
+插件 id：`cpa-grok-panel` · 当前文档对应 **v0.5.2**（Linux **amd64 / arm64**）。
 
 ## 友链
 
@@ -34,6 +34,7 @@
 | **套餐（手动）** | 管理员手动刷新；默认 `unknown`；失败记 `unknown`；成功且非 SuperGrok / SuperGrok Heavy → `Free`；结果持久缓存，仅下次手动刷新覆盖 |
 | **用量列** | 展示 `用量/限额` + 进度条；付费且有官方限额时用 billing；Free / 无线额时用本插件日 token 与 Free 日限额（默认 2M） |
 | **用量统计** | 累计 CPA `usage` 回调中的真实 input / output / total token |
+| **请求数 host 补偿** | 成功路径常不进 `usage.handle` 时，用 `host.auth.list` 的 success/failed 相对周期 baseline 的增量补偿展示；与每日清零兼容（清零后重绑 baseline，不裸用 host 终身计数） |
 | **账号操作** | 单账号与批量：启用、停用、降权、解除降权、设置优先级 |
 | **优先级调度（soft/hard）** | failure debt + hard streak 双轨，降低坏 auth 被 CPA 反复选中导致的尾延迟；默认 debt≥2.0 → soft `-10`，连败 3 或 debt≥4.5 → hard `-100` |
 | **Half-open 冷却恢复** | `6h → 12h → 24h` 后先进入观察档 soft priority；默认成功 2 次回 baseline，归因失败立即回 hard |
@@ -81,7 +82,7 @@ https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
 | --- | --- |
 | `id` | `cpa-grok-panel` |
 | `name` | Grok 账号面板 |
-| `version` | 与最新 Release 对齐（如 `0.5.1`） |
+| `version` | 与最新 Release 对齐（如 `0.5.2`） |
 | `repository` | `https://github.com/magicvr/cpa-grok-panel` |
 
 ```bash
@@ -110,7 +111,7 @@ plugins:
 
 1. 打开 CPA 管理页（如 `http://<cpa-host>:<port>/management.html`），用 management key 登录  
 2. **插件 / 插件商店** → 找到 **Grok 账号面板**（id `cpa-grok-panel`）  
-3. 选择版本（一般最新，如 `0.5.1`）并安装
+3. 选择版本（一般最新，如 `0.5.2`）并安装
 4. **完整停止并重新启动整个 CPA 进程**（原生 `.so`：热更新 / 只重载配置可能仍加载旧库）
 
 Management API 示例：
@@ -120,7 +121,7 @@ POST /v0/management/plugin-store/cpa-grok-panel/install
 Authorization: Bearer <management_key>
 Content-Type: application/json
 
-{"version":"0.5.1"}
+{"version":"0.5.2"}
 ```
 
 版本号为去掉 `v` 前缀的 semver，须与 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 已发布 tag 一致。
@@ -135,8 +136,8 @@ Content-Type: application/json
 适合不改 `store-sources`、离线拷包或商店链路不通。
 
 1. 在 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 按 CPA 主机架构下载  
-   - **x86_64：** `cpa-grok-panel_0.5.1_linux_amd64.zip`  
-   - **arm64：** `cpa-grok-panel_0.5.1_linux_arm64.zip`  
+   - **x86_64：** `cpa-grok-panel_0.5.2_linux_amd64.zip`  
+   - **arm64：** `cpa-grok-panel_0.5.2_linux_arm64.zip`  
    - （可选）`checksums.txt`  
 2. CPA **插件管理**里本地安装 / 上传该 zip  
    - zip **根目录**必须是 `cpa-grok-panel.so`，不要改包内结构  
@@ -309,15 +310,15 @@ checksums.txt
 一键打包（本机有 `aarch64-linux-gnu-gcc` 时会同时打 arm64）：
 
 ```bash
-./scripts/package_release.sh 0.5.1
+./scripts/package_release.sh 0.5.2
 # 生成例如：
-#   dist/cpa-grok-panel_0.5.1_linux_amd64.zip
-#   dist/cpa-grok-panel_0.5.1_linux_arm64.zip
+#   dist/cpa-grok-panel_0.5.2_linux_amd64.zip
+#   dist/cpa-grok-panel_0.5.2_linux_arm64.zip
 #   dist/checksums.txt
 
-gh release upload v0.5.1 \
-  dist/cpa-grok-panel_0.5.1_linux_amd64.zip \
-  dist/cpa-grok-panel_0.5.1_linux_arm64.zip \
+gh release upload v0.5.2 \
+  dist/cpa-grok-panel_0.5.2_linux_amd64.zip \
+  dist/cpa-grok-panel_0.5.2_linux_arm64.zip \
   dist/checksums.txt \
   --clobber
 ```
@@ -328,4 +329,4 @@ gh release upload v0.5.1 \
 - 评审与探测：[docs/reviews/](docs/reviews/)
 - 发行版：[Releases](https://github.com/magicvr/cpa-grok-panel/releases)
 
-README 以当前可安装版本 **v0.5.1** 为准。
+README 以当前可安装版本 **v0.5.2** 为准。

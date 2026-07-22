@@ -78,6 +78,9 @@ func (worker *UsageResetWorker) RunOnce() (bool, error) {
 		for authIndex, account := range snapshot.Accounts {
 			dedupeMode := account.Usage.DedupeMode
 			account.Usage = domain.UsageCounters{PeriodStartedAt: resetAt, DedupeMode: dedupeMode}
+			// Drop host baseline so next List rebinds to host snapshot for the new period
+			// (display restarts near zero even when host lifetime counters remain large).
+			account.HostRequestBaseline = nil
 			account.Failure.ConsecutiveAttributedFailures = 0
 			snapshot.Accounts[authIndex] = account
 		}

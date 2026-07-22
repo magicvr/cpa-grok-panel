@@ -4,7 +4,7 @@
 #   cpa-grok-panel_<semver>_linux_arm64.zip  (when aarch64 cross-gcc present)
 # Zip root contains cpa-grok-panel.so only.
 # Usage: scripts/package_release.sh [version]
-# Example: scripts/package_release.sh 0.5.1
+# Example: scripts/package_release.sh 0.5.2
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
