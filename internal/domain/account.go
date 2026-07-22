@@ -18,6 +18,18 @@ type AuthFile struct {
 	Unavailable   bool   `json:"unavailable,omitempty"`
 	Status        string `json:"status,omitempty"`
 	StatusMessage string `json:"status_message,omitempty"`
+	// Host lifetime request counters from CPA host.auth.list (not plugin usage ledger).
+	Success int64 `json:"success,omitempty"`
+	Failed  int64 `json:"failed,omitempty"`
+}
+
+// HostRequestBaseline anchors host lifetime counters to the current usage period so
+// panel request counts can compensate for usage.handle under-report without breaking
+// daily reset (display uses host delta since period start, not raw host totals).
+type HostRequestBaseline struct {
+	Success              int64     `json:"success"`
+	Failed               int64     `json:"failed"`
+	BoundPeriodStartedAt time.Time `json:"bound_period_started_at"`
 }
 
 type QuotaSnapshot struct {
@@ -31,13 +43,14 @@ type QuotaSnapshot struct {
 }
 
 type AccountState struct {
-	ExactFileName string        `json:"exact_file_name,omitempty"`
-	Usage         UsageCounters `json:"usage"`
-	Quota         QuotaSnapshot `json:"quota"`
-	Failure       FailureState  `json:"failure"`
-	Demotion      DemotionState `json:"demotion"`
-	FirstSeenAt   time.Time     `json:"first_seen_at,omitempty"`
-	LastSeenAt    time.Time     `json:"last_seen_at,omitempty"`
+	ExactFileName       string               `json:"exact_file_name,omitempty"`
+	Usage               UsageCounters        `json:"usage"`
+	Quota               QuotaSnapshot        `json:"quota"`
+	Failure             FailureState         `json:"failure"`
+	Demotion            DemotionState        `json:"demotion"`
+	HostRequestBaseline *HostRequestBaseline `json:"host_request_baseline,omitempty"`
+	FirstSeenAt         time.Time            `json:"first_seen_at,omitempty"`
+	LastSeenAt          time.Time            `json:"last_seen_at,omitempty"`
 }
 
 type FailureState struct {
@@ -142,6 +155,8 @@ func ProjectAccount(file AuthFile, state AccountState, now time.Time, demotionPr
 	if usage.PeriodStartedAt.IsZero() {
 		usage.PeriodStartedAt = now.UTC()
 	}
+	// Display-only: max(plugin ledger, host delta since period baseline). Tokens stay plugin-only.
+	usage = ApplyHostRequestDisplay(usage, file.Success, file.Failed, state.HostRequestBaseline)
 	demotion := state.Demotion.Normalized()
 	isDemoted := (demotion.State == "applied" && IsActiveDemotionClass(demotion.Class)) || file.Priority <= demotionPriority
 	quota := state.Quota
@@ -157,4 +172,65 @@ func ProjectAccount(file AuthFile, state AccountState, now time.Time, demotionPr
 		IsDemoted: isDemoted, CanRestore: isDemoted,
 		LastSeenAt: now.UTC(), WriteMode: "managed",
 	}
+}
+
+// NeedsHostRequestBaselineBind reports whether ListAccounts should (re)bind host counters
+// for this account before projecting the view.
+func NeedsHostRequestBaselineBind(state AccountState) bool {
+	period := state.Usage.PeriodStartedAt
+	if state.HostRequestBaseline == nil {
+		return true
+	}
+	return !state.HostRequestBaseline.BoundPeriodStartedAt.Equal(period)
+}
+
+// BindHostRequestBaseline chooses the host snapshot for the current usage period.
+//
+//   - No baseline yet and plugin already has request counts (upgrade / first bind with
+//     ledger): baseline=0 so host under-report is compensated immediately.
+//   - No baseline with empty plugin counters, or period changed after clear/reset:
+//     baseline = current host success/failed so display restarts near zero.
+func BindHostRequestBaseline(state AccountState, hostSuccess, hostFailed int64, periodStartedAt time.Time) HostRequestBaseline {
+	if periodStartedAt.IsZero() {
+		periodStartedAt = time.Now().UTC()
+	}
+	if state.HostRequestBaseline == nil {
+		if state.Usage.SuccessfulRequests+state.Usage.FailedRequests > 0 {
+			return HostRequestBaseline{Success: 0, Failed: 0, BoundPeriodStartedAt: periodStartedAt}
+		}
+		return HostRequestBaseline{Success: hostSuccess, Failed: hostFailed, BoundPeriodStartedAt: periodStartedAt}
+	}
+	// Period changed (daily reset cleared usage period; baseline stale or cleared).
+	return HostRequestBaseline{Success: hostSuccess, Failed: hostFailed, BoundPeriodStartedAt: periodStartedAt}
+}
+
+// ApplyHostRequestDisplay overlays host period-delta onto request counters for AccountView only.
+// It does not mutate demotion, debt, or the persisted usage ledger.
+func ApplyHostRequestDisplay(usage UsageCounters, hostSuccess, hostFailed int64, baseline *HostRequestBaseline) UsageCounters {
+	if baseline == nil {
+		return usage
+	}
+	hostDeltaSuccess := maxInt64(0, hostSuccess-baseline.Success)
+	hostDeltaFailed := maxInt64(0, hostFailed-baseline.Failed)
+	if hostDelta := nonNegInt64(hostDeltaSuccess); hostDelta > usage.SuccessfulRequests {
+		usage.SuccessfulRequests = hostDelta
+	}
+	if hostDelta := nonNegInt64(hostDeltaFailed); hostDelta > usage.FailedRequests {
+		usage.FailedRequests = hostDelta
+	}
+	return usage
+}
+
+func nonNegInt64(value int64) uint64 {
+	if value <= 0 {
+		return 0
+	}
+	return uint64(value)
+}
+
+func maxInt64(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }

@@ -73,6 +73,9 @@ func (service *AccountsService) List(search string) ([]domain.AccountView, time.
 	if err := service.reconcileAppliedDemotions(files, settings); err != nil {
 		return nil, time.Time{}, err
 	}
+	if err := service.bindHostRequestBaselines(files, now); err != nil {
+		return nil, time.Time{}, err
+	}
 	snapshot := service.store.View()
 	items := make([]domain.AccountView, 0, len(files))
 	for _, file := range files {
@@ -92,6 +95,51 @@ func (service *AccountsService) List(search string) ([]domain.AccountView, time.
 		return items[i].ExactFileName < items[j].ExactFileName
 	})
 	return items, now, nil
+}
+
+// bindHostRequestBaselines writes HostRequestBaseline into state when missing or
+// period-stale so AccountView can show host period deltas without bare host totals.
+func (service *AccountsService) bindHostRequestBaselines(files []domain.AuthFile, now time.Time) error {
+	type bind struct {
+		authIndex string
+		success   int64
+		failed    int64
+	}
+	var pending []bind
+	snapshot := service.store.View()
+	for _, file := range files {
+		if !domain.IsXAIOAuth(file) || file.AuthIndex == "" || !strings.HasSuffix(file.Name, ".json") {
+			continue
+		}
+		state := snapshot.Accounts[file.AuthIndex]
+		if state.Usage.PeriodStartedAt.IsZero() {
+			// Align with ProjectAccount: treat zero period as "now" for first bind.
+			state.Usage.PeriodStartedAt = now
+		}
+		if !domain.NeedsHostRequestBaselineBind(state) {
+			continue
+		}
+		pending = append(pending, bind{authIndex: file.AuthIndex, success: file.Success, failed: file.Failed})
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+	return service.store.Update(func(snapshot *stateinfra.Snapshot) error {
+		for _, item := range pending {
+			state := snapshot.Accounts[item.authIndex]
+			if state.Usage.PeriodStartedAt.IsZero() {
+				state.Usage.PeriodStartedAt = now
+			}
+			// Re-check under write lock: another list or reset may have bound already.
+			if !domain.NeedsHostRequestBaselineBind(state) {
+				continue
+			}
+			baseline := domain.BindHostRequestBaseline(state, item.success, item.failed, state.Usage.PeriodStartedAt)
+			state.HostRequestBaseline = &baseline
+			snapshot.Accounts[item.authIndex] = state
+		}
+		return nil
+	})
 }
 
 // ReconcileDemotions makes an applied record retryable when the host priority

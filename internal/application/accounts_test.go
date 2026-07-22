@@ -15,6 +15,169 @@ import (
 	stateinfra "github.com/magicvr/cpa-grok-panel/internal/infrastructure/state"
 )
 
+func TestAccountsListHostDeltaCompensatesUnderReport(t *testing.T) {
+	now := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
+	store := stateinfra.OpenMemory(now)
+	// First-upgrade path: plugin has counts, no baseline → bind baseline=0, show max(plugin, host).
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-host"] = domain.AccountState{
+			ExactFileName: "xai-host.json",
+			Usage: domain.UsageCounters{
+				SuccessfulRequests: 2, FailedRequests: 1, TotalTokens: 77,
+				PeriodStartedAt: now.Add(-time.Hour),
+			},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	file := xaiFile("idx-host", "xai-host.json", 0)
+	file.Success = 25
+	file.Failed = 4
+	service := application.NewAccountsService(&accountHost{files: []domain.AuthFile{file}}, store, func() time.Time { return now }, application.DefaultSettings())
+
+	items, _, err := service.List("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("items=%d", len(items))
+	}
+	if items[0].Usage.SuccessfulRequests != 25 || items[0].Usage.FailedRequests != 4 {
+		t.Fatalf("expected host delta display: %+v", items[0].Usage)
+	}
+	if items[0].Usage.TotalTokens != 77 {
+		t.Fatalf("tokens must stay plugin-only: %+v", items[0].Usage)
+	}
+	baseline := store.View().Accounts["idx-host"].HostRequestBaseline
+	if baseline == nil || baseline.Success != 0 || baseline.Failed != 0 {
+		t.Fatalf("upgrade baseline should be zero: %+v", baseline)
+	}
+}
+
+func TestAccountsListKeepsPluginWhenHigherThanHostDelta(t *testing.T) {
+	now := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
+	period := now.Add(-2 * time.Hour)
+	store := stateinfra.OpenMemory(now)
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-plugin"] = domain.AccountState{
+			ExactFileName: "xai-plugin.json",
+			Usage: domain.UsageCounters{
+				SuccessfulRequests: 40, FailedRequests: 9, TotalTokens: 1000,
+				PeriodStartedAt: period,
+			},
+			HostRequestBaseline: &domain.HostRequestBaseline{
+				Success: 100, Failed: 20, BoundPeriodStartedAt: period,
+			},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	file := xaiFile("idx-plugin", "xai-plugin.json", 0)
+	file.Success = 110 // delta 10
+	file.Failed = 22   // delta 2
+	service := application.NewAccountsService(&accountHost{files: []domain.AuthFile{file}}, store, func() time.Time { return now }, application.DefaultSettings())
+
+	items, _, err := service.List("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if items[0].Usage.SuccessfulRequests != 40 || items[0].Usage.FailedRequests != 9 {
+		t.Fatalf("plugin should win: %+v", items[0].Usage)
+	}
+	if items[0].Usage.TotalTokens != 1000 {
+		t.Fatalf("tokens must stay plugin-only: %+v", items[0].Usage)
+	}
+}
+
+func TestAccountsListAfterDailyResetRebindsHostBaselineNearZero(t *testing.T) {
+	location := time.FixedZone("server-local", 8*60*60)
+	// Just after reset due time.
+	nowLocal := time.Date(2026, 7, 22, 0, 0, 5, 0, location)
+	now := nowLocal.UTC()
+	periodBefore := now.Add(-24 * time.Hour)
+	store := stateinfra.OpenMemory(periodBefore)
+	settings := application.DefaultSettings()
+	settings.DailyUsageResetEnabled = true
+	settings.DailyUsageResetTime = "00:00"
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Settings = &settings
+		snapshot.Accounts["idx-reset"] = domain.AccountState{
+			ExactFileName: "xai-reset.json",
+			Usage: domain.UsageCounters{
+				SuccessfulRequests: 30, FailedRequests: 5, TotalTokens: 999,
+				PeriodStartedAt: periodBefore, DedupeMode: "exact",
+			},
+			HostRequestBaseline: &domain.HostRequestBaseline{
+				Success: 0, Failed: 0, BoundPeriodStartedAt: periodBefore,
+			},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Host lifetime stays large across the daily reset boundary.
+	file := xaiFile("idx-reset", "xai-reset.json", 0)
+	file.Success = 9000
+	file.Failed = 120
+	host := &accountHost{files: []domain.AuthFile{file}}
+
+	worker := application.NewUsageResetWorkerWithClock(store, settings, func() time.Time { return nowLocal }, location)
+	if reset, err := worker.RunOnce(); err != nil || !reset {
+		t.Fatalf("reset=%t err=%v", reset, err)
+	}
+	account := store.View().Accounts["idx-reset"]
+	if account.HostRequestBaseline != nil {
+		t.Fatalf("baseline must be cleared on reset: %+v", account.HostRequestBaseline)
+	}
+	if account.Usage.SuccessfulRequests != 0 || account.Usage.TotalTokens != 0 {
+		t.Fatalf("usage not cleared: %+v", account.Usage)
+	}
+
+	service := application.NewAccountsService(host, store, func() time.Time { return now }, settings)
+	items, _, err := service.List("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if items[0].Usage.SuccessfulRequests != 0 || items[0].Usage.FailedRequests != 0 {
+		t.Fatalf("after rebind display should be ~0, got %+v", items[0].Usage)
+	}
+	if items[0].Usage.TotalTokens != 0 {
+		t.Fatalf("tokens must remain zero after reset: %+v", items[0].Usage)
+	}
+	baseline := store.View().Accounts["idx-reset"].HostRequestBaseline
+	if baseline == nil || baseline.Success != 9000 || baseline.Failed != 120 {
+		t.Fatalf("expected rebind to host snapshot: %+v", baseline)
+	}
+	if !baseline.BoundPeriodStartedAt.Equal(store.View().Accounts["idx-reset"].Usage.PeriodStartedAt) {
+		t.Fatalf("baseline period=%v usage period=%v", baseline.BoundPeriodStartedAt, store.View().Accounts["idx-reset"].Usage.PeriodStartedAt)
+	}
+}
+
+func TestAccountsListBindsHostSnapshotWhenPluginEmpty(t *testing.T) {
+	now := time.Date(2026, 7, 22, 12, 0, 0, 0, time.UTC)
+	store := stateinfra.OpenMemory(now)
+	file := xaiFile("idx-new", "xai-new.json", 0)
+	file.Success = 500
+	file.Failed = 10
+	service := application.NewAccountsService(&accountHost{files: []domain.AuthFile{file}}, store, func() time.Time { return now }, application.DefaultSettings())
+
+	items, _, err := service.List("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// First bind with empty plugin counters uses host as baseline → display ~0 (not bare host).
+	if items[0].Usage.SuccessfulRequests != 0 || items[0].Usage.FailedRequests != 0 {
+		t.Fatalf("empty plugin first bind should not show raw host: %+v", items[0].Usage)
+	}
+	baseline := store.View().Accounts["idx-new"].HostRequestBaseline
+	if baseline == nil || baseline.Success != 500 || baseline.Failed != 10 {
+		t.Fatalf("expected host snapshot baseline: %+v", baseline)
+	}
+}
+
 func TestAccountsListComputesDemotionFromConfiguredPriority(t *testing.T) {
 	baseline, recordedTarget := 8, -55
 	store := stateinfra.OpenMemory(time.Now().UTC())
