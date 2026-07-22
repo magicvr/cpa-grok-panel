@@ -7,7 +7,7 @@
 **CLIProxyAPI（CPA）** 的 Grok / xAI OAuth 账号运维面板。
 
 在 CPA 管理页集中查看账号状态、Token 用量与套餐缓存，并安全地启用 / 停用 / 降权 / 删除账号。  
-插件 id：`cpa-grok-panel` · 当前文档对应 **v0.5.3**（Linux **amd64 / arm64** · Windows **amd64 / arm64**）。
+插件 id：`cpa-grok-panel` · 当前文档对应 **v0.5.4**（Linux **amd64 / arm64** · Windows **amd64 / arm64**）。
 
 ## 友链
 
@@ -36,6 +36,7 @@
 | **用量统计** | 累计 CPA `usage` 回调中的真实 input / output / total token |
 | **请求数 host 补偿** | 成功路径常不进 `usage.handle` 时，用 `host.auth.list` 的 success/failed 相对周期 baseline 的增量补偿展示；与每日清零兼容（清零后重绑 baseline，不裸用 host 终身计数） |
 | **账号操作** | 单账号与批量：启用、停用、降权、解除降权、设置优先级 |
+| **批量重签（refresh_token）** | 用 auth 文件内 `refresh_token` 向 xAI OAuth 换票并写回同一文件；**不含** SSO mint / 密码重登 / 浏览器；重签成功不自动解除降权 |
 | **优先级调度（soft/hard）** | failure debt + hard streak 双轨，降低坏 auth 被 CPA 反复选中导致的尾延迟；默认 debt≥2.0 → soft `-10`，连败 3 或 debt≥4.5 → hard `-100` |
 | **Half-open 冷却恢复** | `6h → 12h → 24h` 后先进入观察档 soft priority；默认成功 2 次回 baseline，归因失败立即回 hard |
 | **冷却跳过机器人** | 默认自动恢复跳过显式 bot（`cooldown_restore_skip_bots`，可关）；手动解除降权始终可用 |
@@ -84,7 +85,7 @@ https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
 | --- | --- |
 | `id` | `cpa-grok-panel` |
 | `name` | Grok 账号面板 |
-| `version` | 与最新 Release 对齐（如 `0.5.3`） |
+| `version` | 与最新 Release 对齐（如 `0.5.4`） |
 | `repository` | `https://github.com/magicvr/cpa-grok-panel` |
 
 ```bash
@@ -113,7 +114,7 @@ plugins:
 
 1. 打开 CPA 管理页（如 `http://<cpa-host>:<port>/management.html`），用 management key 登录  
 2. **插件 / 插件商店** → 找到 **Grok 账号面板**（id `cpa-grok-panel`）  
-3. 选择版本（一般最新，如 `0.5.3`）并安装
+3. 选择版本（一般最新，如 `0.5.4`）并安装
 4. **完整停止并重新启动整个 CPA 进程**（原生 `.so`：热更新 / 只重载配置可能仍加载旧库）
 
 Management API 示例：
@@ -123,7 +124,7 @@ POST /v0/management/plugin-store/cpa-grok-panel/install
 Authorization: Bearer <management_key>
 Content-Type: application/json
 
-{"version":"0.5.3"}
+{"version":"0.5.4"}
 ```
 
 版本号为去掉 `v` 前缀的 semver，须与 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 已发布 tag 一致。
@@ -138,10 +139,10 @@ Content-Type: application/json
 适合不改 `store-sources`、离线拷包或商店链路不通。
 
 1. 在 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 按 CPA 主机架构下载  
-   - **Linux x86_64：** `cpa-grok-panel_0.5.3_linux_amd64.zip`  
-   - **Linux arm64：** `cpa-grok-panel_0.5.3_linux_arm64.zip`  
-   - **Windows x64：** `cpa-grok-panel_0.5.3_windows_amd64.zip`（根目录 `cpa-grok-panel.dll`）  
-   - **Windows ARM64：** `cpa-grok-panel_0.5.3_windows_arm64.zip`  
+   - **Linux x86_64：** `cpa-grok-panel_0.5.4_linux_amd64.zip`  
+   - **Linux arm64：** `cpa-grok-panel_0.5.4_linux_arm64.zip`  
+   - **Windows x64：** `cpa-grok-panel_0.5.4_windows_amd64.zip`（根目录 `cpa-grok-panel.dll`）  
+   - **Windows ARM64：** `cpa-grok-panel_0.5.4_windows_arm64.zip`  
    - （可选）`checksums.txt`  
 2. CPA **插件管理**里本地安装 / 上传该 zip  
    - zip **根目录**必须是 `cpa-grok-panel.so`，不要改包内结构  
@@ -187,7 +188,7 @@ Content-Type: application/json
 | 项 | 行为 |
 | --- | --- |
 | **套餐列** | 显示缓存类型：`unknown` / `Free` / `SuperGrok` / `SuperGrok Heavy` |
-| **刷新套餐** | 行内「刷新套餐」或批量「批量刷新套餐」；**仅管理员手动**，列表自动刷新不会拉 billing |
+| **刷新套餐** | 批量栏「批量刷新套餐」；**仅管理员手动**，列表自动刷新不会拉 billing |
 | **刷新成功** | SuperGrok / SuperGrok Heavy 按证据映射；其余成功结果记为 **Free** |
 | **刷新失败** | 记为 **unknown**（并保留错误信息供悬停查看） |
 | **缓存** | 写入插件 state；**直到下次手动刷新**才覆盖，列表轮询不会改写套餐类型 |
@@ -202,14 +203,13 @@ Content-Type: application/json
 | **启用 / 停用** | Management status API |
 | **降权** | fields 写目标优先级，成功后保存写前优先级为基线 |
 | **解除降权** | 优先恢复基线；无基线用「默认恢复优先级」 |
-| **刷新套餐** | 见上表；不自动执行 |
 | **诊断清理** | 启停、手动降权 / 解除成功后清空 streak、debt 与失败码；自动降权保留诊断 |
 | **安全删除** | 须输入精确文件名；映射变化则跳过 |
 
 ### 批量操作
 
 - 表头选当前页；「全部选中」= 当前筛选结果；「清除选中」取消全部  
-- 支持：启用、停用、降权、解除降权、设置优先级、**刷新套餐**、安全删除  
+- 支持：启用、停用、降权、解除降权、设置优先级、**刷新套餐**、**批量重签**（refresh_token 换票）、安全删除  
 - 批量设置优先级：输入整数，经 fields API 按精确文件名写入  
 - 有限并发（默认 10，设置页 1–50）；套餐刷新并发更保守（约 3）  
 - 批量删除须输入 `DELETE`，且每项删除前再校验映射  
@@ -314,15 +314,15 @@ checksums.txt
 一键打包（本机有 `aarch64-linux-gnu-gcc` 时会同时打 arm64）：
 
 ```bash
-./scripts/package_release.sh 0.5.3
+./scripts/package_release.sh 0.5.4
 # 生成例如：
-#   dist/cpa-grok-panel_0.5.3_linux_amd64.zip
-#   dist/cpa-grok-panel_0.5.3_linux_arm64.zip
+#   dist/cpa-grok-panel_0.5.4_linux_amd64.zip
+#   dist/cpa-grok-panel_0.5.4_linux_arm64.zip
 #   dist/checksums.txt
 
-gh release upload v0.5.3 \
-  dist/cpa-grok-panel_0.5.3_linux_amd64.zip \
-  dist/cpa-grok-panel_0.5.3_linux_arm64.zip \
+gh release upload v0.5.4 \
+  dist/cpa-grok-panel_0.5.4_linux_amd64.zip \
+  dist/cpa-grok-panel_0.5.4_linux_arm64.zip \
   dist/checksums.txt \
   --clobber
 ```
@@ -333,4 +333,4 @@ gh release upload v0.5.3 \
 - 评审与探测：[docs/reviews/](docs/reviews/)
 - 发行版：[Releases](https://github.com/magicvr/cpa-grok-panel/releases)
 
-README 以当前可安装版本 **v0.5.3** 为准。
+README 以当前可安装版本 **v0.5.4** 为准。

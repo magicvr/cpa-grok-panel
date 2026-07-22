@@ -1,6 +1,7 @@
 package management_test
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -49,9 +50,14 @@ func TestRouterPanelPath(t *testing.T) {
 	if !strings.Contains(body, "Grok") {
 		t.Fatalf("not html panel: %s", string(resp.Body)[:80])
 	}
-	for _, marker := range []string{"v0.5.3", "account_file_filter", "cpa_management_bearer", "data-1p-ignore", "优先级冷却恢复", "cooldown_restore_enabled", "cooldown_restore_skip_bots", "冷却恢复跳过机器人", "6h → 12h → 24h", "data-sort=\"bot\"", "id=\"bot-filter\"", "matchesBot", "id=\"plan-filter\"", "matchesPlan", "批量刷新套餐", "clearDiagnostic", "/accounts/clear-diagnostic", ">诊断<", "bot_flag_known", "首页", "末页", "跳转", "page-input", "清除选中", "全部选中", "批量启用", "批量停用", "批量降权", "批量解除降权", "批量设置优先级", "data-batch-action=\"set-priority\"", "批量安全删除", "批量操作并发数", "batch_operation_concurrency", "runConcurrent", "每日清零", "allItems.find", "Number.isInteger(previousPriority)", "item.demotion?.baseline_priority", "clearDiagnostic(target)", "class=\"cpa-page-shell\"", "padding:70px 40px 40px 40px", ".wrap{width:100%;padding:0;margin:0}", "cpa-grok-panel.theme_preference", "data-panel-theme", "html[data-panel-theme=\"light\"]", "外观 / 主题", "跟随系统（跟随 CPA）", "soft_demotion_enabled", "soft_demotion_priority", "soft_debt_threshold", "hard_debt_threshold", "debt_fail_401", "debt_fail_429", "debt_success_decay", "half_open_enabled", "half_open_success_threshold", "failure debt", "half-open 成功"} {
+	for _, marker := range []string{"v0.5.4", "account_file_filter", "cpa_management_bearer", "data-1p-ignore", "优先级冷却恢复", "cooldown_restore_enabled", "cooldown_restore_skip_bots", "冷却恢复跳过机器人", "6h → 12h → 24h", "data-sort=\"bot\"", "id=\"bot-filter\"", "matchesBot", "id=\"plan-filter\"", "matchesPlan", "批量刷新套餐", "批量重签", "data-batch-action=\"resign\"", "/accounts/resign", "performBatchResign", "clearDiagnostic", "/accounts/clear-diagnostic", ">诊断<", "bot_flag_known", "首页", "末页", "跳转", "page-input", "清除选中", "全部选中", "批量启用", "批量停用", "批量降权", "批量解除降权", "批量设置优先级", "data-batch-action=\"set-priority\"", "批量安全删除", "批量操作并发数", "batch_operation_concurrency", "runConcurrent", "每日清零", "allItems.find", "Number.isInteger(previousPriority)", "item.demotion?.baseline_priority", "clearDiagnostic(target)", "class=\"cpa-page-shell\"", "padding:70px 40px 40px 40px", ".wrap{width:100%;padding:0;margin:0}", "cpa-grok-panel.theme_preference", "data-panel-theme", "html[data-panel-theme=\"light\"]", "外观 / 主题", "跟随系统（跟随 CPA）", "soft_demotion_enabled", "soft_demotion_priority", "soft_debt_threshold", "hard_debt_threshold", "debt_fail_401", "debt_fail_429", "debt_success_decay", "half_open_enabled", "half_open_success_threshold", "failure debt", "half-open 成功"} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("panel missing %q", marker)
+		}
+	}
+	for _, forbidden := range []string{`data-action="refresh-plan"`, "performRowRefreshPlan"} {
+		if strings.Contains(body, forbidden) {
+			t.Fatalf("panel should not contain %q", forbidden)
 		}
 	}
 }
@@ -356,13 +362,26 @@ func (fakeLister) GetAuthFile(string) (cpaabi.AuthDocument, error) {
 }
 func (fakeLister) SaveAuthFile(string, cpaabi.AuthDocument) error { return nil }
 
-type writableHost struct{ files []domain.AuthFile }
+type writableHost struct {
+	files         []domain.AuthFile
+	documents     map[string]cpaabi.AuthDocument
+	savedName     string
+	savedDocument cpaabi.AuthDocument
+}
 
 func (host *writableHost) ListAuthFiles() ([]domain.AuthFile, error) {
 	return append([]domain.AuthFile(nil), host.files...), nil
 }
 
 func (host *writableHost) GetAuthFile(authIndex string) (cpaabi.AuthDocument, error) {
+	if host.documents != nil {
+		if document, ok := host.documents[authIndex]; ok {
+			raw, _ := json.Marshal(document)
+			var clone cpaabi.AuthDocument
+			_ = json.Unmarshal(raw, &clone)
+			return clone, nil
+		}
+	}
 	for _, file := range host.files {
 		if file.AuthIndex == authIndex {
 			return cpaabi.AuthDocument{"disabled": file.Disabled, "priority": file.Priority}, nil
@@ -372,6 +391,11 @@ func (host *writableHost) GetAuthFile(authIndex string) (cpaabi.AuthDocument, er
 }
 
 func (host *writableHost) SaveAuthFile(name string, document cpaabi.AuthDocument) error {
+	raw, _ := json.Marshal(document)
+	var clone cpaabi.AuthDocument
+	_ = json.Unmarshal(raw, &clone)
+	host.savedName = name
+	host.savedDocument = clone
 	for index := range host.files {
 		if host.files[index].Name != name {
 			continue
@@ -382,6 +406,44 @@ func (host *writableHost) SaveAuthFile(name string, document cpaabi.AuthDocument
 		if raw, err := json.Marshal(document["priority"]); err == nil {
 			_ = json.Unmarshal(raw, &host.files[index].Priority)
 		}
+		if host.documents == nil {
+			host.documents = map[string]cpaabi.AuthDocument{}
+		}
+		host.documents[host.files[index].AuthIndex] = clone
 	}
 	return nil
 }
+
+func TestRouterResignRoute(t *testing.T) {
+	store, err := stateinfra.Open(t.TempDir(), time.Now().UTC())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	host := &writableHost{
+		files: []domain.AuthFile{{AuthIndex: "idx-1", Name: "xai-a.json", Provider: "xai", Type: "xai", AccountType: "oauth", Priority: 3}},
+		documents: map[string]cpaabi.AuthDocument{
+			"idx-1": {"access_token": "old", "refresh_token": "rt", "priority": 3},
+		},
+	}
+	service := application.NewAccountsService(host, store, time.Now)
+	service.SetTokenRefresher(resignStub{result: application.TokenRefreshResult{AccessToken: "new", RefreshToken: "rt2", ExpiresIn: 10}})
+	router := management.NewRouter(service, store)
+	body := []byte(`{"auth_index":"idx-1","exact_file_name":"xai-a.json"}`)
+	response := router.Handle(management.Request{Method: "POST", Path: management.APIPrefix + "/accounts/resign", Body: body})
+	if response.StatusCode != 200 {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
+	if host.savedName != "xai-a.json" || host.savedDocument["access_token"] != "new" {
+		t.Fatalf("saved=%q doc=%#v", host.savedName, host.savedDocument)
+	}
+}
+
+type resignStub struct {
+	result application.TokenRefreshResult
+}
+
+func (s resignStub) Refresh(ctx context.Context, refreshToken, clientID string) (application.TokenRefreshResult, error) {
+	return s.result, nil
+}
+

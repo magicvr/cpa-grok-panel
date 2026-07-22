@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -26,6 +27,9 @@ type AccountsService struct {
 	now              func() time.Time
 	settingsFallback Settings
 	priorityWriter   PriorityWriter
+	tokenRefresher   TokenRefresher
+	tokenURL         string
+	httpClient       *http.Client
 	write            sync.Mutex
 }
 
