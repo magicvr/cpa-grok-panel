@@ -7,7 +7,7 @@
 **CLIProxyAPI（CPA）** 的 Grok / xAI OAuth 账号运维面板。
 
 在 CPA 管理页集中查看账号状态、Token 用量与套餐缓存，并安全地启用 / 停用 / 降权 / 删除账号。  
-插件 id：`cpa-grok-panel` · 当前文档对应 **v0.5.11**（Linux **amd64 / arm64** · Windows **amd64 / arm64**）。
+插件 id：`cpa-grok-panel` · 当前文档对应 **v0.6.0**（Linux **amd64 / arm64** · Windows **amd64 / arm64**）。
 
 ## 友链
 
@@ -30,23 +30,24 @@
 
 | 能力 | 说明 |
 | --- | --- |
-| **账号列表** | 展示 xAI OAuth 账号的套餐、启停、机器人标记、优先级、请求数与用量 |
-| **批量测活** | 经 CPA `POST /v0/management/api-call`（**禁止插件直连**）对 `…/v1/responses` 发极短 grok-4.5 请求；分类 **2xx→Live / 401→Failure / 403→Dead / 其它→Unusual**；结果写入 `quota.probe_*` 显示在「存活」列；**不**顺带刷套餐；默认不删死号 |
-| **批量刷新套餐** | 独立按钮（`data-batch-action=refresh-plan`），原 billing 逻辑；**不**清掉测活结果 |
-| **套餐列** | 只显示套餐 badge（`unknown` / Free / SuperGrok / SuperGrok Heavy）；默认 `unknown`；失败记 `unknown`；结果持久缓存，仅下次手动刷新覆盖 |
-| **存活列** | 套餐列后；徽章 Live(绿) / Failure(黄) / Dead(红) / Unusual(黄) / 未测(灰)；悬停 HTTP 码、时间、错误摘要 |
-| **用量列** | 展示 `用量/限额` + 进度条；付费且有官方限额时用 billing；Free / 无线额时用本插件日 token 与 Free 日限额（默认 2M） |
-| **用量统计** | 累计 CPA `usage` 回调中的真实 input / output / total token |
-| **请求数 host 补偿** | 成功路径常不进 `usage.handle` 时，用 `host.auth.list` 的 success/failed 相对周期 baseline 的增量补偿展示；与每日清零兼容（清零后重绑 baseline，不裸用 host 终身计数） |
+| **账号列表** | 展示 xAI OAuth 账号的套餐、启停、风控标记、优先级、请求数与用量 |
+| **批量测活** | 面板经 CPA `POST /v0/management/api-call`（`data` 字符串 body）对 `…/v1/responses` 发极短 grok-4.5 请求；结果 `POST /accounts/apply-probe`（`source=manual`）；**不**顺带刷套餐 |
+| **自动测活** | Go 侧 `host.auth.get` 取 token + 可选 proxy，POST 同一 endpoint；debt 阈值 / 定时复测触发（`source=auto`） |
+| **批量刷新套餐** | 独立按钮；原 billing 逻辑；**不**清掉测活结果 |
+| **套餐列** | badge：`Unknown`（plan=unknown）/ Free / SuperGrok / SuperGrok Heavy；失败记 unknown |
+| **存活列** | Live(绿) / Exceed(黄) / Dead(红) / Cooling(黄) / Error(黄) / Unknown(灰) |
+| **降权档** | `none` 正常 · `watch` 观察 · `anomaly` 异常 · `dead` 死号（替代 soft/hard/half_open） |
+| **用量列** | `用量/限额` + 进度条；付费用 billing；Free 用插件日 token 与 Free 日限额（默认 2M） |
+| **用量统计** | 累计 CPA `usage` 回调真实 input / output / total token |
+| **请求数 host 补偿** | `host.auth.list` success/failed 相对周期 baseline 的增量补偿；与每日清零兼容 |
 | **账号操作** | 单账号与批量：启用、停用、降权、解除降权、设置优先级 |
-| **批量重签（refresh_token）** | 用 auth 文件内 `refresh_token` 向 xAI OAuth 换票并写回同一文件；**不含** SSO mint / 密码重登 / 浏览器；重签成功不自动解除降权。**注意：重签出站 ≠ CPA 业务路由 / `proxy-url`**——插件进程直接 POST `auth.x.ai`，需配置设置项 `outbound_proxy_url` 或环境变量 `CPA_GROK_OUTBOUND_PROXY` / `HTTPS_PROXY` 才能访问（套餐刷新仍走 CPA `api-call` 宿主出网） |
-| **优先级调度（soft/hard）** | failure debt + hard streak 双轨，降低坏 auth 被 CPA 反复选中导致的尾延迟；默认 debt≥2.0 → soft `-10`，连败 3 或 debt≥4.5 → hard `-100` |
-| **Half-open 冷却恢复** | `6h → 12h → 24h` 后先进入观察档 soft priority；默认成功 2 次回 baseline，归因失败立即回 hard |
-| **冷却跳过机器人** | 默认自动恢复跳过显式 bot（`cooldown_restore_skip_bots`，可关）；手动解除降权始终可用 |
-| **外观主题** | 设置页：跟随 CPA / 暗色 / 亮色（默认跟随 CPA 管理页 `cli-proxy-theme` / `data-theme`） |
-| **安全删除** | 删除前校验 `auth_index` 与精确文件名；成功后清理插件本地 state |
-| **每日清零** | 可按服务器本地时区每天清零请求数、Token 累计与 hard streak（debt 保留） |
-| **持久化** | 设置、统计、套餐缓存写入插件 state，重启后保留 |
+| **批量重签（refresh_token）** | auth 文件 `refresh_token` 换票写回；**不含** SSO；重签不自动解除降权；出站用 `outbound_proxy_url` / `CPA_GROK_OUTBOUND_PROXY`（≠ CPA `proxy-url`） |
+| **积分→测活→改档** | 仅正常档（`none`）吃 debt；≥`debt_probe_threshold` 清零 debt 并自动测活；死号冻结积分；观察/异常不因积分触发 |
+| **定时复测** | 观察默认 30 分钟、异常默认 6 小时；watch 复测仍 live → 恢复正常档 |
+| **外观主题** | 设置页：跟随 CPA / 暗色 / 亮色 |
+| **安全删除** | 删除前校验 `auth_index` 与精确文件名；成功后清理插件 state |
+| **每日清零** | 可按本地时区清零请求数、Token 累计与连败 streak（debt 保留） |
+| **持久化** | 设置、统计、套餐/测活缓存写入插件 state |
 
 **不做的事**
 
@@ -88,7 +89,7 @@ https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
 | --- | --- |
 | `id` | `cpa-grok-panel` |
 | `name` | Grok 账号面板 |
-| `version` | 与最新 Release 对齐（如 `0.5.11`） |
+| `version` | 与最新 Release 对齐（如 `0.6.0`） |
 | `repository` | `https://github.com/magicvr/cpa-grok-panel` |
 
 ```bash
@@ -117,7 +118,7 @@ plugins:
 
 1. 打开 CPA 管理页（如 `http://<cpa-host>:<port>/management.html`），用 management key 登录  
 2. **插件 / 插件商店** → 找到 **Grok 账号面板**（id `cpa-grok-panel`）  
-3. 选择版本（一般最新，如 `0.5.11`）并安装
+3. 选择版本（一般最新，如 `0.6.0`）并安装
 4. **完整停止并重新启动整个 CPA 进程**（原生 `.so`：热更新 / 只重载配置可能仍加载旧库）
 
 Management API 示例：
@@ -127,7 +128,7 @@ POST /v0/management/plugin-store/cpa-grok-panel/install
 Authorization: Bearer <management_key>
 Content-Type: application/json
 
-{"version":"0.5.11"}
+{"version":"0.6.0"}
 ```
 
 版本号为去掉 `v` 前缀的 semver，须与 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 已发布 tag 一致。
@@ -142,10 +143,10 @@ Content-Type: application/json
 适合不改 `store-sources`、离线拷包或商店链路不通。
 
 1. 在 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 按 CPA 主机架构下载  
-   - **Linux x86_64：** `cpa-grok-panel_0.5.11_linux_amd64.zip`  
-   - **Linux arm64：** `cpa-grok-panel_0.5.11_linux_arm64.zip`  
-   - **Windows x64：** `cpa-grok-panel_0.5.11_windows_amd64.zip`（根目录 `cpa-grok-panel.dll`）  
-   - **Windows ARM64：** `cpa-grok-panel_0.5.11_windows_arm64.zip`  
+   - **Linux x86_64：** `cpa-grok-panel_0.6.0_linux_amd64.zip`  
+   - **Linux arm64：** `cpa-grok-panel_0.6.0_linux_arm64.zip`  
+   - **Windows x64：** `cpa-grok-panel_0.6.0_windows_amd64.zip`（根目录 `cpa-grok-panel.dll`）  
+   - **Windows ARM64：** `cpa-grok-panel_0.6.0_windows_arm64.zip`  
    - （可选）`checksums.txt`  
 2. CPA **插件管理**里本地安装 / 上传该 zip  
    - zip **根目录**必须是 `cpa-grok-panel.so`，不要改包内结构  
@@ -180,120 +181,156 @@ Content-Type: application/json
 
 ### 账号列表
 
-- 搜索文件名；按启停、是否降权、机器人结果筛选  
+- 搜索文件名；筛选项顺序：**存活 → 套餐 → 风控 → 状态 → 降权**  
 - 分页 20 / 50 / 100  
-- 可排序：账号文件、**套餐**、状态、机器人、优先级、**用量**、成功 / 失败数  
-- 顶部汇总：账号数、已降权、成功 / 失败请求、累计 Token  
-- 「已降权」：宿主 priority 处于 hard 档，或插件记录为已应用的 `soft / hard / half_open` class
+- 可排序：账号文件、套餐、存活、状态、风控、优先级、用量、成功 / 失败数  
+- 顶部汇总：账号数、观察 / 异常 / 死号 / 正常、成功 / 失败请求、累计 Token  
+- `is_demoted`：class ∈ {watch, anomaly, dead} 且 state 为 applied/requested（**不以** `priority ≤ dead_priority` 误伤低 baseline）
 
-### 套餐与用量
+### 套餐、存活与测活
 
 | 项 | 行为 |
 | --- | --- |
-| **套餐列** | 仅显示缓存类型：`unknown` / `Free` / `SuperGrok` / `SuperGrok Heavy`（不覆盖测活态） |
-| **存活列** | `Live` / `Failure` / `Dead` / `Unusual` / `未测`；数据来自 `quota.probe_status` 等 |
-| **批量刷新套餐** | 批量栏独立按钮；GET billing 经 `api-call` 落盘；**保留**既有测活结果 |
-| **批量测活** | 批量栏「批量测活」；经 CPA 宿主 `api-call` 对 `https://cli-chat-proxy.grok.com/v1/responses` 发短请求（`model=grok-4.5`，`input=Reply with exactly OK`，`max_output_tokens=8`）；**只测活，不刷套餐**；envelope 字段 **`data`=JSON 字符串**（CPA CLIProxyAPI 官方字段，勿写 `body`）；含 GRA 头 `x-authenticateresponse` |
-| **测活分类** | 上游 `status_code`：2xx → **Live**；401 → **Failure**；403 → **Dead**；其它 HTTP / 网络 / 解析失败 → **Unusual**（不删号） |
-| **刷新成功** | SuperGrok / SuperGrok Heavy 按证据映射；其余成功结果记为 **Free** |
-| **刷新失败** | 记为 **unknown**（并保留错误信息供悬停查看） |
-| **缓存** | 套餐与测活均写入插件 state；列表轮询不改写 |
-| **用量列** | 上：`用量/限额`；下：进度条。Free 或无官方限额时：用量 = 本插件日 token，限额 = 设置「Free 用户日限额」（默认 2M） |
+| **套餐列** | `Unknown`（plan=`unknown`）/ Free / SuperGrok / SuperGrok Heavy |
+| **存活列** | 存盘小写 `probe_status`，UI 见下表 |
+| **批量刷新套餐** | GET billing 经 `api-call` 落盘；**保留** `probe_*` |
+| **批量测活** | 面板 `api-call` → `POST /accounts/apply-probe`（`source=manual`）；**只测活，不刷套餐**；envelope **`data`=JSON 字符串**（勿写 `body`） |
+| **自动测活** | Go：token + auth `proxy_url` > `outbound_proxy_url` > 环境变量；同一 responses body |
+| **刷新成功** | SuperGrok / SuperGrok Heavy 按证据映射；其余成功记 **Free** |
+| **刷新失败** | 记 **unknown** |
+| **缓存** | 套餐与测活写入插件 state；列表轮询不改写 |
+| **用量列** | Free 或无官方限额时：用量 = 插件日 token，限额 = Free 日限额（默认 2M） |
 
-技术路径：面板用 management key 调用 CPA `POST /v0/management/api-call`（支持 GET billing 与 POST `/responses` body），以指定 `authIndex` 经宿主出网（与 CPA 自带配额页同源），再 `POST` 插件 `/accounts/quota` 落盘。
+#### 存活 `probe_status`
+
+| 条件 | status | UI |
+| --- | --- | --- |
+| 2xx | `live` | Live 绿 |
+| 401 | `exceed` | Exceed 黄 |
+| 403 | `dead` | Dead 红 |
+| 429 | `cooling` | Cooling 黄 |
+| 其它 | `error` | Error 黄 |
+| 空/未测 | `""` | **Unknown** 灰 |
+
+#### 测活结果应用 `ApplyProbeResult(auth, result, source)`
+
+| source + 结果 | 行为 |
+| --- | --- |
+| **manual + live** | 只更新存活，**不改** priority/class |
+| **manual + 非 live** 或 **auto** | 按结果改档（见下） |
+| auto + live（当前 watch 复测） | 恢复 **none** + `default_restore_priority` + 清 NextProbeAt |
+| auto + live（其它） | class=**watch**，priority=`watch_priority`，NextProbeAt=+`watch_reprobe_minutes` |
+| exceed / dead | class=**dead**，priority=`dead_priority`，清 NextProbeAt；自动任务 skip |
+| cooling / error | class=**anomaly**，priority=`anomaly_priority`，NextProbeAt=+`anomaly_reprobe_hours` |
 
 ### 单账号操作
 
 | 操作 | 行为 |
 | --- | --- |
 | **启用 / 停用** | Management status API |
-| **降权** | fields 写目标优先级，成功后保存写前优先级为基线 |
-| **解除降权** | 优先恢复基线；无基线用「默认恢复优先级」 |
-| **诊断清理** | 启停、手动降权 / 解除成功后清空 streak、debt 与失败码；自动降权保留诊断 |
+| **降权** | 写死号档 `dead_priority`，记录写前优先级为基线（诊断用） |
+| **解除降权** | `default_restore_priority`（默认 0，**不**记 baseline）+ 清 debt + class=none + 存活→Unknown + 取消 NextProbeAt |
 | **安全删除** | 须输入精确文件名；映射变化则跳过 |
 
 ### 批量操作
 
-- 表头选当前页；「全部选中」= 当前筛选结果；「清除选中」取消全部  
-- 支持：启用、停用、降权、解除降权
-- **解除降权/手动降权** 走插件 `POST /accounts/restore-priority` 与 `POST /accounts/demote`（写 priority + 本地 demotion 状态一并更新）；成功前会校验 `is_demoted`
-- **v0.5.7**：半开/自动恢复成功后状态标为 `restored`；合法低 baseline 不再被 `priority<=demotion_priority` 误判为已降权、设置优先级、**批量重签**（refresh_token 换票）、安全删除  
-- **v0.5.8**：顶部「降权中」汇总拆分 soft/hard/半开；`demotion-filter` 按 class/state 筛选（正常 / Soft / Hard / Half-open / 处理中 / 失败 / 任意降权中）；徽章中文标签（观察档/硬降权/半开）
-- **v0.5.9**：「批量刷新套餐」改为「**批量测活**」（`data-batch-action=probe`）：先 `/v1/responses` 测活，**仅 alive** 再刷 billing 套餐；汇总示例 `测活成功 n · 死号 n · 失败 n · 套餐已刷新 m`；**默认不删除 dead**
-- **v0.5.11**：修测活 HTTP 400：CPA `api-call` 上游 body 字段是 **`data`（字符串）** 而非 `body` 对象；空 body 导致 `Failed to parse the request body as JSON: EOF`
-- **v0.5.10**：恢复「批量刷新套餐」+ 独立「批量测活」；测活仅 `api-call` + GRA 头；新增「存活」列（Live/Failure/Dead/Unusual）；套餐列只显示套餐
-- 批量设置优先级：输入整数，经 fields API 按精确文件名写入  
-- 有限并发（默认 10，设置页 1–50）；测活并发更保守（约 3，≤ batchConcurrency）  
-- 批量删除须输入 `DELETE`，且每项删除前再校验映射  
+- 表头选当前页；「全部选中」= 当前筛选结果  
+- 支持：启用、停用、降权、解除降权、批量测活、批量刷新套餐、批量重签、设置优先级、安全删除  
+- 解除/手动降权走 `POST /accounts/restore-priority` 与 `POST /accounts/demote`  
+- 批量测活 `source=manual`；api-call **`data` 字符串**（v0.5.11 起）  
+- 有限并发（默认 10）；测活并发更保守（约 3）
 
 ### 自动刷新（列表）
 
 默认开启、间隔 5 秒；仅页面可见且无账号操作时执行。**只刷新列表 / 设置 / meta，不刷新套餐。**  
-可在设置页关闭或改为 2–60 秒；关闭后账号页显示手动「刷新」。
+可在设置页关闭或改为 2–60 秒。
 
-### 优先级调度（自动降权与冷却）
+### 优先级调度（积分 → 测活 → 观察/异常/死号）
 
-目标：让持续/间歇失败的 auth 少被 CPA 选中，避免「多试几次才成功 → 总耗时爆炸」。插件**不实现 CPA 路由**，只写 `priority`。
+目标：让失败 auth 少被 CPA 选中。插件**不实现 CPA 路由**，只写 `priority`。v0.6.0 去掉 soft/hard 双阈值与 half-open / cooldown 阶梯。
 
-| 轨道 | 信号 | 默认动作 |
-| --- | --- | --- |
-| **Debt（失败债务）** | 401/403 默认 `+1.5`；可选 429 `+0.5`；成功 `-1.0`（衰减，不清空历史） | ≥ `2.0` → **soft** `priority=-10` |
-| **Hard streak** | 归因失败连败计数；成功清零 streak（debt 仍衰减） | ≥ `3` 或 debt ≥ `4.5` → **hard** `priority=-100` |
-| **Half-open 恢复** | 冷却阶梯 `6h → 12h → 24h` | 先回到 soft 观察档；成功累计默认 2 次 → baseline；归因失败 → 立刻 hard |
-| **机器人** | JWT `bot_flag_source` | 默认**自动恢复跳过** bot（`cooldown_restore_skip_bots=true`，可关）；手动解除降权始终可用 |
+| class | 中文 | 默认 priority |
+| --- | --- | ---: |
+| `none` | 正常 | `default_restore_priority` = 0 |
+| `watch` | 观察 | `watch_priority` = -10 |
+| `anomaly` | 异常 | `anomaly_priority` = -50 |
+| `dead` | 死号 | `dead_priority` = -100 |
 
-其它要点：
+**积分策略（仅 class=`none`）**
 
-- 非归因失败不改 debt；未知身份不降权
-- priority 由 worker **异步** PATCH（优先 Management fields；无 `CPA_GROK_MANAGEMENT_*` 时回退 `host.auth.save`），写后 re-list
-- 设计说明：`docs/design/11-soft-demotion-half-open.md`
+| 事件 | 行为 |
+| --- | --- |
+| **success** | debt 衰减；probe 非 live → 标 live；若 class≠none → 恢复正常（`default_restore_priority`、清档、**清 debt**、取消定时复测） |
+| **failure**（401/403/429 计分沿用） | 仅 none 加分；**dead 冻结积分**；watch/anomaly **不加分、不因积分触发** |
+| debt ≥ `debt_probe_threshold`（默认 2.0） | **debt=0** → 自动测活（`source=auto`） |
+| 连败 ≥ `attributed_failure_threshold` | 同样触发自动测活（探测决定档位，不直接写死） |
+
+**观察 / 异常定时复测**
+
+- Worker 扫描 `NextProbeAt ≤ now` 且 class ∈ {watch, anomaly}（跳过 dead）  
+- 执行 auto 测活 → `ApplyProbeResult(auto)`  
+- watch 复测仍 live → 正常档 + `default_restore_priority` + 清 NextProbeAt  
+
+priority 由 demotion worker **异步**写入（优先 Management fields；否则 `host.auth.save`）。
 
 ### 每日清零
 
-默认关，默认 `00:00`（插件进程本地时区）。清零请求数、Token 累计与 hard streak；failure debt 保留。启动时若当天已过点且未执行，会补一次。
+默认关，默认 `00:00`（插件进程本地时区）。清零请求数、Token 累计与连败 streak；failure debt 保留。
 
-### 诊断列与机器人列
+### 诊断列与风控列
 
-**诊断**：直接展示 failure debt、hard streak 与 `none / soft / hard / half_open` class；悬停可看证据时间、目标、基线、冷却与 half-open 成功数。
+**诊断**：failure debt、连败、class（none/watch/anomaly/dead）、下次复测时间等。
 
-**机器人**（只读解析 `access_token` JWT payload，不写 state）：
+**风控**（原「机器人」列，移到状态前；只读解析 JWT `bot_flag_source`，不写 state）：
 
 | 显示 | 条件 |
 | --- | --- |
 | 红「是」 | `bot_flag_source` 为 `1` / `"1"` |
 | 绿「否」 | 有效 token 且无标记 |
-| 灰「—」 | 无 token、无效 JWT 或读失败 |
+| 灰「Unknown」 | 无 token、无效 JWT 或读失败 |
 
 ## 设置与环境变量
 
 面板保存过设置后，以 state 中的 settings 为准。下列环境变量**仅在首次启动且尚无持久化设置时**作初始值：
 
-| 环境变量 | 默认 | 说明 |
+| 环境变量 / 设置项 | 默认 | 说明 |
 | --- | ---: | --- |
 | `CPA_GROK_BATCH_CONCURRENCY` | `10` | 批量操作并发 1–50 |
-| `CPA_GROK_FAILURE_THRESHOLD` | `3` | 连败阈值 1–100 |
-| `CPA_GROK_DEMOTION_PRIORITY` | `-100` | hard 降权目标优先级 |
-| `CPA_GROK_SOFT_DEMOTION` | `true` | 是否启用 soft 降权 |
-| `CPA_GROK_SOFT_DEMOTION_PRIORITY` | `-10` | soft / half-open 观察档优先级 |
-| `CPA_GROK_SOFT_DEBT_THRESHOLD` | `2.0` | soft debt 阈值 |
-| `CPA_GROK_HARD_DEBT_THRESHOLD` | `4.5` | hard debt 阈值 |
-| `CPA_GROK_DEBT_FAIL_401` | `1.5` | 401/403 debt 加分 |
-| `CPA_GROK_DEBT_FAIL_429` | `0.5` | 开启 429 计数时的 debt 加分 |
-| `CPA_GROK_DEBT_SUCCESS_DECAY` | `1.0` | 成功请求 debt 衰减 |
-| `CPA_GROK_DEFAULT_RESTORE_PRIORITY` | `0` | 无基线时的恢复优先级 |
-| `CPA_GROK_COOLDOWN_RESTORE` | `true` | 是否默认开冷却恢复 |
-| `CPA_GROK_COOLDOWN_RESTORE_SKIP_BOTS` | `true` | 自动冷却恢复是否跳过显式机器人 |
-| `CPA_GROK_HALF_OPEN` | `true` | 冷却后是否进入 half-open 观察档 |
-| `CPA_GROK_HALF_OPEN_SUCCESS_THRESHOLD` | `2` | half-open 回 baseline 所需成功数 |
-| `CPA_GROK_COUNT_429` | `false` | 429 是否计入连败 |
+| `CPA_GROK_FAILURE_THRESHOLD` | `3` | 连败阈值（触发自动测活）1–100 |
+| `debt_probe_threshold` / `CPA_GROK_DEBT_PROBE_THRESHOLD` | `2.0` | 积分阈值：≥ 则清零 debt 并自动测活 |
+| `debt_fail_401` / `CPA_GROK_DEBT_FAIL_401` | `1.5` | 401/403 debt 加分 |
+| `debt_fail_429` / `CPA_GROK_DEBT_FAIL_429` | `0.5` | 开启 429 计数时的 debt 加分 |
+| `debt_success_decay` / `CPA_GROK_DEBT_SUCCESS_DECAY` | `1.0` | 成功请求 debt 衰减 |
+| `watch_priority` / `CPA_GROK_WATCH_PRIORITY` | `-10` | 观察档目标优先级 |
+| `anomaly_priority` / `CPA_GROK_ANOMALY_PRIORITY` | `-50` | 异常档目标优先级 |
+| `dead_priority` / `CPA_GROK_DEAD_PRIORITY` | `-100` | 死号目标优先级（旧 `CPA_GROK_DEMOTION_PRIORITY` 为别名） |
+| `default_restore_priority` / `CPA_GROK_DEFAULT_RESTORE_PRIORITY` | `0` | 手动解除 / 成功恢复 / watch 复测成功 的写回优先级 |
+| `watch_reprobe_minutes` / `CPA_GROK_WATCH_REPROBE_MINUTES` | `30` | 观察档定时复测间隔（分钟） |
+| `anomaly_reprobe_hours` / `CPA_GROK_ANOMALY_REPROBE_HOURS` | `6` | 异常档定时复测间隔（小时） |
+| `CPA_GROK_COUNT_429` | `false` | 429 是否计入连败 / debt |
 | `CPA_GROK_COUNT_5XX` | `false` | 5xx 是否计入连败 |
-| `CPA_GROK_MANAGEMENT_BASE_URL` | 未设置 | 自动降权 / 冷却恢复用的 CPA 地址（如 `http://127.0.0.1:8317`） |
-| `CPA_GROK_MANAGEMENT_KEY` | 未设置 | Management fields 用 key；须与 BASE 成对，否则回退 `host.auth.save` |
-| `CPA_GROK_OUTBOUND_PROXY` | 未设置 | 批量重签等插件进程出站代理（优先于 HTTPS_PROXY/HTTP_PROXY；设置页 `outbound_proxy_url` 更高优先） |
+| `CPA_GROK_MANAGEMENT_BASE_URL` | 未设置 | 自动改 priority 用的 CPA 地址 |
+| `CPA_GROK_MANAGEMENT_KEY` | 未设置 | Management fields key；须与 BASE 成对，否则回退 `host.auth.save` |
+| `CPA_GROK_OUTBOUND_PROXY` | 未设置 | 批量重签 / 自动测活出站代理（auth `proxy_url` > 设置页 `outbound_proxy_url` > 本变量 > HTTPS_PROXY） |
 
-设置页还可改：自动刷新、每日清零、**Free 用户日限额（token，默认 2000000）**、**自动恢复时是否跳过机器人**、**出站代理（批量重签，`outbound_proxy_url`）** 等，热生效、无需重启。  
-浏览器本地（不写插件 state）：**外观 / 主题** = 跟随 CPA / 暗色 / 亮色（默认跟随 CPA）。  
+**已移除 / 忽略（v0.6.0）**：`soft_demotion_*`、`hard_debt_threshold`、`half_open_*`、`cooldown_restore_*`（JSON 旧字段可读可忽略；设置页已删除相关表单）。
+
+设置页还可改：自动刷新、每日清零、**Free 用户日限额（默认 2000000）**、**出站代理** 等，热生效。  
+浏览器本地（不写插件 state）：**外观 / 主题** = 跟随 CPA / 暗色 / 亮色。  
 `CPA_GROK_MANAGEMENT_*` 变更后需重启插件进程。
+
+## Changelog
+
+### v0.6.0
+
+- **降权模型重做**：`none` / `watch`（观察）/ `anomaly`（异常）/ `dead`（死号）替代 soft/hard/half_open；旧 state soft→watch、hard→dead、half_open→watch
+- **积分策略**：仅正常档吃阈值；`debt_probe_threshold`（默认 2.0）→ 清零 debt → 自动测活；死号冻结积分；观察/异常不加分
+- **测活改档**：`ApplyProbeResult`；手动 Live 不改档；手动非 Live 与自动相同改档；成功请求 → Live + 恢复正常 + 清积分 + 取消复测
+- **手动解除降权**：`default_restore_priority` + 清积分/档 + 存活 Unknown（不记 baseline）
+- **定时复测**：watch 默认 30 分钟、anomaly 默认 6 小时；Go 侧自动测活（token + proxy）
+- **存活 UI**：Live / Exceed / Dead / Cooling / Error / Unknown；套餐 unknown 显示 Unknown
+- **UI**：风控列+筛选；筛选项顺序 存活→套餐→风控→状态→降权；设置页新参数
+- **API**：`POST /accounts/apply-probe`；面板测活仍 `api-call` + `data` 字符串
 
 ## 开发与发版
 
@@ -327,15 +364,15 @@ checksums.txt
 一键打包（本机有 `aarch64-linux-gnu-gcc` 时会同时打 arm64）：
 
 ```bash
-./scripts/package_release.sh 0.5.11
+./scripts/package_release.sh 0.6.0
 # 生成例如：
-#   dist/cpa-grok-panel_0.5.11_linux_amd64.zip
-#   dist/cpa-grok-panel_0.5.11_linux_arm64.zip
+#   dist/cpa-grok-panel_0.6.0_linux_amd64.zip
+#   dist/cpa-grok-panel_0.6.0_linux_arm64.zip
 #   dist/checksums.txt
 
-gh release upload v0.5.11 \
-  dist/cpa-grok-panel_0.5.11_linux_amd64.zip \
-  dist/cpa-grok-panel_0.5.11_linux_arm64.zip \
+gh release upload v0.6.0 \
+  dist/cpa-grok-panel_0.6.0_linux_amd64.zip \
+  dist/cpa-grok-panel_0.6.0_linux_arm64.zip \
   dist/checksums.txt \
   --clobber
 ```
@@ -346,4 +383,4 @@ gh release upload v0.5.11 \
 - 评审与探测：[docs/reviews/](docs/reviews/)
 - 发行版：[Releases](https://github.com/magicvr/cpa-grok-panel/releases)
 
-README 以当前可安装版本 **v0.5.11** 为准。
+README 以当前可安装版本 **v0.6.0** 为准。

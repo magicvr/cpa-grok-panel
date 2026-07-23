@@ -16,22 +16,28 @@ import (
 type Settings = config.Settings
 
 func DefaultSettings() Settings {
-	return Settings{Revision: 1, AutoRefreshEnabled: true, AutoRefreshIntervalSeconds: 5,
+	return Settings{
+		Revision: 1, AutoRefreshEnabled: true, AutoRefreshIntervalSeconds: 5,
 		DailyUsageResetEnabled: false, DailyUsageResetTime: "00:00",
 		OperationConcurrency: 1, BatchOperationConcurrency: 10, AttributedFailureThreshold: 3,
-		// 401/403 always count toward the shared consecutive-failure threshold.
-		AttributedFailureStatuses: []int{401, 403}, DemotionPriority: -100, ProtectionLevel: "strict",
-		SoftDemotionEnabled: true, SoftDemotionPriority: -10, SoftDebtThreshold: 2.0, HardDebtThreshold: 4.5,
-		DebtFail401: 1.5, DebtFail429: 0.5, DebtSuccessDecay: 1.0,
-		DefaultRestorePriority: 0, CooldownRestoreEnabled: true, CooldownRestoreSkipBots: true,
-		HalfOpenEnabled: true, HalfOpenSuccessThreshold: 2,
-		FreeUserDailyTokenLimit: 2_000_000,
-		// 429/5xx participate in the same threshold path when enabled.
-		// Set CPA_GROK_COUNT_429 / CPA_GROK_COUNT_5XX=true to also demote after N consecutive such failures.
+		// 401/403 always count toward the shared consecutive-failure threshold (legacy streak;
+		// v0.6.0 debt-based auto-probe is the primary path).
+		AttributedFailureStatuses: []int{401, 403},
+		DebtProbeThreshold:        2.0,
+		DebtFail401:               1.5, DebtFail429: 0.5, DebtSuccessDecay: 1.0,
+		WatchPriority: -10, AnomalyPriority: -50, DeadPriority: -100,
+		DefaultRestorePriority: 0,
+		WatchReprobeMinutes:    30, AnomalyReprobeHours: 6,
+		// Legacy mirrors so older persisted JSON / tests that still read these fields work.
+		DemotionPriority: -100, SoftDemotionPriority: -10, SoftDebtThreshold: 2.0, HardDebtThreshold: 4.5,
+		SoftDemotionEnabled: true, CooldownRestoreEnabled: false, CooldownRestoreSkipBots: true,
+		HalfOpenEnabled: false, HalfOpenSuccessThreshold: 2,
+		ProtectionLevel: "strict", FreeUserDailyTokenLimit: 2_000_000,
 		CountStatus429: false, CountStatus5XX: false,
 		DefaultTokenCapacity: 1_000_000, PerAccountTokenCapacity: map[string]uint64{},
 		HealthStaleAfterSeconds: 86400, OperationTimeoutSeconds: 60, WriteMode: "managed",
-		OutboundProxyURL: ""}
+		OutboundProxyURL: "",
+	}
 }
 
 // ValidateOutboundProxyURL accepts empty (env fallback) or a parseable absolute proxy URL.
@@ -72,21 +78,63 @@ func LoadSettings() Settings {
 	settings := DefaultSettings()
 	settings.BatchOperationConcurrency = envInt("CPA_GROK_BATCH_CONCURRENCY", settings.BatchOperationConcurrency, 1, 50)
 	settings.AttributedFailureThreshold = envInt("CPA_GROK_FAILURE_THRESHOLD", settings.AttributedFailureThreshold, 1, 100)
-	settings.DemotionPriority = envInt("CPA_GROK_DEMOTION_PRIORITY", settings.DemotionPriority, -1_000_000, 1_000_000)
-	settings.SoftDemotionEnabled = envBool("CPA_GROK_SOFT_DEMOTION", settings.SoftDemotionEnabled)
-	settings.SoftDemotionPriority = envInt("CPA_GROK_SOFT_DEMOTION_PRIORITY", settings.SoftDemotionPriority, -1_000_000, 1_000_000)
-	settings.SoftDebtThreshold = envFloat("CPA_GROK_SOFT_DEBT_THRESHOLD", settings.SoftDebtThreshold, 0, 1_000_000)
-	settings.HardDebtThreshold = envFloat("CPA_GROK_HARD_DEBT_THRESHOLD", settings.HardDebtThreshold, 0, 1_000_000)
+	settings.DebtProbeThreshold = envFloat("CPA_GROK_DEBT_PROBE_THRESHOLD", settings.DebtProbeThreshold, 0, 1_000_000)
 	settings.DebtFail401 = envFloat("CPA_GROK_DEBT_FAIL_401", settings.DebtFail401, 0, 1_000_000)
 	settings.DebtFail429 = envFloat("CPA_GROK_DEBT_FAIL_429", settings.DebtFail429, 0, 1_000_000)
 	settings.DebtSuccessDecay = envFloat("CPA_GROK_DEBT_SUCCESS_DECAY", settings.DebtSuccessDecay, 0, 1_000_000)
+	settings.WatchPriority = envInt("CPA_GROK_WATCH_PRIORITY", settings.WatchPriority, -1_000_000, 1_000_000)
+	settings.AnomalyPriority = envInt("CPA_GROK_ANOMALY_PRIORITY", settings.AnomalyPriority, -1_000_000, 1_000_000)
+	settings.DeadPriority = envInt("CPA_GROK_DEAD_PRIORITY", settings.DeadPriority, -1_000_000, 1_000_000)
+	// Legacy alias: CPA_GROK_DEMOTION_PRIORITY → dead_priority
+	if v := strings.TrimSpace(os.Getenv("CPA_GROK_DEMOTION_PRIORITY")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			settings.DeadPriority = n
+			settings.DemotionPriority = n
+		}
+	} else {
+		settings.DemotionPriority = settings.DeadPriority
+	}
 	settings.DefaultRestorePriority = envInt("CPA_GROK_DEFAULT_RESTORE_PRIORITY", settings.DefaultRestorePriority, -1_000_000, 1_000_000)
-	settings.CooldownRestoreEnabled = envBool("CPA_GROK_COOLDOWN_RESTORE", settings.CooldownRestoreEnabled)
-	settings.CooldownRestoreSkipBots = envBool("CPA_GROK_COOLDOWN_RESTORE_SKIP_BOTS", settings.CooldownRestoreSkipBots)
-	settings.HalfOpenEnabled = envBool("CPA_GROK_HALF_OPEN", settings.HalfOpenEnabled)
-	settings.HalfOpenSuccessThreshold = envInt("CPA_GROK_HALF_OPEN_SUCCESS_THRESHOLD", settings.HalfOpenSuccessThreshold, 1, 100)
+	settings.WatchReprobeMinutes = envInt("CPA_GROK_WATCH_REPROBE_MINUTES", settings.WatchReprobeMinutes, 1, 10_080)
+	settings.AnomalyReprobeHours = envInt("CPA_GROK_ANOMALY_REPROBE_HOURS", settings.AnomalyReprobeHours, 1, 168)
 	settings.CountStatus429 = envBool("CPA_GROK_COUNT_429", false)
 	settings.CountStatus5XX = envBool("CPA_GROK_COUNT_5XX", false)
+	return settings
+}
+
+// NormalizeSettings fills v0.6.0 fields from legacy values when upgrading persisted settings.
+func NormalizeSettings(settings Settings) Settings {
+	if settings.DebtProbeThreshold <= 0 {
+		if settings.SoftDebtThreshold > 0 {
+			settings.DebtProbeThreshold = settings.SoftDebtThreshold
+		} else {
+			settings.DebtProbeThreshold = 2.0
+		}
+	}
+	if settings.WatchPriority == 0 && settings.SoftDemotionPriority != 0 {
+		settings.WatchPriority = settings.SoftDemotionPriority
+	}
+	if settings.WatchPriority == 0 {
+		settings.WatchPriority = -10
+	}
+	if settings.AnomalyPriority == 0 {
+		settings.AnomalyPriority = -50
+	}
+	if settings.DeadPriority == 0 {
+		if settings.DemotionPriority != 0 {
+			settings.DeadPriority = settings.DemotionPriority
+		} else {
+			settings.DeadPriority = -100
+		}
+	}
+	// Keep DemotionPriority as alias of DeadPriority for any remaining readers.
+	settings.DemotionPriority = settings.DeadPriority
+	if settings.WatchReprobeMinutes <= 0 {
+		settings.WatchReprobeMinutes = 30
+	}
+	if settings.AnomalyReprobeHours <= 0 {
+		settings.AnomalyReprobeHours = 6
+	}
 	return settings
 }
 
@@ -151,6 +199,10 @@ func BuildMeta(snapshot stateinfra.Snapshot, stateInfo ...stateinfra.Info) Meta 
 	return Meta{PluginID: stateinfra.PluginID, PluginVersion: stateinfra.PluginVersion, APIVersion: 1,
 		WriteMode: "managed", Status: "ready", StateStatus: info.Status, StateBackend: info.Backend, DataDir: info.DataDir,
 		StatisticsStartedAt: snapshot.StatisticsStartedAt, DedupeMode: dedupeMode, ConditionalWrite: false,
-		Capabilities:        []string{"usage", "auth_list", "auth_get", "auth_save", "management_routes", "set_enabled", "demote", "restore_priority", "auto_demotion", "soft_demotion", "half_open_restore", "cooldown_restore", "safe_delete", "daily_usage_reset", "token_resign"},
+		Capabilities: []string{
+			"usage", "auth_list", "auth_get", "auth_save", "management_routes", "set_enabled",
+			"demote", "restore_priority", "auto_demotion", "alive_probe", "watch_anomaly_dead",
+			"debt_probe_threshold", "safe_delete", "daily_usage_reset", "token_resign",
+		},
 		UnavailableFeatures: []Unavailable{{Feature: "checks", Reason: "host.auth.invoke 未提供"}}}
 }

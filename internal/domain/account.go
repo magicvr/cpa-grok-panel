@@ -32,6 +32,15 @@ type HostRequestBaseline struct {
 	BoundPeriodStartedAt time.Time `json:"bound_period_started_at"`
 }
 
+// Probe status values (persisted lowercase). UI labels: Live/Exceed/Dead/Cooling/Error/Unknown.
+const (
+	ProbeStatusLive    = "live"
+	ProbeStatusExceed  = "exceed"
+	ProbeStatusDead    = "dead"
+	ProbeStatusCooling = "cooling"
+	ProbeStatusError   = "error"
+)
+
 type QuotaSnapshot struct {
 	Plan      string    `json:"plan,omitempty"`
 	Used      float64   `json:"used,omitempty"`
@@ -41,7 +50,7 @@ type QuotaSnapshot struct {
 	FetchedAt time.Time `json:"fetched_at,omitempty"`
 	Error     string    `json:"error,omitempty"`
 	// 测活结果（存活列）；与套餐字段独立，批量刷新套餐不得清掉。
-	// probe_status: live | failure | dead | unusual（空=未测）
+	// probe_status: live | exceed | dead | cooling | error（空=Unknown/未测）
 	ProbeStatus string    `json:"probe_status,omitempty"`
 	ProbeHTTP   int       `json:"probe_http,omitempty"`
 	ProbeAt     time.Time `json:"probe_at,omitempty"`
@@ -68,33 +77,53 @@ type FailureState struct {
 }
 
 type DemotionState struct {
-	State                string     `json:"state"`
-	Class                string     `json:"class"`
-	BaselinePriority     *int       `json:"baseline_priority,omitempty"`
-	TargetPriority       *int       `json:"target_priority,omitempty"`
-	TriggeredAt          *time.Time `json:"triggered_at,omitempty"`
+	State            string     `json:"state"`
+	Class            string     `json:"class"`
+	BaselinePriority *int       `json:"baseline_priority,omitempty"`
+	TargetPriority   *int       `json:"target_priority,omitempty"`
+	TriggeredAt      *time.Time `json:"triggered_at,omitempty"`
+	// NextProbeAt schedules auto re-probe for watch/anomaly classes.
+	NextProbeAt *time.Time `json:"next_probe_at,omitempty"`
+	// Legacy fields retained for JSON compatibility; ignored by v0.6.0 logic.
 	RestoreCooldownHours int        `json:"restore_cooldown_hours,omitempty"`
 	HalfOpenSince        *time.Time `json:"half_open_since,omitempty"`
 	HalfOpenSuccesses    int        `json:"half_open_successes,omitempty"`
 	FailureCode          string     `json:"failure_code,omitempty"`
 }
 
+// Demotion class values (v0.6.0). Legacy soft/hard/half_open are migrated in Normalized().
 const (
-	DemotionClassNone     = "none"
+	DemotionClassNone    = "none"
+	DemotionClassWatch   = "watch"
+	DemotionClassAnomaly = "anomaly"
+	DemotionClassDead    = "dead"
+	// Legacy constants kept so older fixtures/tests can still name them before Normalize.
 	DemotionClassSoft     = "soft"
 	DemotionClassHard     = "hard"
 	DemotionClassHalfOpen = "half_open"
+)
+
+const (
+	ProbeSourceManual = "manual"
+	ProbeSourceAuto   = "auto"
 )
 
 func (state DemotionState) Normalized() DemotionState {
 	if state.State == "" {
 		state.State = "none"
 	}
+	// Migrate pre-v0.6.0 class names.
+	switch state.Class {
+	case DemotionClassSoft, DemotionClassHalfOpen:
+		state.Class = DemotionClassWatch
+	case DemotionClassHard:
+		state.Class = DemotionClassDead
+	}
 	if state.Class == "" {
 		switch state.State {
 		case "requested", "applied", "failed":
-			// Pre-v0.5.0 records only represented hard demotion.
-			state.Class = DemotionClassHard
+			// Pre-v0.5.0 records only represented hard demotion → dead.
+			state.Class = DemotionClassDead
 		default:
 			state.Class = DemotionClassNone
 		}
@@ -104,10 +133,51 @@ func (state DemotionState) Normalized() DemotionState {
 
 func IsActiveDemotionClass(class string) bool {
 	switch class {
+	case DemotionClassWatch, DemotionClassAnomaly, DemotionClassDead:
+		return true
+	// Accept un-normalized legacy names for safety.
 	case DemotionClassSoft, DemotionClassHard, DemotionClassHalfOpen:
 		return true
 	default:
 		return false
+	}
+}
+
+// NormalizeProbeStatus maps HTTP status / legacy labels to canonical probe_status.
+func NormalizeProbeStatus(status string, httpStatus int) string {
+	s := strings.ToLower(strings.TrimSpace(status))
+	switch s {
+	case ProbeStatusLive, ProbeStatusExceed, ProbeStatusDead, ProbeStatusCooling, ProbeStatusError:
+		return s
+	case "failure": // v0.5.x → exceed
+		return ProbeStatusExceed
+	case "unusual": // v0.5.x → error (or cooling if 429)
+		if httpStatus == 429 {
+			return ProbeStatusCooling
+		}
+		return ProbeStatusError
+	}
+	if httpStatus > 0 {
+		return ClassifyProbeHTTP(httpStatus)
+	}
+	return s
+}
+
+// ClassifyProbeHTTP maps HTTP codes to probe_status.
+func ClassifyProbeHTTP(httpStatus int) string {
+	switch {
+	case httpStatus >= 200 && httpStatus < 300:
+		return ProbeStatusLive
+	case httpStatus == 401:
+		return ProbeStatusExceed
+	case httpStatus == 403:
+		return ProbeStatusDead
+	case httpStatus == 429:
+		return ProbeStatusCooling
+	case httpStatus == 0:
+		return ProbeStatusError
+	default:
+		return ProbeStatusError
 	}
 }
 
@@ -153,7 +223,9 @@ func IsXAIOAuth(file AuthFile) bool {
 	return accountType == "oauth" || authType == "oauth"
 }
 
-func ProjectAccount(file AuthFile, state AccountState, now time.Time, demotionPriority int) AccountView {
+// ProjectAccount builds the list-row view. isDemoted is class/state based (v0.5.7+);
+// dead_priority is never used as "priority ≤ X ⇒ dead".
+func ProjectAccount(file AuthFile, state AccountState, now time.Time, _ int) AccountView {
 	usage := state.Usage
 	if usage.DedupeMode == "" {
 		usage.DedupeMode = "weak"
@@ -164,14 +236,15 @@ func ProjectAccount(file AuthFile, state AccountState, now time.Time, demotionPr
 	// Display-only: max(plugin ledger, host delta since period baseline). Tokens stay plugin-only.
 	usage = ApplyHostRequestDisplay(usage, file.Success, file.Failed, state.HostRequestBaseline)
 	demotion := state.Demotion.Normalized()
-	// A restored account can legitimately have a baseline below the demotion
-	// threshold. Keep the priority fallback for legacy and incomplete records,
-	// but do not reinterpret a verified restored baseline as an active demotion.
-	restoredToBaseline := demotion.State == "restored" && demotion.BaselinePriority != nil && file.Priority == *demotion.BaselinePriority
-	isDemoted := (demotion.State == "applied" && IsActiveDemotionClass(demotion.Class)) || (!restoredToBaseline && file.Priority <= demotionPriority)
+	// Class/state driven: applied or requested active class. Do not use priority thresholds.
+	isDemoted := IsActiveDemotionClass(demotion.Class) && (demotion.State == "applied" || demotion.State == "requested")
 	quota := state.Quota
 	if strings.TrimSpace(quota.Plan) == "" {
 		quota.Plan = "unknown"
+	}
+	// Normalize legacy probe labels for UI consumers of the API.
+	if quota.ProbeStatus != "" {
+		quota.ProbeStatus = NormalizeProbeStatus(quota.ProbeStatus, quota.ProbeHTTP)
 	}
 	return AccountView{
 		AuthIndex: file.AuthIndex, ExactFileName: file.Name, Email: file.Email,

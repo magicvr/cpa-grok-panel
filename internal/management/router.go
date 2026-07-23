@@ -62,6 +62,7 @@ func Registration() map[string]any {
 		{"Method": "POST", "Path": APIPrefix + "/accounts/priority-written", "Description": "确认 Management 优先级写入并更新插件状态"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/clear-state", "Description": "删除账号后清理插件本地状态"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/quota", "Description": "保存账号额度快照"},
+		{"Method": "POST", "Path": APIPrefix + "/accounts/apply-probe", "Description": "应用测活结果并按规则改档"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/resign", "Description": "用 refresh_token 重签并写回 CPA auth 文件"},
 	}
 	resources := []map[string]any{
@@ -207,6 +208,10 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 		default:
 			return apiError(400, "invalid_argument", "quota source 不受支持", false)
 		}
+		// Normalize legacy probe labels when panel still posts failure/unusual.
+		if body.Quota.ProbeStatus != "" {
+			body.Quota.ProbeStatus = domain.NormalizeProbeStatus(body.Quota.ProbeStatus, body.Quota.ProbeHTTP)
+		}
 		// Manual refresh always overwrites the full cached snapshot (plan permanence until next manual refresh).
 		if body.Quota.FetchedAt.IsZero() {
 			body.Quota.FetchedAt = time.Now().UTC()
@@ -220,6 +225,25 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 			return apiError(503, "state_write_failed", "保存套餐/额度快照失败: "+err.Error(), true)
 		}
 		return jsonResponse(200, map[string]any{"saved": true, "quota": body.Quota})
+	case method == "POST" && matchesPath(path, "/accounts/apply-probe"):
+		var body applyProbeRequest
+		if err := decodeStrictBody(request.Body, &body); err != nil {
+			return apiError(400, "invalid_argument", err.Error(), false)
+		}
+		if strings.TrimSpace(body.AuthIndex) == "" {
+			return apiError(400, "invalid_argument", "auth_index 为必填", false)
+		}
+		source := strings.TrimSpace(body.Source)
+		if source == "" {
+			source = domain.ProbeSourceManual
+		}
+		account, err := router.accounts.ApplyProbeResult(body.AuthIndex, application.ProbeResult{
+			Status: body.Status, HTTPStatus: body.HTTPStatus, Error: body.Error,
+		}, source)
+		if err != nil {
+			return accountErrorResponse(err)
+		}
+		return jsonResponse(200, map[string]any{"account": account})
 	case method != "GET" && method != "POST" && method != "PUT" && method != "PATCH":
 		return apiError(405, "method_not_allowed", "请求方法不受支持", false)
 	case method == "POST" || method == "PUT" || method == "PATCH":
@@ -232,6 +256,14 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 type accountTargetRequest struct {
 	AuthIndex     string `json:"auth_index"`
 	ExactFileName string `json:"exact_file_name"`
+}
+
+type applyProbeRequest struct {
+	AuthIndex  string `json:"auth_index"`
+	Status     string `json:"status"`
+	HTTPStatus int    `json:"http_status"`
+	Error      string `json:"error,omitempty"`
+	Source     string `json:"source"`
 }
 
 type quotaSnapshotRequest struct {
@@ -262,21 +294,23 @@ type settingsUpdateRequest struct {
 	AttributedFailureThreshold *int     `json:"attributed_failure_threshold"`
 	CountStatus429             *bool    `json:"count_status_429"`
 	CountStatus5XX             *bool    `json:"count_status_5xx"`
-	SoftDemotionEnabled        *bool    `json:"soft_demotion_enabled"`
-	SoftDemotionPriority       *int     `json:"soft_demotion_priority"`
-	SoftDebtThreshold          *float64 `json:"soft_debt_threshold"`
-	HardDebtThreshold          *float64 `json:"hard_debt_threshold"`
+	DebtProbeThreshold         *float64 `json:"debt_probe_threshold"`
 	DebtFail401                *float64 `json:"debt_fail_401"`
 	DebtFail429                *float64 `json:"debt_fail_429"`
 	DebtSuccessDecay           *float64 `json:"debt_success_decay"`
-	DemotionPriority           *int     `json:"demotion_priority"`
+	WatchPriority              *int     `json:"watch_priority"`
+	AnomalyPriority            *int     `json:"anomaly_priority"`
+	DeadPriority               *int     `json:"dead_priority"`
 	DefaultRestorePriority     *int     `json:"default_restore_priority"`
-	CooldownRestoreEnabled     *bool    `json:"cooldown_restore_enabled"`
-	CooldownRestoreSkipBots    *bool    `json:"cooldown_restore_skip_bots"`
-	HalfOpenEnabled            *bool    `json:"half_open_enabled"`
-	HalfOpenSuccessThreshold   *int     `json:"half_open_success_threshold"`
-	FreeUserDailyTokenLimit    *uint64  `json:"free_user_daily_token_limit"`
-	OutboundProxyURL           *string  `json:"outbound_proxy_url"`
+	WatchReprobeMinutes        *int     `json:"watch_reprobe_minutes"`
+	AnomalyReprobeHours        *int     `json:"anomaly_reprobe_hours"`
+	// Legacy aliases (accepted, mapped into v0.6.0 fields).
+	SoftDemotionPriority *int     `json:"soft_demotion_priority"`
+	SoftDebtThreshold    *float64 `json:"soft_debt_threshold"`
+	HardDebtThreshold    *float64 `json:"hard_debt_threshold"`
+	DemotionPriority     *int     `json:"demotion_priority"`
+	FreeUserDailyTokenLimit *uint64 `json:"free_user_daily_token_limit"`
+	OutboundProxyURL        *string `json:"outbound_proxy_url"`
 }
 
 type settingsResponse struct {
@@ -285,10 +319,10 @@ type settingsResponse struct {
 }
 
 func (router *Router) settingsResponse() settingsResponse {
-	settings := router.settingsFallback
+	settings := application.NormalizeSettings(router.settingsFallback)
 	source := "default"
 	if persisted := router.store.View().Settings; persisted != nil {
-		settings = *persisted
+		settings = application.NormalizeSettings(*persisted)
 		source = "state"
 	}
 	return settingsResponse{Settings: settings, Source: source}
@@ -298,10 +332,10 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 	if update.AutoRefreshEnabled == nil && update.AutoRefreshIntervalSeconds == nil && update.DailyUsageResetEnabled == nil && update.DailyUsageResetTime == nil &&
 		update.BatchOperationConcurrency == nil &&
 		update.AttributedFailureThreshold == nil && update.CountStatus429 == nil && update.CountStatus5XX == nil &&
-		update.SoftDemotionEnabled == nil && update.SoftDemotionPriority == nil && update.SoftDebtThreshold == nil && update.HardDebtThreshold == nil &&
-		update.DebtFail401 == nil && update.DebtFail429 == nil && update.DebtSuccessDecay == nil &&
-		update.DemotionPriority == nil && update.DefaultRestorePriority == nil && update.CooldownRestoreEnabled == nil &&
-		update.CooldownRestoreSkipBots == nil && update.HalfOpenEnabled == nil && update.HalfOpenSuccessThreshold == nil &&
+		update.DebtProbeThreshold == nil && update.DebtFail401 == nil && update.DebtFail429 == nil && update.DebtSuccessDecay == nil &&
+		update.WatchPriority == nil && update.AnomalyPriority == nil && update.DeadPriority == nil &&
+		update.DefaultRestorePriority == nil && update.WatchReprobeMinutes == nil && update.AnomalyReprobeHours == nil &&
+		update.SoftDemotionPriority == nil && update.SoftDebtThreshold == nil && update.HardDebtThreshold == nil && update.DemotionPriority == nil &&
 		update.FreeUserDailyTokenLimit == nil && update.OutboundProxyURL == nil {
 		return application.Settings{}, fmt.Errorf("至少提供一个可配置字段")
 	}
@@ -320,31 +354,35 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		return application.Settings{}, fmt.Errorf("attributed_failure_threshold 必须在 1..100 范围内")
 	}
 	for name, value := range map[string]*float64{
-		"soft_debt_threshold": update.SoftDebtThreshold, "hard_debt_threshold": update.HardDebtThreshold,
+		"debt_probe_threshold": update.DebtProbeThreshold, "soft_debt_threshold": update.SoftDebtThreshold,
+		"hard_debt_threshold": update.HardDebtThreshold,
 		"debt_fail_401": update.DebtFail401, "debt_fail_429": update.DebtFail429, "debt_success_decay": update.DebtSuccessDecay,
 	} {
 		if value != nil && (math.IsNaN(*value) || math.IsInf(*value, 0) || *value < 0 || *value > 1_000_000) {
 			return application.Settings{}, fmt.Errorf("%s 必须在 0..1000000 范围内", name)
 		}
 	}
+	if update.DebtProbeThreshold != nil && *update.DebtProbeThreshold == 0 {
+		return application.Settings{}, fmt.Errorf("debt_probe_threshold 必须大于 0")
+	}
 	if update.SoftDebtThreshold != nil && *update.SoftDebtThreshold == 0 {
 		return application.Settings{}, fmt.Errorf("soft_debt_threshold 必须大于 0")
 	}
-	if update.HardDebtThreshold != nil && *update.HardDebtThreshold == 0 {
-		return application.Settings{}, fmt.Errorf("hard_debt_threshold 必须大于 0")
+	if update.WatchReprobeMinutes != nil && (*update.WatchReprobeMinutes < 1 || *update.WatchReprobeMinutes > 10080) {
+		return application.Settings{}, fmt.Errorf("watch_reprobe_minutes 必须在 1..10080 范围内")
 	}
-	if update.HalfOpenSuccessThreshold != nil && (*update.HalfOpenSuccessThreshold < 1 || *update.HalfOpenSuccessThreshold > 100) {
-		return application.Settings{}, fmt.Errorf("half_open_success_threshold 必须在 1..100 范围内")
+	if update.AnomalyReprobeHours != nil && (*update.AnomalyReprobeHours < 1 || *update.AnomalyReprobeHours > 168) {
+		return application.Settings{}, fmt.Errorf("anomaly_reprobe_hours 必须在 1..168 范围内")
 	}
 	const minPriority, maxPriority = -1_000_000, 1_000_000
-	if update.DemotionPriority != nil && (*update.DemotionPriority < minPriority || *update.DemotionPriority > maxPriority) {
-		return application.Settings{}, fmt.Errorf("demotion_priority 必须在 %d..%d 范围内", minPriority, maxPriority)
-	}
-	if update.SoftDemotionPriority != nil && (*update.SoftDemotionPriority < minPriority || *update.SoftDemotionPriority > maxPriority) {
-		return application.Settings{}, fmt.Errorf("soft_demotion_priority 必须在 %d..%d 范围内", minPriority, maxPriority)
-	}
-	if update.DefaultRestorePriority != nil && (*update.DefaultRestorePriority < minPriority || *update.DefaultRestorePriority > maxPriority) {
-		return application.Settings{}, fmt.Errorf("default_restore_priority 必须在 %d..%d 范围内", minPriority, maxPriority)
+	for name, value := range map[string]*int{
+		"watch_priority": update.WatchPriority, "anomaly_priority": update.AnomalyPriority,
+		"dead_priority": update.DeadPriority, "default_restore_priority": update.DefaultRestorePriority,
+		"soft_demotion_priority": update.SoftDemotionPriority, "demotion_priority": update.DemotionPriority,
+	} {
+		if value != nil && (*value < minPriority || *value > maxPriority) {
+			return application.Settings{}, fmt.Errorf("%s 必须在 %d..%d 范围内", name, minPriority, maxPriority)
+		}
 	}
 	if update.FreeUserDailyTokenLimit != nil && *update.FreeUserDailyTokenLimit < 1 {
 		return application.Settings{}, fmt.Errorf("free_user_daily_token_limit 必须大于等于 1")
@@ -361,6 +399,7 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		if snapshot.Settings != nil {
 			settings = *snapshot.Settings
 		}
+		settings = application.NormalizeSettings(settings)
 		if update.AutoRefreshEnabled != nil {
 			settings.AutoRefreshEnabled = *update.AutoRefreshEnabled
 		}
@@ -385,17 +424,10 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		if update.CountStatus5XX != nil {
 			settings.CountStatus5XX = *update.CountStatus5XX
 		}
-		if update.SoftDemotionEnabled != nil {
-			settings.SoftDemotionEnabled = *update.SoftDemotionEnabled
-		}
-		if update.SoftDemotionPriority != nil {
-			settings.SoftDemotionPriority = *update.SoftDemotionPriority
-		}
-		if update.SoftDebtThreshold != nil {
-			settings.SoftDebtThreshold = *update.SoftDebtThreshold
-		}
-		if update.HardDebtThreshold != nil {
-			settings.HardDebtThreshold = *update.HardDebtThreshold
+		if update.DebtProbeThreshold != nil {
+			settings.DebtProbeThreshold = *update.DebtProbeThreshold
+		} else if update.SoftDebtThreshold != nil {
+			settings.DebtProbeThreshold = *update.SoftDebtThreshold
 		}
 		if update.DebtFail401 != nil {
 			settings.DebtFail401 = *update.DebtFail401
@@ -406,23 +438,30 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		if update.DebtSuccessDecay != nil {
 			settings.DebtSuccessDecay = *update.DebtSuccessDecay
 		}
-		if update.DemotionPriority != nil {
-			settings.DemotionPriority = *update.DemotionPriority
+		if update.WatchPriority != nil {
+			settings.WatchPriority = *update.WatchPriority
+		} else if update.SoftDemotionPriority != nil {
+			settings.WatchPriority = *update.SoftDemotionPriority
 		}
+		if update.AnomalyPriority != nil {
+			settings.AnomalyPriority = *update.AnomalyPriority
+		}
+		if update.DeadPriority != nil {
+			settings.DeadPriority = *update.DeadPriority
+		} else if update.DemotionPriority != nil {
+			settings.DeadPriority = *update.DemotionPriority
+		}
+		settings.DemotionPriority = settings.DeadPriority
+		settings.SoftDemotionPriority = settings.WatchPriority
+		settings.SoftDebtThreshold = settings.DebtProbeThreshold
 		if update.DefaultRestorePriority != nil {
 			settings.DefaultRestorePriority = *update.DefaultRestorePriority
 		}
-		if update.CooldownRestoreEnabled != nil {
-			settings.CooldownRestoreEnabled = *update.CooldownRestoreEnabled
+		if update.WatchReprobeMinutes != nil {
+			settings.WatchReprobeMinutes = *update.WatchReprobeMinutes
 		}
-		if update.CooldownRestoreSkipBots != nil {
-			settings.CooldownRestoreSkipBots = *update.CooldownRestoreSkipBots
-		}
-		if update.HalfOpenEnabled != nil {
-			settings.HalfOpenEnabled = *update.HalfOpenEnabled
-		}
-		if update.HalfOpenSuccessThreshold != nil {
-			settings.HalfOpenSuccessThreshold = *update.HalfOpenSuccessThreshold
+		if update.AnomalyReprobeHours != nil {
+			settings.AnomalyReprobeHours = *update.AnomalyReprobeHours
 		}
 		if update.FreeUserDailyTokenLimit != nil {
 			settings.FreeUserDailyTokenLimit = *update.FreeUserDailyTokenLimit
@@ -434,6 +473,7 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		if settings.Revision < 1 {
 			settings.Revision = 1
 		}
+		settings = application.NormalizeSettings(settings)
 		snapshot.Settings = &settings
 		result = settings
 		return nil

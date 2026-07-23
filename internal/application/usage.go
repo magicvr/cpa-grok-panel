@@ -27,10 +27,17 @@ type UsageResult struct {
 	Duplicate         bool   `json:"duplicate"`
 	DedupeMode        string `json:"dedupe_mode"`
 	DemotionRequested bool   `json:"demotion_requested"`
+	// ProbeRequested is set when debt threshold is crossed and auto probe should run.
+	ProbeRequested bool `json:"probe_requested,omitempty"`
 }
 
 type DemotionEnqueuer interface {
 	Enqueue(authIndex string)
+}
+
+// ProbeEnqueuer schedules an automatic alive probe for an account.
+type ProbeEnqueuer interface {
+	EnqueueProbe(authIndex string)
 }
 
 type UsageService struct {
@@ -38,15 +45,19 @@ type UsageService struct {
 	now              func() time.Time
 	settingsFallback Settings
 	demotions        DemotionEnqueuer
+	probes           ProbeEnqueuer
 }
 
 func NewUsageService(store *stateinfra.Store, now func() time.Time) *UsageService {
 	return NewUsageServiceWithDemotion(store, now, DefaultSettings(), nil)
-
 }
 
 func NewUsageServiceWithDemotion(store *stateinfra.Store, now func() time.Time, settings Settings, demotions DemotionEnqueuer) *UsageService {
-	return &UsageService{store: store, now: now, settingsFallback: settings, demotions: demotions}
+	return &UsageService{store: store, now: now, settingsFallback: NormalizeSettings(settings), demotions: demotions}
+}
+
+func (service *UsageService) SetProbeEnqueuer(probes ProbeEnqueuer) {
+	service.probes = probes
 }
 
 func (service *UsageService) Handle(event domain.UsageEvent) (UsageResult, error) {
@@ -78,7 +89,9 @@ func (service *UsageService) Handle(event domain.UsageEvent) (UsageResult, error
 		if err := domain.ApplyUsage(&account.Usage, event); err != nil {
 			return err
 		}
-		result.DemotionRequested = service.applyFailurePolicy(&account, event, now, settings)
+		demotionReq, probeReq := service.applyFailurePolicy(&account, event, now, settings)
+		result.DemotionRequested = demotionReq
+		result.ProbeRequested = probeReq
 		snapshot.Accounts[event.AuthIndex] = account
 		if mode == "exact" {
 			snapshot.EventDedupe.ExactIDs[key] = now
@@ -92,48 +105,84 @@ func (service *UsageService) Handle(event domain.UsageEvent) (UsageResult, error
 	if err == nil && result.DemotionRequested && service.demotions != nil {
 		service.demotions.Enqueue(event.AuthIndex)
 	}
+	if err == nil && result.ProbeRequested && service.probes != nil {
+		service.probes.EnqueueProbe(event.AuthIndex)
+	}
 	return result, err
 }
 
-func (service *UsageService) applyFailurePolicy(account *domain.AccountState, event domain.UsageEvent, now time.Time, settings Settings) bool {
+// applyFailurePolicy implements v0.6.0 debt → auto-probe and success restore rules.
+// Returns (demotionRequested, probeRequested).
+func (service *UsageService) applyFailurePolicy(account *domain.AccountState, event domain.UsageEvent, now time.Time, settings Settings) (bool, bool) {
 	evidenceAt := event.OccurredAt.UTC()
 	if evidenceAt.IsZero() {
 		evidenceAt = now.UTC()
 	}
 	demotion := account.Demotion.Normalized()
+	settings = NormalizeSettings(settings)
 
 	if isSuccessfulOutcome(event.Outcome) {
 		account.Failure.ConsecutiveAttributedFailures = 0
 		account.Failure.DebtScore = math.Max(0, account.Failure.DebtScore-settings.DebtSuccessDecay)
 		account.Failure.LastEvidenceAt = &evidenceAt
-		if demotion.State == "applied" && demotion.Class == domain.DemotionClassHalfOpen {
-			demotion.HalfOpenSuccesses++
-			account.Demotion = demotion
-			if demotion.HalfOpenSuccesses >= settings.HalfOpenSuccessThreshold {
-				target := settings.DefaultRestorePriority
-				if demotion.BaselinePriority != nil {
-					target = *demotion.BaselinePriority
-				}
-				demotion.State = "requested"
-				demotion.Class = domain.DemotionClassNone
-				demotion.TargetPriority = &target
-				demotion.TriggeredAt = &evidenceAt
-				demotion.FailureCode = ""
-				account.Demotion = demotion
-				return true
-			}
+
+		// Success marks probe live when previously non-live / empty.
+		probe := strings.ToLower(strings.TrimSpace(account.Quota.ProbeStatus))
+		if probe != domain.ProbeStatusLive {
+			account.Quota.ProbeStatus = domain.ProbeStatusLive
+			account.Quota.ProbeHTTP = 200
+			account.Quota.ProbeAt = evidenceAt
+			account.Quota.ProbeError = ""
 		}
-		return false
+
+		// Success while demoted → restore to normal (default_restore_priority + clear debt + cancel re-probe).
+		if demotion.Class != domain.DemotionClassNone && demotion.Class != "" {
+			// Dead freezes: do not auto-restore dead on success alone — operator must manual restore
+			// or probe reclassification. Spec: success restores class≠none; apply to all including dead
+			// when traffic succeeds (account is working). Spec says:
+			// "success：… 若 class≠none → 恢复正常"
+			target := settings.DefaultRestorePriority
+			demotion.State = "requested"
+			demotion.Class = domain.DemotionClassNone
+			demotion.TargetPriority = &target
+			demotion.TriggeredAt = &evidenceAt
+			demotion.NextProbeAt = nil
+			demotion.FailureCode = ""
+			demotion.HalfOpenSince = nil
+			demotion.HalfOpenSuccesses = 0
+			account.Demotion = demotion
+			account.Failure.DebtScore = 0
+			account.Failure.ConsecutiveAttributedFailures = 0
+			return true, false
+		}
+		return false, false
 	}
+
 	if !isPotentialXAIOAuth(event) {
 		account.Failure.ConsecutiveAttributedFailures = 0
-		return false
+		return false, false
 	}
 	if !countsThresholdStatus(settings, event.StatusCode) {
 		account.Failure.ConsecutiveAttributedFailures = 0
-		return false
+		return false, false
 	}
 
+	// dead: freeze debt scoring
+	if demotion.Class == domain.DemotionClassDead {
+		account.Failure.LastEvidenceAt = &evidenceAt
+		account.Failure.LastFailureAt = &evidenceAt
+		account.Failure.LastFailureCode = fmt.Sprintf("http_%d", event.StatusCode)
+		return false, false
+	}
+	// watch/anomaly: no debt scoring, no debt-triggered probe
+	if demotion.Class == domain.DemotionClassWatch || demotion.Class == domain.DemotionClassAnomaly {
+		account.Failure.LastEvidenceAt = &evidenceAt
+		account.Failure.LastFailureAt = &evidenceAt
+		account.Failure.LastFailureCode = fmt.Sprintf("http_%d", event.StatusCode)
+		return false, false
+	}
+
+	// only class==none accrues debt / streak
 	account.Failure.LastEvidenceAt = &evidenceAt
 	account.Failure.LastFailureAt = &evidenceAt
 	account.Failure.LastFailureCode = fmt.Sprintf("http_%d", event.StatusCode)
@@ -147,42 +196,18 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 		}
 	}
 
-	if demotion.Class == domain.DemotionClassHalfOpen {
-		return requestDemotionClass(account, domain.DemotionClassHard, settings.DemotionPriority, evidenceAt)
+	// debt ≥ threshold → zero debt and request auto probe (not direct demotion)
+	if account.Failure.DebtScore >= settings.DebtProbeThreshold {
+		account.Failure.DebtScore = 0
+		return false, true
 	}
-	if account.Failure.ConsecutiveAttributedFailures >= settings.AttributedFailureThreshold || account.Failure.DebtScore >= settings.HardDebtThreshold {
-		return requestDemotionClass(account, domain.DemotionClassHard, settings.DemotionPriority, evidenceAt)
+	// Legacy hard streak path: consecutive attributed failures still request auto probe
+	// rather than jumping to dead (probe decides the tier).
+	if account.Failure.ConsecutiveAttributedFailures >= settings.AttributedFailureThreshold {
+		account.Failure.DebtScore = 0
+		return false, true
 	}
-	if settings.SoftDemotionEnabled && account.Failure.DebtScore >= settings.SoftDebtThreshold {
-		return requestDemotionClass(account, domain.DemotionClassSoft, settings.SoftDemotionPriority, evidenceAt)
-	}
-	return false
-}
-
-func requestDemotionClass(account *domain.AccountState, class string, target int, triggeredAt time.Time) bool {
-	demotion := account.Demotion.Normalized()
-	if demotion.Class == domain.DemotionClassHard && (demotion.State == "requested" || demotion.State == "applied") {
-		return false
-	}
-	if class == domain.DemotionClassSoft {
-		if demotion.Class == domain.DemotionClassSoft && (demotion.State == "requested" || demotion.State == "applied") {
-			return false
-		}
-		if demotion.Class == domain.DemotionClassHard || demotion.Class == domain.DemotionClassHalfOpen {
-			return false
-		}
-	}
-	demotion.State = "requested"
-	demotion.Class = class
-	demotion.TargetPriority = &target
-	demotion.TriggeredAt = &triggeredAt
-	demotion.FailureCode = account.Failure.LastFailureCode
-	if class == domain.DemotionClassHard {
-		demotion.HalfOpenSince = nil
-		demotion.HalfOpenSuccesses = 0
-	}
-	account.Demotion = demotion
-	return true
+	return false, false
 }
 
 // All attributed statuses enter the consecutive-threshold path.
@@ -211,9 +236,9 @@ func (service *UsageService) countsStatus(status int) bool {
 
 func (service *UsageService) settings() Settings {
 	if settings := service.store.View().Settings; settings != nil {
-		return *settings
+		return NormalizeSettings(*settings)
 	}
-	return service.settingsFallback
+	return NormalizeSettings(service.settingsFallback)
 }
 
 func isSuccessfulOutcome(outcome string) bool {

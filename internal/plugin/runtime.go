@@ -21,7 +21,7 @@ type Runtime struct {
 	store            *stateinfra.Store
 	usage            *application.UsageService
 	worker           *application.DemotionWorker
-	cooldownWorker   *application.CooldownRestoreWorker
+	probeWorker      *application.ProbeWorker
 	usageResetWorker *application.UsageResetWorker
 	router           *management.Router
 	dataDir          string
@@ -128,18 +128,20 @@ func (runtime *Runtime) ensureReady(dataDir string) error {
 		accounts.SetPriorityWriter(priorityWriter)
 	}
 	worker := application.NewDemotionWorker(accounts, store, settings)
-	cooldownWorker := application.NewCooldownRestoreWorker(accounts, store)
+	probeWorker := application.NewProbeWorker(accounts, store)
 	usageResetWorker := application.NewUsageResetWorker(store, settings)
 	runtime.store = store
 	runtime.worker = worker
-	runtime.cooldownWorker = cooldownWorker
+	runtime.probeWorker = probeWorker
 	runtime.usageResetWorker = usageResetWorker
-	runtime.usage = application.NewUsageServiceWithDemotion(store, time.Now, settings, worker)
+	usage := application.NewUsageServiceWithDemotion(store, time.Now, settings, worker)
+	usage.SetProbeEnqueuer(probeWorker)
+	runtime.usage = usage
 	runtime.router = management.NewRouter(accounts, store, settings)
 	runtime.dataDir = used
 	runtime.ready = true
 	worker.Start()
-	cooldownWorker.Start()
+	probeWorker.Start()
 	usageResetWorker.Start()
 	return nil
 }
@@ -221,9 +223,9 @@ func (runtime *Runtime) Shutdown() error {
 		runtime.worker.Stop()
 		runtime.worker = nil
 	}
-	if runtime.cooldownWorker != nil {
-		runtime.cooldownWorker.Stop()
-		runtime.cooldownWorker = nil
+	if runtime.probeWorker != nil {
+		runtime.probeWorker.Stop()
+		runtime.probeWorker = nil
 	}
 	if runtime.usageResetWorker != nil {
 		runtime.usageResetWorker.Stop()

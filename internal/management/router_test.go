@@ -50,7 +50,28 @@ func TestRouterPanelPath(t *testing.T) {
 	if !strings.Contains(body, "Grok") {
 		t.Fatalf("not html panel: %s", string(resp.Body)[:80])
 	}
-	for _, marker := range []string{"v0.5.11", "account_file_filter", "cpa_management_bearer", "data-1p-ignore", "优先级冷却恢复", "cooldown_restore_enabled", "cooldown_restore_skip_bots", "冷却恢复跳过机器人", "6h → 12h → 24h", "data-sort=\"bot\"", "id=\"bot-filter\"", "matchesBot", "id=\"plan-filter\"", "matchesPlan", "批量刷新套餐", "data-batch-action=\"refresh-plan\"", "performBatchRefreshPlans", "批量测活", "data-batch-action=\"probe\"", "performBatchProbe", "probeLiveForItem", "XAI_PROBE_URL", "/v1/responses", "max_output_tokens", "classifyProbeStatus", "Reply with exactly OK", "x-authenticateresponse", "x-grok-client-identifier", "api-call", "禁止直连", "payload.data", "CLIProxyAPI", "空 body", "存活", "data-sort=\"alive\"", "alive-badge", "aliveCell", "probe_status", "Live", "Failure", "Dead", "Unusual", "未测", "批量重签", "data-batch-action=\"resign\"", "/accounts/resign", "performBatchResign", "clearDiagnostic", "/accounts/clear-diagnostic", ">诊断<", "bot_flag_known", "首页", "末页", "跳转", "page-input", "清除选中", "全部选中", "批量启用", "批量停用", "批量降权", "批量解除降权", "批量设置优先级", "data-batch-action=\"set-priority\"", "批量安全删除", "批量操作并发数", "batch_operation_concurrency", "runConcurrent", "每日清零", "allItems.find", "/accounts/restore-priority", "/accounts/demote", "clearDiagnostic(target)", "class=\"cpa-page-shell\"", "padding:70px 40px 40px 40px", ".wrap{width:100%;padding:0;margin:0}", "cpa-grok-panel.theme_preference", "data-panel-theme", "html[data-panel-theme=\"light\"]", "外观 / 主题", "跟随系统（跟随 CPA）", "soft_demotion_enabled", "soft_demotion_priority", "soft_debt_threshold", "hard_debt_threshold", "debt_fail_401", "debt_fail_429", "debt_success_decay", "half_open_enabled", "half_open_success_threshold", "failure debt", "half-open 成功", "outbound_proxy_url", "出站代理（批量重签）", "CPA_GROK_OUTBOUND_PROXY", "解除降权未生效", "executeAccountAction", "statusCell(item)", "unavailable=true", "CPA 标记该凭证当前不可调度", "id=\"demoted-breakdown\"", "id=\"demoted-card\"", "matchesDemotionFilter", "demotionClassLabel", "任意降权中", "value=\"half_open\"", "value=\"requested\"", "value=\"failed\"", "value=\"soft\"", "value=\"hard\"", "value=\"normal\"", "value=\"active\"", "观察档", "硬降权", "半开", "S:", "降权中"} {
+	for _, marker := range []string{
+		"v0.6.0", "account_file_filter", "cpa_management_bearer", "data-1p-ignore",
+		"测活积分阈值", "debt_probe_threshold", "watch_reprobe_minutes", "观察复测间隔", "anomaly_reprobe_hours",
+		"data-sort=\"bot\"", "id=\"bot-filter\"", "matchesBot", "id=\"plan-filter\"", "matchesPlan",
+		"id=\"alive-filter\"", "matchesAlive", "批量刷新套餐", "data-batch-action=\"refresh-plan\"", "performBatchRefreshPlans",
+		"批量测活", "data-batch-action=\"probe\"", "performBatchProbe", "probeLiveForItem", "XAI_PROBE_URL",
+		"/v1/responses", "max_output_tokens", "classifyProbeStatus", "Reply with exactly OK",
+		"x-authenticateresponse", "x-grok-client-identifier", "api-call", "禁止直连", "payload.data",
+		"CLIProxyAPI", "空 body", "存活", "data-sort=\"alive\"", "alive-badge", "aliveCell", "probe_status",
+		"Live", "Exceed", "Dead", "Cooling", "Error", "Unknown", "批量重签", "data-batch-action=\"resign\"",
+		"/accounts/resign", "performBatchResign", "clearDiagnostic", "/accounts/clear-diagnostic", ">诊断<",
+		"bot_flag_known", "首页", "末页", "跳转", "page-input", "清除选中", "全部选中", "select-filtered",
+		"watch_priority", "anomaly_priority", "dead_priority", "apply-probe", "/accounts/apply-probe",
+		"source:'manual'", "normalizeProbeStatus", ">风控<", "观察", "异常", "死号", "debt-probe-threshold",
+		"cpa-grok-panel.theme_preference", "data-panel-theme", "html[data-panel-theme=\"light\"]",
+		"外观 / 主题", "跟随系统（跟随 CPA）", "debt_fail_401", "debt_fail_429", "debt_success_decay",
+		"outbound_proxy_url", "出站代理（批量重签）", "CPA_GROK_OUTBOUND_PROXY", "解除降权未生效",
+		"executeAccountAction", "statusCell(item)", "unavailable=true", "CPA 标记该凭证当前不可调度",
+		"id=\"demoted-breakdown\"", "id=\"demoted-card\"", "matchesDemotionFilter", "demotionClassLabel",
+		"任意降权中", "value=\"watch\"", "value=\"anomaly\"", "value=\"requested\"", "value=\"failed\"",
+		"value=\"normal\"", "value=\"active\"", "降权中",
+	} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("panel missing %q", marker)
 		}
@@ -172,12 +193,18 @@ func TestRouterRestorePriority(t *testing.T) {
 	if response.StatusCode != 200 {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
 	}
-	if host.files[0].Priority != baseline {
-		t.Fatalf("priority=%d want=%d", host.files[0].Priority, baseline)
+	// v0.6.0: manual restore writes default_restore_priority (0), not baseline.
+	if host.files[0].Priority != 0 {
+		t.Fatalf("priority=%d want=%d", host.files[0].Priority, 0)
 	}
-	if state := store.View().Accounts["idx-1"].Demotion.State; state != "restored" {
-		t.Fatalf("demotion state=%s", state)
+	state := store.View().Accounts["idx-1"]
+	if state.Demotion.State != "restored" || state.Demotion.Class != "none" {
+		t.Fatalf("demotion=%+v", state.Demotion)
 	}
+	if state.Quota.ProbeStatus != "" {
+		t.Fatalf("probe should be Unknown after restore: %+v", state.Quota)
+	}
+	_ = baseline
 }
 
 func TestRouterDemote(t *testing.T) {
@@ -218,7 +245,7 @@ func TestRouterUpdateSettingsThenGet(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := management.NewRouter(application.NewAccountsService(fakeLister{}, store, time.Now, defaults), store, defaults)
-	body := []byte(`{"auto_refresh_enabled":false,"auto_refresh_interval_seconds":12,"batch_operation_concurrency":17,"daily_usage_reset_enabled":true,"daily_usage_reset_time":"03:45","attributed_failure_threshold":7,"count_status_429":true,"count_status_5xx":true,"soft_demotion_enabled":false,"soft_demotion_priority":-20,"soft_debt_threshold":3.5,"hard_debt_threshold":8.5,"debt_fail_401":2.5,"debt_fail_429":0.75,"debt_success_decay":1.25,"demotion_priority":-250,"default_restore_priority":12,"cooldown_restore_enabled":false,"cooldown_restore_skip_bots":false,"half_open_enabled":false,"half_open_success_threshold":4}`)
+	body := []byte(`{"auto_refresh_enabled":false,"auto_refresh_interval_seconds":12,"batch_operation_concurrency":17,"daily_usage_reset_enabled":true,"daily_usage_reset_time":"03:45","attributed_failure_threshold":7,"count_status_429":true,"count_status_5xx":true,"debt_probe_threshold":3.5,"debt_fail_401":2.5,"debt_fail_429":0.75,"debt_success_decay":1.25,"watch_priority":-20,"anomaly_priority":-60,"dead_priority":-250,"default_restore_priority":12,"watch_reprobe_minutes":45,"anomaly_reprobe_hours":8}`)
 	response := router.Handle(management.Request{Method: "PUT", Path: "/v0/management/cpa-grok-panel/api/v1/settings", Body: body})
 	if response.StatusCode != 200 {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
@@ -235,7 +262,7 @@ func TestRouterUpdateSettingsThenGet(t *testing.T) {
 	if err := json.Unmarshal(response.Body, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.AutoRefreshEnabled || got.AutoRefreshIntervalSeconds != 12 || got.BatchOperationConcurrency != 17 || !got.DailyUsageResetEnabled || got.DailyUsageResetTime != "03:45" || got.AttributedFailureThreshold != 7 || !got.CountStatus429 || !got.CountStatus5XX || got.SoftDemotionEnabled || got.SoftDemotionPriority != -20 || got.SoftDebtThreshold != 3.5 || got.HardDebtThreshold != 8.5 || got.DebtFail401 != 2.5 || got.DebtFail429 != 0.75 || got.DebtSuccessDecay != 1.25 || got.DemotionPriority != -250 || got.DefaultRestorePriority != 12 || got.CooldownRestoreEnabled || got.CooldownRestoreSkipBots || got.HalfOpenEnabled || got.HalfOpenSuccessThreshold != 4 {
+	if got.AutoRefreshEnabled || got.AutoRefreshIntervalSeconds != 12 || got.BatchOperationConcurrency != 17 || !got.DailyUsageResetEnabled || got.DailyUsageResetTime != "03:45" || got.AttributedFailureThreshold != 7 || !got.CountStatus429 || !got.CountStatus5XX || got.DebtProbeThreshold != 3.5 || got.DebtFail401 != 2.5 || got.DebtFail429 != 0.75 || got.DebtSuccessDecay != 1.25 || got.WatchPriority != -20 || got.AnomalyPriority != -60 || got.DeadPriority != -250 || got.DefaultRestorePriority != 12 || got.WatchReprobeMinutes != 45 || got.AnomalyReprobeHours != 8 {
 		t.Fatalf("settings=%+v", got.Settings)
 	}
 	if got.Revision != defaults.Revision+1 || got.Source != "state" {
@@ -266,12 +293,16 @@ func TestRouterRejectsInvalidSettings(t *testing.T) {
 	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "1..50") {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
 	}
-	response = router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"soft_debt_threshold":0}`)})
+	response = router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"debt_probe_threshold":0}`)})
 	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "大于 0") {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
 	}
-	response = router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"half_open_success_threshold":101}`)})
-	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "1..100") {
+	response = router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"watch_reprobe_minutes":0}`)})
+	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "1..10080") {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
+	response = router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"anomaly_reprobe_hours":0}`)})
+	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "1..168") {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
 	}
 }
@@ -287,14 +318,17 @@ func TestDefaultAutoRefreshSettings(t *testing.T) {
 	if settings.BatchOperationConcurrency != 10 {
 		t.Fatalf("batch operation concurrency=%d", settings.BatchOperationConcurrency)
 	}
-	if !settings.CooldownRestoreEnabled {
-		t.Fatal("cooldown restore should default to enabled")
+	if settings.DebtProbeThreshold != 2 {
+		t.Fatalf("debt_probe_threshold=%v", settings.DebtProbeThreshold)
 	}
-	if !settings.CooldownRestoreSkipBots {
-		t.Fatal("cooldown restore skip bots should default to true")
+	if settings.WatchPriority != -10 || settings.AnomalyPriority != -50 || settings.DeadPriority != -100 || settings.DefaultRestorePriority != 0 {
+		t.Fatalf("tier priority defaults=%+v", settings)
 	}
-	if !settings.SoftDemotionEnabled || settings.SoftDemotionPriority != -10 || settings.SoftDebtThreshold != 2 || settings.HardDebtThreshold != 4.5 || settings.DebtFail401 != 1.5 || settings.DebtFail429 != 0.5 || settings.DebtSuccessDecay != 1 || !settings.HalfOpenEnabled || settings.HalfOpenSuccessThreshold != 2 {
-		t.Fatalf("soft demotion defaults=%+v", settings)
+	if settings.WatchReprobeMinutes != 30 || settings.AnomalyReprobeHours != 6 {
+		t.Fatalf("reprobe defaults=%+v", settings)
+	}
+	if settings.DebtFail401 != 1.5 || settings.DebtFail429 != 0.5 || settings.DebtSuccessDecay != 1 {
+		t.Fatalf("debt score defaults=%+v", settings)
 	}
 }
 
@@ -310,29 +344,24 @@ func TestLoadSettingsBatchConcurrencyFromEnvironment(t *testing.T) {
 }
 
 func TestLoadSettingsSoftDemotionFromEnvironment(t *testing.T) {
-	t.Setenv("CPA_GROK_SOFT_DEMOTION", "false")
-	t.Setenv("CPA_GROK_SOFT_DEMOTION_PRIORITY", "-25")
-	t.Setenv("CPA_GROK_SOFT_DEBT_THRESHOLD", "3.25")
-	t.Setenv("CPA_GROK_HARD_DEBT_THRESHOLD", "7.5")
+	t.Setenv("CPA_GROK_DEBT_PROBE_THRESHOLD", "3.25")
+	t.Setenv("CPA_GROK_WATCH_PRIORITY", "-25")
+	t.Setenv("CPA_GROK_DEAD_PRIORITY", "-90")
 	t.Setenv("CPA_GROK_DEBT_FAIL_401", "2")
 	t.Setenv("CPA_GROK_DEBT_FAIL_429", "0.75")
 	t.Setenv("CPA_GROK_DEBT_SUCCESS_DECAY", "1.25")
-	t.Setenv("CPA_GROK_HALF_OPEN", "false")
-	t.Setenv("CPA_GROK_HALF_OPEN_SUCCESS_THRESHOLD", "5")
 	settings := application.LoadSettings()
-	if settings.SoftDemotionEnabled || settings.SoftDemotionPriority != -25 || settings.SoftDebtThreshold != 3.25 || settings.HardDebtThreshold != 7.5 || settings.DebtFail401 != 2 || settings.DebtFail429 != 0.75 || settings.DebtSuccessDecay != 1.25 || settings.HalfOpenEnabled || settings.HalfOpenSuccessThreshold != 5 {
-		t.Fatalf("environment settings=%+v", settings)
+	if settings.DebtProbeThreshold != 3.25 || settings.WatchPriority != -25 || settings.DeadPriority != -90 || settings.DebtFail401 != 2 || settings.DebtFail429 != 0.75 || settings.DebtSuccessDecay != 1.25 {
+		t.Fatalf("settings=%+v", settings)
 	}
 }
 
 func TestLoadSettingsCooldownRestoreFromEnvironment(t *testing.T) {
-	t.Setenv("CPA_GROK_COOLDOWN_RESTORE", "false")
-	if application.LoadSettings().CooldownRestoreEnabled {
-		t.Fatal("cooldown restore environment default was not applied")
-	}
-	t.Setenv("CPA_GROK_COOLDOWN_RESTORE_SKIP_BOTS", "false")
-	if application.LoadSettings().CooldownRestoreSkipBots {
-		t.Fatal("cooldown restore skip bots environment default was not applied")
+	t.Setenv("CPA_GROK_WATCH_REPROBE_MINUTES", "15")
+	t.Setenv("CPA_GROK_ANOMALY_REPROBE_HOURS", "3")
+	settings := application.LoadSettings()
+	if settings.WatchReprobeMinutes != 15 || settings.AnomalyReprobeHours != 3 {
+		t.Fatalf("settings=%+v", settings)
 	}
 }
 

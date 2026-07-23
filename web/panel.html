@@ -283,13 +283,15 @@
     .plan-badge.free{color:var(--plan-free-color);border-color:var(--plan-free-border);background:var(--plan-free-bg)}
     .plan-badge.supergrok{color:var(--plan-super-color);border-color:var(--plan-super-border);background:var(--plan-super-bg)}
     .plan-badge.heavy{color:var(--plan-heavy-color);border-color:var(--plan-heavy-border);background:var(--plan-heavy-bg)}
-    /* 存活列徽章：Live 绿 / Failure·Unusual 黄 / Dead 红 / 未测 灰；与套餐列独立 */
+    /* 存活列徽章：Live 绿 / Exceed·Cooling·Error 黄 / Dead 红 / Unknown 灰 */
     .alive-badge{display:inline-flex;align-items:center;min-height:22px;padding:2px 8px;border:1px solid var(--line);border-radius:999px;font-size:12px;font-weight:700}
     .alive-badge.live{color:var(--alive-live-color);border-color:var(--alive-live-border);background:var(--alive-live-bg)}
-    .alive-badge.failure{color:var(--alive-fail-color);border-color:var(--alive-fail-border);background:var(--alive-fail-bg)}
+    .alive-badge.exceed,.alive-badge.cooling,.alive-badge.error,.alive-badge.failure,.alive-badge.unusual{color:var(--alive-fail-color);border-color:var(--alive-fail-border);background:var(--alive-fail-bg)}
     .alive-badge.dead{color:var(--alive-dead-color);border-color:var(--alive-dead-border);background:var(--alive-dead-bg)}
-    .alive-badge.unusual{color:var(--alive-unusual-color);border-color:var(--alive-unusual-border);background:var(--alive-unusual-bg)}
-    .alive-badge.untested{color:var(--alive-untested-color);border-color:var(--alive-untested-border);background:var(--alive-untested-bg)}
+    .alive-badge.unknown,.alive-badge.untested{color:var(--alive-untested-color);border-color:var(--alive-untested-border);background:var(--alive-untested-bg)}
+    .tag.watch{color:var(--alive-fail-color);border-color:var(--alive-fail-border);background:var(--alive-fail-bg)}
+    .tag.anomaly{color:var(--alive-fail-color);border-color:var(--alive-fail-border);background:var(--alive-fail-bg)}
+    .tag.dead{color:var(--alive-dead-color);border-color:var(--alive-dead-border);background:var(--alive-dead-bg)}
     .usage-cell{min-width:132px}
     .usage-text{font-weight:700;font-variant-numeric:tabular-nums}
     .usage-bar{margin-top:6px;height:7px;border-radius:999px;background:var(--usage-track);overflow:hidden;border:1px solid var(--line-soft)}
@@ -302,7 +304,7 @@
 <div class="cpa-page-shell">
 <main class="wrap">
   <header>
-    <div><h1>Grok 账号面板</h1><div class="sub">Soft demotion · Half-open 恢复 · v0.5.11</div></div>
+    <div><h1>Grok 账号面板</h1><div class="sub">测活降权 · 观察/异常/死号 · v0.6.0</div></div>
     <div class="actions"><button id="refresh" type="button">刷新</button></div>
   </header>
 
@@ -314,10 +316,10 @@
   <section id="accounts-view" class="view" role="tabpanel">
     <section class="cards">
       <div class="card"><div class="label">账号数</div><div id="accounts" class="value">—</div></div>
-      <div class="card" id="demoted-card" title="降权中 = soft + hard + half_open 等有效降权（is_demoted）">
+      <div class="card" id="demoted-card" title="降权中 = 观察 watch + 异常 anomaly + 死号 dead（is_demoted）">
         <div class="label">降权中</div>
         <div id="demoted" class="value">—</div>
-        <div id="demoted-breakdown" class="card-sub" title="S=观察档 soft · H=硬降权 hard · 半开=half_open 恢复探测">S:— · H:— · 半开:—</div>
+        <div id="demoted-breakdown" class="card-sub" title="观察=watch · 异常=anomaly · 死号=dead">观察:— · 异常:— · 死号:—</div>
       </div>
       <div class="card"><div class="label">成功请求</div><div id="success" class="value">—</div></div>
       <div class="card"><div class="label">失败请求</div><div id="failed" class="value">—</div></div>
@@ -327,10 +329,11 @@
     <section class="panel">
       <div class="toolbar">
         <label class="field search" for="search"><span>搜索文件名</span><input id="search" name="account_file_filter" type="search" placeholder="输入部分文件名" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" data-1p-ignore data-lpignore="true" data-bwignore data-form-type="other" role="searchbox"></label>
+        <label class="field" for="alive-filter"><span>存活</span><select id="alive-filter"><option value="all">全部</option><option value="live">Live</option><option value="exceed">Exceed</option><option value="dead">Dead</option><option value="cooling">Cooling</option><option value="error">Error</option><option value="unknown">Unknown</option></select></label>
+        <label class="field" for="plan-filter"><span>套餐</span><select id="plan-filter"><option value="all">全部</option><option value="SuperGrok">SuperGrok</option><option value="SuperGrok Heavy">SuperGrok Heavy</option><option value="Free">Free</option><option value="unknown">Unknown</option></select></label>
+        <label class="field" for="bot-filter"><span>风控</span><select id="bot-filter"><option value="all">全部</option><option value="flagged">是</option><option value="normal">否</option><option value="unknown">Unknown</option></select></label>
         <label class="field" for="status-filter"><span>状态</span><select id="status-filter"><option value="all">全部</option><option value="enabled">启用</option><option value="disabled">停用</option></select></label>
-        <label class="field" for="demotion-filter"><span>降权</span><select id="demotion-filter"><option value="all">全部</option><option value="normal">正常</option><option value="active">任意降权中</option><option value="soft">Soft</option><option value="hard">Hard</option><option value="half_open">Half-open</option><option value="requested">处理中</option><option value="failed">失败</option></select></label>
-        <label class="field" for="bot-filter"><span>机器人</span><select id="bot-filter"><option value="all">全部</option><option value="flagged">是机器人</option><option value="normal">否</option><option value="unknown">无法检测</option></select></label>
-        <label class="field" for="plan-filter"><span>套餐</span><select id="plan-filter"><option value="all">全部</option><option value="SuperGrok">SuperGrok</option><option value="SuperGrok Heavy">SuperGrok Heavy</option><option value="Free">Free</option><option value="unknown">unknown</option></select></label>
+        <label class="field" for="demotion-filter"><span>降权</span><select id="demotion-filter"><option value="all">全部</option><option value="normal">正常</option><option value="active">任意降权中</option><option value="watch">观察</option><option value="anomaly">异常</option><option value="dead">死号</option><option value="requested">处理中</option><option value="failed">失败</option></select></label>
       </div>
       <div class="batch-bar">
         <button id="clear-selection" class="small secondary" type="button" hidden>清除选中</button>
@@ -357,8 +360,8 @@
         <th data-sort="file"><button class="sort-button" type="button">账号文件 <span class="sort-indicator"></span></button></th>
         <th data-sort="plan"><button class="sort-button" type="button">套餐 <span class="sort-indicator"></span></button></th>
         <th data-sort="alive"><button class="sort-button" type="button">存活 <span class="sort-indicator"></span></button></th>
+        <th data-sort="bot"><button class="sort-button" type="button">风控 <span class="sort-indicator"></span></button></th>
         <th data-sort="status" title="启用/停用=CPA disabled；不可用=CPA unavailable（凭证运行时状态，非插件降权）"><button class="sort-button" type="button">状态 <span class="sort-indicator"></span></button></th>
-        <th data-sort="bot"><button class="sort-button" type="button">机器人 <span class="sort-indicator"></span></button></th>
         <th data-sort="priority"><button class="sort-button" type="button">优先级 <span class="sort-indicator"></span></button></th>
         <th data-sort="usage"><button class="sort-button" type="button">用量 <span class="sort-indicator"></span></button></th>
         <th data-sort="success"><button class="sort-button" type="button">成功 <span class="sort-indicator"></span></button></th>
@@ -405,27 +408,15 @@
               <input id="daily-usage-reset-time" name="daily_usage_reset_time" type="time" step="60" required>
             </div>
             <div class="setting-row">
-              <div><div class="setting-title">连续失败阈值</div><div class="help">hard streak 达到该值时进入 hard 降权。</div></div>
+              <div><div class="setting-title">连续失败阈值</div><div class="help">正常档连败达到该值时清零 debt 并触发自动测活（与积分阈值二选一触发）。</div></div>
               <input id="failure-threshold" name="attributed_failure_threshold" type="number" min="1" max="100" step="1" required>
             </div>
             <div class="setting-row">
-              <div><div class="setting-title">Soft demotion</div><div class="help">failure debt 达到 soft 阈值时进入观察降权档。</div></div>
-              <label class="checkbox-control"><input id="soft-demotion-enabled" name="soft_demotion_enabled" type="checkbox"><span>启用 soft 降权</span></label>
+              <div><div class="setting-title">测活积分阈值</div><div class="help">仅正常档累计 debt；达到后清零并自动测活（source=auto）。默认 2.0。</div></div>
+              <input id="debt-probe-threshold" name="debt_probe_threshold" type="number" min="0.1" max="1000000" step="0.1" required>
             </div>
             <div class="setting-row">
-              <div><div class="setting-title">Soft 目标优先级</div><div class="help">soft 与 half-open 观察档使用的 priority。</div></div>
-              <input id="soft-demotion-priority" name="soft_demotion_priority" type="number" min="-1000000" max="1000000" step="1" required>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-title">Soft debt 阈值</div><div class="help">默认 2.0；hard 条件始终优先。</div></div>
-              <input id="soft-debt-threshold" name="soft_debt_threshold" type="number" min="0.1" max="1000000" step="0.1" required>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-title">Hard debt 阈值</div><div class="help">debt 达到该值时直接进入 hard 降权。</div></div>
-              <input id="hard-debt-threshold" name="hard_debt_threshold" type="number" min="0.1" max="1000000" step="0.1" required>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-title">401/403 debt 加分</div><div class="help">每次归因的 401/403 增加的 failure debt。</div></div>
+              <div><div class="setting-title">401/403 debt 加分</div><div class="help">每次归因的 401/403 增加的 failure debt（仅正常档）。</div></div>
               <input id="debt-fail-401" name="debt_fail_401" type="number" min="0" max="1000000" step="0.1" required>
             </div>
             <div class="setting-row">
@@ -433,40 +424,40 @@
               <input id="debt-fail-429" name="debt_fail_429" type="number" min="0" max="1000000" step="0.1" required>
             </div>
             <div class="setting-row">
-              <div><div class="setting-title">成功 debt 衰减</div><div class="help">成功请求扣减 debt，但不会直接清空历史。</div></div>
+              <div><div class="setting-title">成功 debt 衰减</div><div class="help">成功请求扣减 debt；成功还会标 Live，并在降权中时恢复正常档。</div></div>
               <input id="debt-success-decay" name="debt_success_decay" type="number" min="0" max="1000000" step="0.1" required>
             </div>
             <div class="setting-row">
-              <div><div class="setting-title">429 计入阈值路径</div><div class="help">启用后，连续 HTTP 429 达到阈值时请求降权。</div></div>
+              <div><div class="setting-title">429 计入阈值路径</div><div class="help">启用后，HTTP 429 计入 debt 与连败。</div></div>
               <label class="checkbox-control"><input id="count-429" name="count_status_429" type="checkbox"><span>计入连续失败</span></label>
             </div>
             <div class="setting-row">
-              <div><div class="setting-title">5xx 计入阈值路径</div><div class="help">启用后，连续 HTTP 500–599 达到阈值时请求降权。</div></div>
+              <div><div class="setting-title">5xx 计入阈值路径</div><div class="help">启用后，连续 HTTP 500–599 达到阈值时触发自动测活。</div></div>
               <label class="checkbox-control"><input id="count-5xx" name="count_status_5xx" type="checkbox"><span>计入连续失败</span></label>
             </div>
             <div class="setting-row">
-              <div><div class="setting-title">降权目标优先级</div><div class="help">自动或手动降权时写入账号文件的 priority。</div></div>
-              <input id="demotion-priority" name="demotion_priority" type="number" min="-1000000" max="1000000" step="1" required>
+              <div><div class="setting-title">观察档 priority</div><div class="help">watch 档写入的 priority，默认 -10。</div></div>
+              <input id="watch-priority" name="watch_priority" type="number" min="-1000000" max="1000000" step="1" required>
             </div>
             <div class="setting-row">
-              <div><div class="setting-title">默认恢复优先级</div><div class="help">没有可靠 baseline 时，“解除降权”回写的 priority。</div></div>
+              <div><div class="setting-title">异常档 priority</div><div class="help">anomaly 档（Cooling/Error）写入的 priority，默认 -50。</div></div>
+              <input id="anomaly-priority" name="anomaly_priority" type="number" min="-1000000" max="1000000" step="1" required>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-title">死号 priority</div><div class="help">dead 档（Exceed/Dead）写入的 priority，默认 -100。</div></div>
+              <input id="dead-priority" name="dead_priority" type="number" min="-1000000" max="1000000" step="1" required>
+            </div>
+            <div class="setting-row">
+              <div><div class="setting-title">默认恢复 priority</div><div class="help">解除降权 / 成功恢复 / 观察复测 Live 时写入的 priority，默认 0。</div></div>
               <input id="restore-priority" name="default_restore_priority" type="number" min="-1000000" max="1000000" step="1" required>
             </div>
             <div class="setting-row">
-              <div><div class="setting-title">优先级冷却恢复</div><div class="help">soft/hard 降权经过 6h → 12h → 24h 冷却后进入恢复流程。</div></div>
-              <label class="checkbox-control"><input id="cooldown-restore-enabled" name="cooldown_restore_enabled" type="checkbox"><span>启用优先级冷却恢复</span></label>
+              <div><div class="setting-title">观察复测间隔（分钟）</div><div class="help">watch 档定时自动测活间隔，默认 30。</div></div>
+              <input id="watch-reprobe-minutes" name="watch_reprobe_minutes" type="number" min="1" max="10080" step="1" required>
             </div>
             <div class="setting-row">
-              <div><div class="setting-title">冷却恢复跳过机器人</div><div class="help">开启后，显式机器人账号不参与自动冷却恢复；手动「解除降权」始终可用。默认开启。</div></div>
-              <label class="checkbox-control"><input id="cooldown-restore-skip-bots" name="cooldown_restore_skip_bots" type="checkbox"><span>自动恢复时跳过机器人</span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-title">Half-open 恢复</div><div class="help">冷却到期先进入 soft 观察档，不直接恢复 baseline。</div></div>
-              <label class="checkbox-control"><input id="half-open-enabled" name="half_open_enabled" type="checkbox"><span>启用 half-open</span></label>
-            </div>
-            <div class="setting-row">
-              <div><div class="setting-title">Half-open 成功阈值</div><div class="help">观察档累计成功达到该值后恢复 baseline。</div></div>
-              <input id="half-open-success-threshold" name="half_open_success_threshold" type="number" min="1" max="100" step="1" required>
+              <div><div class="setting-title">异常复测间隔（小时）</div><div class="help">anomaly 档定时自动测活间隔，默认 6。</div></div>
+              <input id="anomaly-reprobe-hours" name="anomaly_reprobe_hours" type="number" min="1" max="168" step="1" required>
             </div>
             <div class="setting-row">
               <div><div class="setting-title">Free 用户日限额（token）</div><div class="help">套餐为 Free 或无官方限额时，用量进度条分母；默认 2000000。不改变已缓存的套餐类型。</div></div>
@@ -506,7 +497,7 @@
           <h2>当前运行信息</h2>
           <p class="section-copy">以下项目只读。</p>
           <ul class="facts">
-            <li><span>插件版本</span><span id="fact-version">0.5.11</span></li>
+            <li><span>插件版本</span><span id="fact-version">0.6.0</span></li>
             <li><span>write_mode</span><span id="fact-write-mode">—</span></li>
             <li><span>始终计数状态</span><span>401 / 403</span></li>
             <li><span>设置 revision</span><span id="fact-revision">—</span></li>
@@ -557,8 +548,8 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const displayName=name=>String(name||'').replace(/^xai-/i,'').replace(/\.json$/i,'');
 const itemKey=item=>String(item?.auth_index||item?.exact_file_name||'');
 const fmtDate=value=>{const date=value?new Date(value):null;return date&&!Number.isNaN(date.getTime())?date.toLocaleString('zh-CN',{hour12:false}):'—'};
-const sortColumns={file:{direction:'asc',value:x=>x.exact_file_name||''},plan:{direction:'asc',value:x=>(x.quota?.plan||'unknown')},alive:{direction:'asc',value:x=>{const s=String(x.quota?.probe_status||'').toLowerCase();return {live:0,failure:1,unusual:2,dead:3}[s]??4}},status:{direction:'asc',value:x=>`${x.enabled?'启用':'停用'}${x.unavailable?' / 不可用':''}`},bot:{direction:'asc',value:x=>x.bot_flag_known===true?(x.bot_flagged?1:0):2},priority:{direction:'desc',value:x=>Number(x.priority)||0},usage:{direction:'desc',value:x=>{const q=x.quota||{};const lim=Number(q.limit)||0;const used=Number(q.used)||0;return lim>0?used/lim:used}},success:{direction:'desc',value:x=>Number(x.usage?.successful_requests)||0},failed:{direction:'desc',value:x=>Number(x.usage?.failed_requests)||0}};
-let allItems=[],currentMeta=null,currentSettings={auto_refresh_enabled:true,auto_refresh_interval_seconds:5,batch_operation_concurrency:10,daily_usage_reset_enabled:false,daily_usage_reset_time:'00:00',soft_demotion_enabled:true,soft_demotion_priority:-10,soft_debt_threshold:2,hard_debt_threshold:4.5,debt_fail_401:1.5,debt_fail_429:.5,debt_success_decay:1,demotion_priority:-100,cooldown_restore_enabled:true,cooldown_restore_skip_bots:true,half_open_enabled:true,half_open_success_threshold:2},currentPage=1,pageSize=50,sortKey='file',sortDirection='asc',actionPending=false;
+const sortColumns={file:{direction:'asc',value:x=>x.exact_file_name||''},plan:{direction:'asc',value:x=>(x.quota?.plan||'unknown')},alive:{direction:'asc',value:x=>{const s=String(x.quota?.probe_status||'').toLowerCase();return {live:0,exceed:1,failure:1,cooling:2,error:3,unusual:3,dead:4}[s]??5}},status:{direction:'asc',value:x=>`${x.enabled?'启用':'停用'}${x.unavailable?' / 不可用':''}`},bot:{direction:'asc',value:x=>x.bot_flag_known===true?(x.bot_flagged?1:0):2},priority:{direction:'desc',value:x=>Number(x.priority)||0},usage:{direction:'desc',value:x=>{const q=x.quota||{};const lim=Number(q.limit)||0;const used=Number(q.used)||0;return lim>0?used/lim:used}},success:{direction:'desc',value:x=>Number(x.usage?.successful_requests)||0},failed:{direction:'desc',value:x=>Number(x.usage?.failed_requests)||0}};
+let allItems=[],currentMeta=null,currentSettings={auto_refresh_enabled:true,auto_refresh_interval_seconds:5,batch_operation_concurrency:10,daily_usage_reset_enabled:false,daily_usage_reset_time:'00:00',debt_probe_threshold:2,debt_fail_401:1.5,debt_fail_429:.5,debt_success_decay:1,watch_priority:-10,anomaly_priority:-50,dead_priority:-100,default_restore_priority:0,watch_reprobe_minutes:30,anomaly_reprobe_hours:6},currentPage=1,pageSize=50,sortKey='file',sortDirection='asc',actionPending=false;
 let currentView='accounts-view',settingsLoaded=false,refreshTimer=null,refreshInFlight=null,accountsSignature='',settingsSignature='',metaSignature='';
 const selectedAuthIndexes=new Set();
 
@@ -566,45 +557,48 @@ function getManagementKey(){try{return localStorage.getItem(storageKey)?.trim()|
 function setStatus(element,message,type=''){element.textContent=message;element.classList.toggle('error',type==='error');element.classList.toggle('success',type==='success')}
 function setNotice(message,type=''){setStatus(document.querySelector('#notice'),message,type)}
 function compareValues(left,right){if(typeof left==='number'&&typeof right==='number')return left-right;return String(left).localeCompare(String(right),'zh-CN',{numeric:true,sensitivity:'base'})}
-function isDemotedEffective(item){if(typeof item?.is_demoted==='boolean')return item.is_demoted;const state=String(item?.demotion?.state||'none').toLowerCase(),klass=String(item?.class||item?.demotion?.class||'none').toLowerCase();if(state==='applied'&&['soft','hard','half_open'].includes(klass))return true;const priority=Number(item?.priority),threshold=Number(currentSettings?.demotion_priority??-100);return Number.isFinite(priority)&&Number.isFinite(threshold)?priority<=threshold:Boolean(item?.is_demoted)}
+function isDemotedEffective(item){if(typeof item?.is_demoted==='boolean')return item.is_demoted;const state=String(item?.demotion?.state||'none').toLowerCase(),klass=normalizeDemotionClass(item?.class||item?.demotion?.class||'none');return (state==='applied'||state==='requested')&&['watch','anomaly','dead'].includes(klass)}
 function demotionStateOf(item){return String(item?.demotion?.state||'none').toLowerCase()}
-function demotionClassOf(item){const raw=String(item?.class||item?.demotion?.class||'').toLowerCase();if(raw&&raw!=='none')return raw;const state=demotionStateOf(item);if(state==='requested'||state==='applied'||state==='failed')return 'hard';if(isDemotedEffective(item))return 'hard';return 'none'}
-function demotionClassLabel(klass){return {soft:'观察档',hard:'硬降权',half_open:'半开',none:'—'}[klass]||klass}
-function demotionTagClass(klass){return {soft:'soft',hard:'hard',half_open:'half-open'}[klass]||''}
-function matchesDemotionFilter(item,filter){const state=demotionStateOf(item),klass=demotionClassOf(item),isDemoted=isDemotedEffective(item);if(filter==='all')return true;if(filter==='normal')return !isDemoted&&state!=='requested'&&state!=='failed';if(filter==='active')return isDemoted;if(filter==='soft'||filter==='hard'||filter==='half_open')return isDemoted&&klass===filter;if(filter==='requested')return state==='requested';if(filter==='failed')return state==='failed';return true}
-function filteredItems(){const search=document.querySelector('#search').value.trim().toLocaleLowerCase('zh-CN'),status=document.querySelector('#status-filter').value,demotion=document.querySelector('#demotion-filter').value,bot=document.querySelector('#bot-filter').value,plan=document.querySelector('#plan-filter').value;return allItems.filter(item=>{const matchesSearch=!search||String(item.exact_file_name||'').toLocaleLowerCase('zh-CN').includes(search)||displayName(item.exact_file_name).toLocaleLowerCase('zh-CN').includes(search);const matchesStatus=status==='all'||status==='enabled'&&item.enabled||status==='disabled'&&!item.enabled;const matchesDemotion=matchesDemotionFilter(item,demotion);const botKnown=item.bot_flag_known===true,matchesBot=bot==='all'||bot==='flagged'&&botKnown&&item.bot_flagged||bot==='normal'&&botKnown&&!item.bot_flagged||bot==='unknown'&&!botKnown;const matchesPlan=plan==='all'||planLabel(item)===plan;return matchesSearch&&matchesStatus&&matchesDemotion&&matchesBot&&matchesPlan})}
+function normalizeDemotionClass(raw){const k=String(raw||'none').toLowerCase();if(k==='soft'||k==='half_open')return 'watch';if(k==='hard')return 'dead';return k||'none'}
+function demotionClassOf(item){const raw=normalizeDemotionClass(item?.class||item?.demotion?.class||'');if(raw&&raw!=='none')return raw;const state=demotionStateOf(item);if(state==='requested'||state==='applied'||state==='failed')return 'dead';if(isDemotedEffective(item))return 'dead';return 'none'}
+function demotionClassLabel(klass){return {watch:'观察',anomaly:'异常',dead:'死号',soft:'观察',hard:'死号',half_open:'观察',none:'—'}[klass]||klass}
+function demotionTagClass(klass){return {watch:'watch',anomaly:'anomaly',dead:'dead',soft:'watch',hard:'dead',half_open:'watch'}[klass]||''}
+function matchesDemotionFilter(item,filter){const state=demotionStateOf(item),klass=demotionClassOf(item),isDemoted=isDemotedEffective(item);if(filter==='all')return true;if(filter==='normal')return !isDemoted&&state!=='requested'&&state!=='failed';if(filter==='active')return isDemoted;if(filter==='watch'||filter==='anomaly'||filter==='dead')return isDemoted&&klass===filter;if(filter==='soft')return isDemoted&&klass==='watch';if(filter==='hard')return isDemoted&&klass==='dead';if(filter==='half_open')return isDemoted&&klass==='watch';if(filter==='requested')return state==='requested';if(filter==='failed')return state==='failed';return true}
+function matchesAliveFilter(item,filter){if(filter==='all')return true;const s=normalizeProbeStatus(item?.quota?.probe_status,item?.quota?.probe_http);if(filter==='unknown')return !s;return s===filter}
+function filteredItems(){const search=document.querySelector('#search').value.trim().toLocaleLowerCase('zh-CN'),status=document.querySelector('#status-filter').value,demotion=document.querySelector('#demotion-filter').value,bot=document.querySelector('#bot-filter').value,plan=document.querySelector('#plan-filter').value,alive=document.querySelector('#alive-filter')?.value||'all';return allItems.filter(item=>{const matchesSearch=!search||String(item.exact_file_name||'').toLocaleLowerCase('zh-CN').includes(search)||displayName(item.exact_file_name).toLocaleLowerCase('zh-CN').includes(search);const matchesStatus=status==='all'||status==='enabled'&&item.enabled||status==='disabled'&&!item.enabled;const matchesDemotion=matchesDemotionFilter(item,demotion);const botKnown=item.bot_flag_known===true,matchesBot=bot==='all'||bot==='flagged'&&botKnown&&item.bot_flagged||bot==='normal'&&botKnown&&!item.bot_flagged||bot==='unknown'&&!botKnown;const matchesPlan=plan==='all'||String(item?.quota?.plan||'unknown').trim()===plan||(plan==='unknown'&&(!item?.quota?.plan||item.quota.plan==='unknown'));const matchesAlive=matchesAliveFilter(item,alive);return matchesSearch&&matchesStatus&&matchesDemotion&&matchesBot&&matchesPlan&&matchesAlive})}
 function sortedItems(items){if(!sortKey)return items.slice();const column=sortColumns[sortKey];return items.map((item,index)=>({item,index})).sort((left,right)=>{const compared=compareValues(column.value(left.item),column.value(right.item));if(compared!==0)return sortDirection==='asc'?compared:-compared;const fileCompared=compareValues(left.item.exact_file_name||'',right.item.exact_file_name||'');return fileCompared||left.index-right.index}).map(entry=>entry.item)}
 function rowActions(item){const identity=`data-auth-index="${esc(item.auth_index)}" data-file-name="${esc(item.exact_file_name)}"`;const enabled=String(!item.enabled);const toggle=`<button class="small ${item.enabled?'disable':'enable'} row-action" type="button" data-action="set-enabled" data-enabled="${enabled}" ${identity}>${item.enabled?'停用':'启用'}</button>`;const priorityAction=isDemotedEffective(item)?`<button class="small restore row-action" type="button" data-action="restore" ${identity}>解除降权</button>`:`<button class="small demote row-action" type="button" data-action="demote" ${identity}>降权</button>`;const remove=`<button class="small danger row-action" type="button" data-action="delete" ${identity}>删除</button>`;return `<div class="row-actions">${toggle}${priorityAction}${remove}</div>`}
-function demotionBadge(item){const state=demotionStateOf(item),klass=demotionClassOf(item),label=demotionClassLabel(klass),tagCls=demotionTagClass(klass);if(state==='applied'&&isDemotedEffective(item))return `<span class="tag applied ${tagCls}" title="class=${esc(klass)}">${esc(label)}</span>`;if(isDemotedEffective(item))return `<span class="tag applied ${tagCls||'hard'}" title="class=${esc(klass||'hard')}">${esc(label==='—'?demotionClassLabel('hard'):label)}</span>`;if(state==='failed')return `<span class="tag failed" title="class=${esc(klass)}">失败</span>`;if(state==='requested')return `<span class="tag processing" title="class=${esc(klass)}">${esc(label==='—'?klass:label)} 处理中</span>`;return ''}
-function diagnosticTitle(item){const failure=item.failure||{},demotion=item.demotion||{},hours=Number(demotion.restore_cooldown_hours)||0,triggered=demotion.triggered_at?new Date(demotion.triggered_at):null,restoreAt=hours&&triggered&&!Number.isNaN(triggered.getTime())?new Date(triggered.getTime()+hours*3600000):null,klass=item.class||demotion.class||'none';return [`降权 class：${klass}`,`failure debt：${Number(item.debt_score??failure.debt_score)||0}`,`连败：${Number(failure.consecutive_attributed_failures)||0}`,`上次失败码：${failure.last_failure_code||'—'}`,`上次失败时间：${fmtDate(failure.last_failure_at)}`,`上次证据时间：${fmtDate(failure.last_evidence_at)}`,`降权状态：${demotion.state||'none'}`,`降权目标：${demotion.target_priority??'—'}`,`降权基线：${demotion.baseline_priority??'—'}`,`降权触发时间：${fmtDate(demotion.triggered_at)}`,`冷却：${hours?`${hours}h`:'—'}`,`可恢复时间：${fmtDate(restoreAt)}`,`half-open 开始：${fmtDate(demotion.half_open_since)}`,`half-open 成功：${Number(demotion.half_open_successes)||0}`,`降权失败码：${demotion.failure_code||'—'}`].join('\n')}
+function demotionBadge(item){const state=demotionStateOf(item),klass=demotionClassOf(item),label=demotionClassLabel(klass),tagCls=demotionTagClass(klass);if(state==='applied'&&isDemotedEffective(item))return `<span class="tag applied ${tagCls}" title="class=${esc(klass)}">${esc(label)}</span>`;if(isDemotedEffective(item))return `<span class="tag applied ${tagCls||'dead'}" title="class=${esc(klass||'dead')}">${esc(label==='—'?demotionClassLabel('dead'):label)}</span>`;if(state==='failed')return `<span class="tag failed" title="class=${esc(klass)}">失败</span>`;if(state==='requested')return `<span class="tag processing" title="class=${esc(klass)}">${esc(label==='—'?klass:label)} 处理中</span>`;return ''}
+function diagnosticTitle(item){const failure=item.failure||{},demotion=item.demotion||{},klass=normalizeDemotionClass(item.class||demotion.class||'none');return [`降权 class：${klass}`,`failure debt：${Number(item.debt_score??failure.debt_score)||0}`,`连败：${Number(failure.consecutive_attributed_failures)||0}`,`上次失败码：${failure.last_failure_code||'—'}`,`上次失败时间：${fmtDate(failure.last_failure_at)}`,`上次证据时间：${fmtDate(failure.last_evidence_at)}`,`降权状态：${demotion.state||'none'}`,`降权目标：${demotion.target_priority??'—'}`,`降权触发时间：${fmtDate(demotion.triggered_at)}`,`下次复测：${fmtDate(demotion.next_probe_at)}`,`降权失败码：${demotion.failure_code||'—'}`].join('\n')}
 function diagnosticCell(item){const failure=item.failure||{},streak=Number(failure.consecutive_attributed_failures)||0,debt=Number(item.debt_score??failure.debt_score)||0,klass=item.class||item.demotion?.class||'none';return `<td class="diagnostic" title="${esc(diagnosticTitle(item))}"><div class="diag-line"><span>debt ${esc(debt.toFixed(1))}</span><span>连败 ${fmt(streak)}</span><span class="diag-code">${esc(klass)}</span>${demotionBadge(item)}</div></td>`}
 function botFlagCell(item){if(item.bot_flag_known!==true)return '<td class="unknown" title="无 access_token、JWT 无效或读取凭据失败">—</td>';const source=item.bot_flag_source??'—';return `<td class="${item.bot_flagged?'bad':'ok'}" title="bot_flag_source=${esc(source)}">${item.bot_flagged?'是':'否'}</td>`}
 function reconcileSelection(items){const valid=new Set(items.map(itemKey).filter(Boolean));selectedAuthIndexes.forEach(id=>{if(!valid.has(id))selectedAuthIndexes.delete(id)})}
 function updateSelectionUI(items,filtered){const selectedOnPage=items.filter(item=>selectedAuthIndexes.has(itemKey(item))).length,selectPage=document.querySelector('#select-page');selectPage.checked=items.length>0&&selectedOnPage===items.length;selectPage.indeterminate=selectedOnPage>0&&selectedOnPage<items.length;selectPage.disabled=actionPending||items.length===0;document.querySelector('#selected-count').textContent=`已选 ${fmt(selectedAuthIndexes.size)}`;const clearSelection=document.querySelector('#clear-selection');clearSelection.hidden=selectedAuthIndexes.size===0;clearSelection.disabled=actionPending;const filteredKeys=new Set(filtered.map(itemKey).filter(Boolean)),selectionMatchesFilter=selectedAuthIndexes.size===filteredKeys.size&&[...selectedAuthIndexes].every(key=>filteredKeys.has(key));document.querySelector('#select-filtered').disabled=actionPending||filteredKeys.size===0||selectionMatchesFilter;document.querySelectorAll('.batch-action').forEach(button=>{button.disabled=actionPending||selectedAuthIndexes.size===0})}
-function renderSummary(){const sum=allItems.reduce((total,item)=>{total.s+=item.usage?.successful_requests||0;total.f+=item.usage?.failed_requests||0;total.t+=item.usage?.total_tokens||0;if(isDemotedEffective(item)){total.d++;const klass=demotionClassOf(item);if(klass==='soft')total.soft++;else if(klass==='half_open')total.half++;else total.hard++}return total},{s:0,f:0,t:0,d:0,soft:0,hard:0,half:0});document.querySelector('#accounts').textContent=fmt(allItems.length);document.querySelector('#demoted').textContent=fmt(sum.d);const breakdown=document.querySelector('#demoted-breakdown');if(breakdown){breakdown.textContent=`S:${fmt(sum.soft)} · H:${fmt(sum.hard)} · 半开:${fmt(sum.half)}`;breakdown.title=`S=观察档 soft（${fmt(sum.soft)}）· H=硬降权 hard（${fmt(sum.hard)}）· 半开 half_open（${fmt(sum.half)}）\n降权中合计 ${fmt(sum.d)} = soft+hard+half_open（与 is_demoted 一致）`}const demotedCard=document.querySelector('#demoted-card');if(demotedCard)demotedCard.title=`降权中 ${fmt(sum.d)} = soft ${fmt(sum.soft)} + hard ${fmt(sum.hard)} + half_open ${fmt(sum.half)}（有效降权 is_demoted）`;document.querySelector('#success').textContent=fmt(sum.s);document.querySelector('#failed').textContent=fmt(sum.f);const tokens=document.querySelector('#tokens');tokens.textContent=fmtCompact(sum.t);tokens.title=fmt(sum.t)}
+function renderSummary(){const sum=allItems.reduce((total,item)=>{total.s+=item.usage?.successful_requests||0;total.f+=item.usage?.failed_requests||0;total.t+=item.usage?.total_tokens||0;if(isDemotedEffective(item)){total.d++;const klass=demotionClassOf(item);if(klass==='watch')total.watch++;else if(klass==='anomaly')total.anomaly++;else if(klass==='dead')total.dead++}return total},{s:0,f:0,t:0,d:0,watch:0,anomaly:0,dead:0});document.querySelector('#accounts').textContent=fmt(allItems.length);document.querySelector('#demoted').textContent=fmt(sum.d);const breakdown=document.querySelector('#demoted-breakdown');if(breakdown){breakdown.textContent=`观察:${fmt(sum.watch)} · 异常:${fmt(sum.anomaly)} · 死号:${fmt(sum.dead)}`;breakdown.title=`观察 watch（${fmt(sum.watch)}）· 异常 anomaly（${fmt(sum.anomaly)}）· 死号 dead（${fmt(sum.dead)}）\n降权中合计 ${fmt(sum.d)}（与 is_demoted 一致）`}const demotedCard=document.querySelector('#demoted-card');if(demotedCard)demotedCard.title=`降权中 ${fmt(sum.d)} = 观察 ${fmt(sum.watch)} + 异常 ${fmt(sum.anomaly)} + 死号 ${fmt(sum.dead)}`;document.querySelector('#success').textContent=fmt(sum.s);document.querySelector('#failed').textContent=fmt(sum.f);const tokens=document.querySelector('#tokens');tokens.textContent=fmtCompact(sum.t);tokens.title=fmt(sum.t)}
 function pageCount(){return Math.max(1,Math.ceil(filteredItems().length/pageSize))}
 
-function statusCell(item){const enabled=!!item.enabled,unavail=!!item.unavailable;const text=`${enabled?'启用':'停用'}${unavail?' / 不可用':''}`;const lines=[enabled?'启用：CPA 中未关闭此账号（disabled=false）':'停用：CPA 中已关闭此账号（disabled=true）',unavail?'不可用：CPA 标记该凭证当前不可调度/不可用（unavailable=true）。与插件 soft/hard 降权无关；常见于 token 失效、探测失败等。插件只透传此字段，不会自行改写。':'未标记不可用：CPA 的 unavailable=false',item.status?`CPA status：${item.status}`:'',item.status_message?`CPA 说明：${item.status_message}`:''].filter(Boolean);return `<td class="${enabled?'ok':'bad'}" title="${esc(lines.join('\n'))}">${esc(text)}</td>`}
-function planLabel(item){const plan=String(item?.quota?.plan||'unknown').trim()||'unknown';return plan}
+function statusCell(item){const enabled=!!item.enabled,unavail=!!item.unavailable;const text=`${enabled?'启用':'停用'}${unavail?' / 不可用':''}`;const lines=[enabled?'启用：CPA 中未关闭此账号（disabled=false）':'停用：CPA 中已关闭此账号（disabled=true）',unavail?'不可用：CPA 标记该凭证当前不可调度/不可用（unavailable=true）。与插件观察/异常/死号降权无关；常见于 token 失效、探测失败等。插件只透传此字段，不会自行改写。':'未标记不可用：CPA 的 unavailable=false',item.status?`CPA status：${item.status}`:'',item.status_message?`CPA 说明：${item.status_message}`:''].filter(Boolean);return `<td class="${enabled?'ok':'bad'}" title="${esc(lines.join('\n'))}">${esc(text)}</td>`}
+function planLabel(item){const plan=String(item?.quota?.plan||'unknown').trim()||'unknown';return plan==='unknown'?'Unknown':plan}
 function planClass(plan){const p=String(plan||'unknown').toLowerCase();if(p.includes('heavy'))return 'heavy';if(p.includes('supergrok'))return 'supergrok';if(p==='free')return 'free';return 'unknown'}
 function usageCell(item){const q=item.quota||{};const used=Number(q.used)||0;const limit=Number(q.limit)||0;const unit=q.unit||'';const text=limit>0?`${fmtCompact(used)} / ${fmtCompact(limit)}`:`${fmtCompact(used)}${unit?` ${unit}`:''}`;const pct=limit>0?Math.max(0,Math.min(100,(used/limit)*100)):0;const cls=pct>=95?'full':pct>=70?'high':'';const title=[`套餐：${planLabel(item)}`,`用量：${fmt(used)}`,`限额：${limit?fmt(limit):'—'}`,`来源：${q.source||'—'}`,`刷新：${fmtDate(q.fetched_at)}`,q.error?`错误：${q.error}`:''].filter(Boolean).join('\n');return `<td class="usage-cell" title="${esc(title)}"><div class="usage-text">${esc(text)}</div><div class="usage-bar ${cls}"><span style="width:${pct.toFixed(1)}%"></span></div></td>`}
 function planCell(item){const plan=planLabel(item);const title=[`套餐：${plan}`,item.quota?.fetched_at?`上次刷新：${fmtDate(item.quota.fetched_at)}`:'未刷新',item.quota?.error?`错误：${item.quota.error}`:''].filter(Boolean).join('\n');return `<td title="${esc(title)}"><span class="plan-badge ${planClass(plan)}">${esc(plan)}</span></td>`}
-function aliveLabel(status){return {live:'Live',failure:'Failure',dead:'Dead',unusual:'Unusual'}[status]||'未测'}
-function aliveClass(status){return {live:'live',failure:'failure',dead:'dead',unusual:'unusual'}[status]||'untested'}
+function normalizeProbeStatus(status,http){const s=String(status||'').toLowerCase();if(s==='failure')return 'exceed';if(s==='unusual')return Number(http)===429?'cooling':'error';if(['live','exceed','dead','cooling','error'].includes(s))return s;return s||''}
+function aliveLabel(status){return {live:'Live',exceed:'Exceed',failure:'Exceed',dead:'Dead',cooling:'Cooling',error:'Error',unusual:'Error'}[status]||'Unknown'}
+function aliveClass(status){const s=normalizeProbeStatus(status);return {live:'live',exceed:'exceed',dead:'dead',cooling:'cooling',error:'error'}[s]||'unknown'}
 function aliveCell(item){
   const q=item.quota||{};
-  const status=String(q.probe_status||'').toLowerCase();
+  const status=normalizeProbeStatus(q.probe_status,q.probe_http);
   const http=Number(q.probe_http)||0;
-  const title=[status?`状态：${aliveLabel(status)}`:'状态：未测',http?`HTTP：${http}`:'',q.probe_at?`时间：${fmtDate(q.probe_at)}`:'',q.probe_error?`错误：${q.probe_error}`:''].filter(Boolean).join('\n');
+  const title=[`状态：${aliveLabel(status)}`,http?`HTTP：${http}`:'',q.probe_at?`时间：${fmtDate(q.probe_at)}`:'',q.probe_error?`错误：${q.probe_error}`:''].filter(Boolean).join('\n');
   return `<td title="${esc(title)}"><span class="alive-badge ${aliveClass(status)}">${esc(aliveLabel(status))}</span></td>`;
 }
 
-function renderTable(){const filtered=filteredItems(),totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));currentPage=Math.min(Math.max(1,currentPage),totalPages);const items=sortedItems(filtered).slice((currentPage-1)*pageSize,currentPage*pageSize);document.querySelector('#rows').innerHTML=items.length?items.map(item=>{const totalTokens=item.usage?.total_tokens||0,key=itemKey(item),checked=selectedAuthIndexes.has(key)?' checked':'',disabled=actionPending?' disabled':'';return `<tr><td class="select-cell"><input class="row-select" type="checkbox" data-auth-index="${esc(key)}" aria-label="选择 ${esc(displayName(item.exact_file_name))}"${checked}${disabled}></td><td class="file" title="${esc(item.exact_file_name)}"><div class="file-main">${esc(displayName(item.exact_file_name))}</div></td>${planCell(item)}${aliveCell(item)}${statusCell(item)}${botFlagCell(item)}<td>${fmt(item.priority)}</td>${usageCell(item)}<td class="ok">${fmt(item.usage?.successful_requests)}</td><td class="bad">${fmt(item.usage?.failed_requests)}</td>${diagnosticCell(item)}<td>${rowActions(item)}</td></tr>`}).join(''):'<tr><td class="empty" colspan="12">没有符合当前条件的账号</td></tr>';const suffix=filtered.length===allItems.length?'':` · 全量 ${fmt(allItems.length)} 条`;const info=`共 ${fmt(filtered.length)} 条${suffix}`;document.querySelectorAll('.page-info').forEach(el=>{el.textContent=info});document.querySelectorAll('.total-pages').forEach(el=>{el.textContent=fmt(totalPages)});document.querySelectorAll('.page-input').forEach(input=>{input.value=String(currentPage);input.max=String(totalPages);input.disabled=actionPending;input.setCustomValidity('')});document.querySelectorAll('.first-page,.previous-page').forEach(btn=>{btn.disabled=actionPending||currentPage<=1});document.querySelectorAll('.next-page,.last-page').forEach(btn=>{btn.disabled=actionPending||currentPage>=totalPages});document.querySelectorAll('.jump-page').forEach(btn=>{btn.disabled=actionPending});document.querySelectorAll('.page-size-select').forEach(sel=>{sel.value=String(pageSize);sel.disabled=actionPending});document.querySelectorAll('.row-action').forEach(btn=>{btn.disabled=actionPending||btn.dataset.allowed==='false'});document.querySelectorAll('th[data-sort]').forEach(header=>{const active=header.dataset.sort===sortKey;header.classList.toggle('sorted',active);header.setAttribute('aria-sort',active?(sortDirection==='asc'?'ascending':'descending'):'none');header.querySelector('.sort-indicator').textContent=active?(sortDirection==='asc'?'▲':'▼'):''});updateSelectionUI(items,filtered)}
+function renderTable(){const filtered=filteredItems(),totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));currentPage=Math.min(Math.max(1,currentPage),totalPages);const items=sortedItems(filtered).slice((currentPage-1)*pageSize,currentPage*pageSize);document.querySelector('#rows').innerHTML=items.length?items.map(item=>{const totalTokens=item.usage?.total_tokens||0,key=itemKey(item),checked=selectedAuthIndexes.has(key)?' checked':'',disabled=actionPending?' disabled':'';return `<tr><td class="select-cell"><input class="row-select" type="checkbox" data-auth-index="${esc(key)}" aria-label="选择 ${esc(displayName(item.exact_file_name))}"${checked}${disabled}></td><td class="file" title="${esc(item.exact_file_name)}"><div class="file-main">${esc(displayName(item.exact_file_name))}</div></td>${planCell(item)}${aliveCell(item)}${botFlagCell(item)}${statusCell(item)}<td>${fmt(item.priority)}</td>${usageCell(item)}<td class="ok">${fmt(item.usage?.successful_requests)}</td><td class="bad">${fmt(item.usage?.failed_requests)}</td>${diagnosticCell(item)}<td>${rowActions(item)}</td></tr>`}).join(''):'<tr><td class="empty" colspan="12">没有符合当前条件的账号</td></tr>';const suffix=filtered.length===allItems.length?'':` · 全量 ${fmt(allItems.length)} 条`;const info=`共 ${fmt(filtered.length)} 条${suffix}`;document.querySelectorAll('.page-info').forEach(el=>{el.textContent=info});document.querySelectorAll('.total-pages').forEach(el=>{el.textContent=fmt(totalPages)});document.querySelectorAll('.page-input').forEach(input=>{input.value=String(currentPage);input.max=String(totalPages);input.disabled=actionPending;input.setCustomValidity('')});document.querySelectorAll('.first-page,.previous-page').forEach(btn=>{btn.disabled=actionPending||currentPage<=1});document.querySelectorAll('.next-page,.last-page').forEach(btn=>{btn.disabled=actionPending||currentPage>=totalPages});document.querySelectorAll('.jump-page').forEach(btn=>{btn.disabled=actionPending});document.querySelectorAll('.page-size-select').forEach(sel=>{sel.value=String(pageSize);sel.disabled=actionPending});document.querySelectorAll('.row-action').forEach(btn=>{btn.disabled=actionPending||btn.dataset.allowed==='false'});document.querySelectorAll('th[data-sort]').forEach(header=>{const active=header.dataset.sort===sortKey;header.classList.toggle('sorted',active);header.setAttribute('aria-sort',active?(sortDirection==='asc'?'ascending':'descending'):'none');header.querySelector('.sort-indicator').textContent=active?(sortDirection==='asc'?'▲':'▼'):''});updateSelectionUI(items,filtered)}
 function jumpToPage(input){if(actionPending)return;const totalPages=pageCount(),target=Number(input.value);if(!Number.isInteger(target)||target<1||target>totalPages){input.setCustomValidity(`请输入 1 到 ${totalPages} 之间的整数页码`);input.reportValidity();return}currentPage=target;renderTable()}
 function resetPageAndRender(){currentPage=1;renderTable()}
 function changeSort(key){if(sortKey===key)sortDirection=sortDirection==='asc'?'desc':'asc';else{sortKey=key;sortDirection=sortColumns[key].direction}resetPageAndRender()}
 function applyRefreshUI(){document.querySelector('#refresh').hidden=currentView!=='accounts-view'||Boolean(currentSettings?.auto_refresh_enabled)}
-function renderSettings(settings){currentSettings={batch_operation_concurrency:10,daily_usage_reset_enabled:false,daily_usage_reset_time:'00:00',soft_demotion_enabled:true,soft_demotion_priority:-10,soft_debt_threshold:2,hard_debt_threshold:4.5,debt_fail_401:1.5,debt_fail_429:.5,debt_success_decay:1,demotion_priority:-100,cooldown_restore_enabled:true,cooldown_restore_skip_bots:true,half_open_enabled:true,half_open_success_threshold:2,free_user_daily_token_limit:2000000,outbound_proxy_url:'',...settings};settingsLoaded=true;document.querySelector('#auto-refresh-enabled').checked=Boolean(currentSettings.auto_refresh_enabled);document.querySelector('#auto-refresh-interval').value=currentSettings.auto_refresh_interval_seconds;document.querySelector('#batch-operation-concurrency').value=currentSettings.batch_operation_concurrency;document.querySelector('#outbound-proxy-url').value=currentSettings.outbound_proxy_url||'';document.querySelector('#daily-usage-reset-enabled').checked=Boolean(currentSettings.daily_usage_reset_enabled);document.querySelector('#daily-usage-reset-time').value=currentSettings.daily_usage_reset_time;document.querySelector('#failure-threshold').value=currentSettings.attributed_failure_threshold;document.querySelector('#soft-demotion-enabled').checked=Boolean(currentSettings.soft_demotion_enabled);document.querySelector('#soft-demotion-priority').value=currentSettings.soft_demotion_priority;document.querySelector('#soft-debt-threshold').value=currentSettings.soft_debt_threshold;document.querySelector('#hard-debt-threshold').value=currentSettings.hard_debt_threshold;document.querySelector('#debt-fail-401').value=currentSettings.debt_fail_401;document.querySelector('#debt-fail-429').value=currentSettings.debt_fail_429;document.querySelector('#debt-success-decay').value=currentSettings.debt_success_decay;document.querySelector('#count-429').checked=Boolean(currentSettings.count_status_429);document.querySelector('#count-5xx').checked=Boolean(currentSettings.count_status_5xx);document.querySelector('#demotion-priority').value=currentSettings.demotion_priority;document.querySelector('#restore-priority').value=currentSettings.default_restore_priority;document.querySelector('#cooldown-restore-enabled').checked=Boolean(currentSettings.cooldown_restore_enabled);document.querySelector('#cooldown-restore-skip-bots').checked=Boolean(currentSettings.cooldown_restore_skip_bots);document.querySelector('#half-open-enabled').checked=Boolean(currentSettings.half_open_enabled);document.querySelector('#half-open-success-threshold').value=currentSettings.half_open_success_threshold;document.querySelector('#free-user-daily-token-limit').value=currentSettings.free_user_daily_token_limit;document.querySelector('#fact-revision').textContent=fmt(currentSettings.revision);document.querySelector('#fact-source').textContent=currentSettings.source||'state';if(currentMeta){document.querySelector('#fact-version').textContent=currentMeta.plugin_version||'0.5.11';document.querySelector('#fact-write-mode').textContent=currentMeta.write_mode||currentSettings.write_mode||'—'}renderSummary();renderTable();applyRefreshUI()}
+function renderSettings(settings){currentSettings={batch_operation_concurrency:10,daily_usage_reset_enabled:false,daily_usage_reset_time:'00:00',debt_probe_threshold:2,debt_fail_401:1.5,debt_fail_429:.5,debt_success_decay:1,watch_priority:-10,anomaly_priority:-50,dead_priority:-100,default_restore_priority:0,watch_reprobe_minutes:30,anomaly_reprobe_hours:6,free_user_daily_token_limit:2000000,outbound_proxy_url:'',...settings};if(!(currentSettings.debt_probe_threshold>0)&&currentSettings.soft_debt_threshold>0)currentSettings.debt_probe_threshold=currentSettings.soft_debt_threshold;if(currentSettings.watch_priority==null&&currentSettings.soft_demotion_priority!=null)currentSettings.watch_priority=currentSettings.soft_demotion_priority;if(currentSettings.dead_priority==null&&currentSettings.demotion_priority!=null)currentSettings.dead_priority=currentSettings.demotion_priority;settingsLoaded=true;document.querySelector('#auto-refresh-enabled').checked=Boolean(currentSettings.auto_refresh_enabled);document.querySelector('#auto-refresh-interval').value=currentSettings.auto_refresh_interval_seconds;document.querySelector('#batch-operation-concurrency').value=currentSettings.batch_operation_concurrency;document.querySelector('#outbound-proxy-url').value=currentSettings.outbound_proxy_url||'';document.querySelector('#daily-usage-reset-enabled').checked=Boolean(currentSettings.daily_usage_reset_enabled);document.querySelector('#daily-usage-reset-time').value=currentSettings.daily_usage_reset_time;document.querySelector('#failure-threshold').value=currentSettings.attributed_failure_threshold;document.querySelector('#debt-probe-threshold').value=currentSettings.debt_probe_threshold;document.querySelector('#debt-fail-401').value=currentSettings.debt_fail_401;document.querySelector('#debt-fail-429').value=currentSettings.debt_fail_429;document.querySelector('#debt-success-decay').value=currentSettings.debt_success_decay;document.querySelector('#count-429').checked=Boolean(currentSettings.count_status_429);document.querySelector('#count-5xx').checked=Boolean(currentSettings.count_status_5xx);document.querySelector('#watch-priority').value=currentSettings.watch_priority;document.querySelector('#anomaly-priority').value=currentSettings.anomaly_priority;document.querySelector('#dead-priority').value=currentSettings.dead_priority;document.querySelector('#restore-priority').value=currentSettings.default_restore_priority;document.querySelector('#watch-reprobe-minutes').value=currentSettings.watch_reprobe_minutes;document.querySelector('#anomaly-reprobe-hours').value=currentSettings.anomaly_reprobe_hours;document.querySelector('#free-user-daily-token-limit').value=currentSettings.free_user_daily_token_limit;document.querySelector('#fact-revision').textContent=fmt(currentSettings.revision);document.querySelector('#fact-source').textContent=currentSettings.source||'state';if(currentMeta){document.querySelector('#fact-version').textContent=currentMeta.plugin_version||'0.6.0';document.querySelector('#fact-write-mode').textContent=currentMeta.write_mode||currentSettings.write_mode||'—'}renderSummary();renderTable();applyRefreshUI()}
 function renderKeyState(){const saved=Boolean(getManagementKey());const input=document.querySelector('#management-key');input.value='';input.placeholder=saved?'已保存（输入新值可替换）':'请输入 management key';document.querySelector('#clear-key').disabled=!saved;setStatus(document.querySelector('#key-status'),saved?'当前浏览器已保存管理密钥。':'当前浏览器尚未保存管理密钥。')}
 async function api(path,options={}){const key=getManagementKey();if(!key)throw new Error('尚未设置管理密钥，请到“设置”页填写');const headers={Authorization:'Bearer '+key,...options.headers};const response=await fetch(base+path,{cache:'no-store',credentials:'include',...options,headers});let data=null;try{data=await response.json()}catch{}if(response.status===401)throw new Error('管理密钥无效或已失效，请到“设置”页更新');if(!response.ok)throw new Error(data?.error?.message||data?.error||`接口返回异常 HTTP ${response.status}`);return data}
 async function setEnabledViaManagement(exactFileName,enabled){const key=getManagementKey();if(!key)throw new Error('尚未设置管理密钥，请到“设置”页填写');const response=await fetch('/v0/management/auth-files/status',{method:'PATCH',cache:'no-store',credentials:'include',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({name:exactFileName,disabled:!enabled})});let data=null;try{data=await response.json()}catch{}if(response.status===401)throw new Error('管理密钥无效或已失效，请到“设置”页更新');if(!response.ok)throw new Error(data?.error||data?.message||`启停失败 HTTP ${response.status}`);return data}
@@ -721,13 +715,14 @@ async function performBatchRefreshPlans(){
     startPolling();
   }
 }
-// 测活分类（用户指定，与旧 dead 合集不同）：2xx=live · 401=failure · 403=dead · 其它=unusual
+// 测活分类：2xx=live · 401=exceed · 403=dead · 429=cooling · 其它=error
 function classifyProbeStatus(statusCode){
   const status=Number(statusCode||0);
   if(status>=200&&status<300)return 'live';
-  if(status===401)return 'failure';
+  if(status===401)return 'exceed';
   if(status===403)return 'dead';
-  return 'unusual';
+  if(status===429)return 'cooling';
+  return 'error';
 }
 // 测活：只走 CPA POST /v0/management/api-call（宿主代理出网），绝不插件直连
 async function probeLiveForItem(item){
@@ -747,31 +742,30 @@ async function probeLiveForItem(item){
 async function recordProbeOutcome(item,probe){
   const prev=item.quota||{};
   const probeError=probe.status==='live'?'':String(probe.message||'').replace(/\s+/g,' ').trim().slice(0,200);
-  const quota={
-    plan:prev.plan||'unknown',
-    used:Number(prev.used)||0,
-    limit:Number(prev.limit)||0,
-    unit:prev.unit||'',
-    source:prev.source||'',
-    fetched_at:prev.fetched_at||new Date().toISOString(),
-    error:prev.error||'',
-    probe_status:probe.status,
-    probe_http:Number(probe.httpStatus)||0,
-    probe_at:new Date().toISOString()
-  };
-  if(probeError)quota.probe_error=probeError;
+  const status=normalizeProbeStatus(probe.status,probe.httpStatus)||probe.status;
   try{
-    await saveQuotaSnapshot(item.auth_index,quota);
-    item.quota={...prev,...quota};
-    if(!probeError)delete item.quota.probe_error;
-  }catch{/* notice path still reports probe counts */}
+    const data=await api('/accounts/apply-probe',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({auth_index:item.auth_index,status,http_status:Number(probe.httpStatus)||0,error:probeError,source:'manual'})});
+    if(data?.account){
+      Object.assign(item,data.account);
+      if(data.account.quota)item.quota={...prev,...data.account.quota};
+    }else{
+      item.quota={...prev,probe_status:status,probe_http:Number(probe.httpStatus)||0,probe_at:new Date().toISOString(),probe_error:probeError||undefined};
+    }
+  }catch{
+    try{
+      const quota={plan:prev.plan||'unknown',used:Number(prev.used)||0,limit:Number(prev.limit)||0,unit:prev.unit||'',source:prev.source||'',fetched_at:prev.fetched_at||new Date().toISOString(),error:prev.error||'',probe_status:status,probe_http:Number(probe.httpStatus)||0,probe_at:new Date().toISOString()};
+      if(probeError)quota.probe_error=probeError;
+      await saveQuotaSnapshot(item.auth_index,quota);
+      item.quota={...prev,...quota};
+    }catch{/* notice path still reports probe counts */}
+  }
 }
 // 批量测活：只测活，绝不调用 refreshPlanForItem
 async function performBatchProbe(){
   if(actionPending||selectedAuthIndexes.size===0)return;
   const targets=allItems.filter(item=>selectedAuthIndexes.has(itemKey(item)));
   if(targets.length===0){reconcileSelection(allItems);renderTable();return}
-  let live=0,failure=0,dead=0,unusual=0;const reasons=[];
+  let live=0,exceed=0,dead=0,cooling=0,error=0;const reasons=[];
   actionPending=true;stopPolling();renderTable();
   setNotice(`正在批量测活 0/${targets.length}…`);
   try{
@@ -779,18 +773,20 @@ async function performBatchProbe(){
     await runConcurrent(targets,Math.min(3,batchConcurrency()),async item=>{
       const probe=await probeLiveForItem(item);
       await recordProbeOutcome(item,probe);
-      if(probe.status==='live')live++;
-      else if(probe.status==='failure'){failure++;if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：Failure ${probe.message||''}`)}
-      else if(probe.status==='dead'){dead++;if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：Dead ${probe.message||''}`)}
-      else{unusual++;if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：Unusual ${probe.message||''}`)}
+      const st=normalizeProbeStatus(probe.status,probe.httpStatus)||probe.status;
+      if(st==='live')live++;
+      else if(st==='exceed'){exceed++;if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：Exceed ${probe.message||''}`)}
+      else if(st==='dead'){dead++;if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：Dead ${probe.message||''}`)}
+      else if(st==='cooling'){cooling++;if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：Cooling ${probe.message||''}`)}
+      else{error++;if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：Error ${probe.message||''}`)}
     },(done,total)=>setNotice(`正在批量测活 ${done}/${total}…`));
   }finally{
     actionPending=false;
     const listOk=await refresh({silent:true,includeAccounts:true,showSyncNotice:false});
     if(!listOk)renderTable();
-    let summary=`Live ${live} · Failure ${failure} · Dead ${dead} · Unusual ${unusual}`;
+    let summary=`Live ${live} · Exceed ${exceed} · Dead ${dead} · Cooling ${cooling} · Error ${error}`;
     if(reasons.length)summary+=`；${reasons.join('；')}`;
-    const bad=failure+dead+unusual;
+    const bad=exceed+dead+cooling+error;
     if(bad>reasons.length)summary+=`；另 ${bad-reasons.length} 项见存活列悬停`;
     if(!listOk)summary+='；列表刷新失败';
     setNotice(summary,bad>0||!listOk?'error':'success');
@@ -807,7 +803,7 @@ async function deleteViaManagement(exactFileName){const key=getManagementKey();i
 async function validateDeleteMapping(item){const data=await api('/accounts');const current=(Array.isArray(data.items)?data.items:[]).find(candidate=>candidate.auth_index===item.auth_index);return Boolean(current&&current.exact_file_name===item.exact_file_name)}
 async function clearDeletedState(item){return api('/accounts/clear-state',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({auth_index:item.auth_index,exact_file_name:item.exact_file_name})})}
 async function clearDiagnostic(item){return api('/accounts/clear-diagnostic',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({auth_index:item.auth_index,exact_file_name:item.exact_file_name})})}
-function effectiveSummary(meta,settings){const daily=settings.daily_usage_reset_enabled?`每日 ${settings.daily_usage_reset_time} 清零（服务器本地时间）`:'每日清零关闭',cooldown=settings.cooldown_restore_enabled?'冷却恢复开启':'冷却恢复关闭',halfOpen=settings.half_open_enabled?'half-open 开启':'half-open 关闭';return `统计起点：${new Date(meta.statistics_started_at).toLocaleString()} · ${daily} · ${cooldown} · ${halfOpen} · 全局去重：${meta.dedupe_mode} · write_mode=${meta.write_mode} · soft=${settings.soft_demotion_priority}/${settings.soft_debt_threshold} · hard=${settings.demotion_priority}/${settings.hard_debt_threshold}`}
+function effectiveSummary(meta,settings){const daily=settings.daily_usage_reset_enabled?`每日 ${settings.daily_usage_reset_time} 清零（服务器本地时间）`:'每日清零关闭';return `统计起点：${new Date(meta.statistics_started_at).toLocaleString()} · ${daily} · 全局去重：${meta.dedupe_mode} · write_mode=${meta.write_mode} · 测活阈值=${settings.debt_probe_threshold} · 观察=${settings.watch_priority}/${settings.watch_reprobe_minutes}m · 异常=${settings.anomaly_priority}/${settings.anomaly_reprobe_hours}h · 死号=${settings.dead_priority}`}
 function pollingAllowed(){return document.visibilityState==='visible'&&Boolean(currentSettings?.auto_refresh_enabled)&&Boolean(getManagementKey())&&!actionPending}
 function stopPolling(){if(refreshTimer!==null){clearTimeout(refreshTimer);refreshTimer=null}}
 function scheduleNext(){stopPolling();if(!pollingAllowed())return;const seconds=Math.min(60,Math.max(2,Number(currentSettings.auto_refresh_interval_seconds)||5));refreshTimer=setTimeout(async()=>{refreshTimer=null;await refresh({silent:true,includeAccounts:currentView==='accounts-view'});scheduleNext()},seconds*1000)}
@@ -826,8 +822,8 @@ async function performSafeDelete(button){if(actionPending)return;const item={aut
 async function performAction(button){if(actionPending)return;const authIndex=button.dataset.authIndex,exactFileName=button.dataset.fileName,action=button.dataset.action,isRestore=action==='restore',isDemote=action==='demote',enabled=button.dataset.enabled==='true',command=action==='set-enabled'?(button.dataset.enabled==='true'?'enable':'disable'):action;let actionError=null,diagnosticCleanupError=null,actionSucceeded=false;actionPending=true;stopPolling();renderTable();setNotice(isRestore?'正在解除降权…':isDemote?'正在降权…':`正在${enabled?'启用':'停用'}账号…`);try{if(refreshInFlight)await refreshInFlight;const target=allItems.find(item=>String(item.auth_index)===authIndex&&String(item.exact_file_name)===exactFileName);if(!target)throw new Error('账号已不在当前列表中，请刷新后重试');await executeAccountAction(target,command);actionSucceeded=true;try{await clearDiagnostic(target)}catch(error){diagnosticCleanupError=error}}catch(error){actionError=error}finally{actionPending=false;const refreshed=await refresh({silent:true,includeAccounts:true,showSyncNotice:false});if(!refreshed)renderTable();if(actionSucceeded&&diagnosticCleanupError)setNotice('操作已成功，但清空诊断失败：'+diagnosticCleanupError.message,'error');else if(actionSucceeded){const message=isRestore?'已解除降权':isDemote?'账号已降权':`账号已${enabled?'启用':'停用'}`;setNotice(refreshed?`${message}，列表已刷新。`:`${message}，但列表刷新失败，请稍后手动刷新。`,refreshed?'success':'error')}else if(actionError)setNotice('操作失败：'+actionError.message,'error');startPolling()}}
 function switchView(viewID){currentView=viewID;document.querySelectorAll('.tab').forEach(tab=>tab.setAttribute('aria-selected',String(tab.dataset.view===viewID)));document.querySelectorAll('.view').forEach(view=>{view.hidden=view.id!==viewID});applyRefreshUI();startPolling();if(viewID==='settings-view'&&getManagementKey()&&!settingsLoaded)refresh({includeAccounts:false}).finally(startPolling)}
 function saveManagementKey(){const input=document.querySelector('#management-key'),key=input.value.trim();if(!key){setStatus(document.querySelector('#key-status'),'请输入 management key。','error');input.focus();return}try{localStorage.setItem(storageKey,key)}catch{setStatus(document.querySelector('#key-status'),'保存失败：浏览器不允许使用 localStorage。','error');return}renderKeyState();setStatus(document.querySelector('#key-status'),'管理密钥已保存到当前浏览器。','success');refresh().finally(startPolling)}
-function clearManagementKey(){try{localStorage.removeItem(storageKey)}catch{}stopPolling();currentSettings={auto_refresh_enabled:true,auto_refresh_interval_seconds:5,batch_operation_concurrency:10,daily_usage_reset_enabled:false,daily_usage_reset_time:'00:00',soft_demotion_enabled:true,soft_demotion_priority:-10,soft_debt_threshold:2,hard_debt_threshold:4.5,debt_fail_401:1.5,debt_fail_429:.5,debt_success_decay:1,demotion_priority:-100,cooldown_restore_enabled:true,cooldown_restore_skip_bots:true,half_open_enabled:true,half_open_success_threshold:2};settingsLoaded=false;settingsSignature='';renderKeyState();renderSummary();renderTable();applyRefreshUI();setNotice('管理密钥已清除，请到“设置”页重新填写。');setStatus(document.querySelector('#settings-status'),'')}
-async function saveSettings(event){event.preventDefault();const form=event.currentTarget,status=document.querySelector('#settings-status'),button=document.querySelector('#save-settings');if(!form.reportValidity())return;const payload={auto_refresh_enabled:document.querySelector('#auto-refresh-enabled').checked,auto_refresh_interval_seconds:Number(document.querySelector('#auto-refresh-interval').value),batch_operation_concurrency:Number(document.querySelector('#batch-operation-concurrency').value),outbound_proxy_url:(document.querySelector('#outbound-proxy-url').value||'').trim(),daily_usage_reset_enabled:document.querySelector('#daily-usage-reset-enabled').checked,daily_usage_reset_time:document.querySelector('#daily-usage-reset-time').value,attributed_failure_threshold:Number(document.querySelector('#failure-threshold').value),soft_demotion_enabled:document.querySelector('#soft-demotion-enabled').checked,soft_demotion_priority:Number(document.querySelector('#soft-demotion-priority').value),soft_debt_threshold:Number(document.querySelector('#soft-debt-threshold').value),hard_debt_threshold:Number(document.querySelector('#hard-debt-threshold').value),debt_fail_401:Number(document.querySelector('#debt-fail-401').value),debt_fail_429:Number(document.querySelector('#debt-fail-429').value),debt_success_decay:Number(document.querySelector('#debt-success-decay').value),count_status_429:document.querySelector('#count-429').checked,count_status_5xx:document.querySelector('#count-5xx').checked,demotion_priority:Number(document.querySelector('#demotion-priority').value),default_restore_priority:Number(document.querySelector('#restore-priority').value),cooldown_restore_enabled:document.querySelector('#cooldown-restore-enabled').checked,cooldown_restore_skip_bots:document.querySelector('#cooldown-restore-skip-bots').checked,half_open_enabled:document.querySelector('#half-open-enabled').checked,half_open_success_threshold:Number(document.querySelector('#half-open-success-threshold').value),free_user_daily_token_limit:Number(document.querySelector('#free-user-daily-token-limit').value)};button.disabled=true;stopPolling();setStatus(status,'正在保存…');try{if(refreshInFlight)await refreshInFlight;const settings=await api('/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});settingsSignature=`${settings.revision}|${JSON.stringify(settings)}`;renderSettings(settings);setStatus(status,`设置已保存，revision ${settings.revision} 已热生效。`,'success');if(currentMeta)setNotice(effectiveSummary(currentMeta,settings))}catch(error){setStatus(status,'保存失败：'+error.message,'error')}finally{button.disabled=false;startPolling()}}
+function clearManagementKey(){try{localStorage.removeItem(storageKey)}catch{}stopPolling();currentSettings={auto_refresh_enabled:true,auto_refresh_interval_seconds:5,batch_operation_concurrency:10,daily_usage_reset_enabled:false,daily_usage_reset_time:'00:00',debt_probe_threshold:2,debt_fail_401:1.5,debt_fail_429:.5,debt_success_decay:1,watch_priority:-10,anomaly_priority:-50,dead_priority:-100,default_restore_priority:0,watch_reprobe_minutes:30,anomaly_reprobe_hours:6};settingsLoaded=false;settingsSignature='';renderKeyState();renderSummary();renderTable();applyRefreshUI();setNotice('管理密钥已清除，请到“设置”页重新填写。');setStatus(document.querySelector('#settings-status'),'')}
+async function saveSettings(event){event.preventDefault();const form=event.currentTarget,status=document.querySelector('#settings-status'),button=document.querySelector('#save-settings');if(!form.reportValidity())return;const payload={auto_refresh_enabled:document.querySelector('#auto-refresh-enabled').checked,auto_refresh_interval_seconds:Number(document.querySelector('#auto-refresh-interval').value),batch_operation_concurrency:Number(document.querySelector('#batch-operation-concurrency').value),outbound_proxy_url:(document.querySelector('#outbound-proxy-url').value||'').trim(),daily_usage_reset_enabled:document.querySelector('#daily-usage-reset-enabled').checked,daily_usage_reset_time:document.querySelector('#daily-usage-reset-time').value,attributed_failure_threshold:Number(document.querySelector('#failure-threshold').value),debt_probe_threshold:Number(document.querySelector('#debt-probe-threshold').value),debt_fail_401:Number(document.querySelector('#debt-fail-401').value),debt_fail_429:Number(document.querySelector('#debt-fail-429').value),debt_success_decay:Number(document.querySelector('#debt-success-decay').value),count_status_429:document.querySelector('#count-429').checked,count_status_5xx:document.querySelector('#count-5xx').checked,watch_priority:Number(document.querySelector('#watch-priority').value),anomaly_priority:Number(document.querySelector('#anomaly-priority').value),dead_priority:Number(document.querySelector('#dead-priority').value),default_restore_priority:Number(document.querySelector('#restore-priority').value),watch_reprobe_minutes:Number(document.querySelector('#watch-reprobe-minutes').value),anomaly_reprobe_hours:Number(document.querySelector('#anomaly-reprobe-hours').value),free_user_daily_token_limit:Number(document.querySelector('#free-user-daily-token-limit').value)};button.disabled=true;stopPolling();setStatus(status,'正在保存…');try{if(refreshInFlight)await refreshInFlight;const settings=await api('/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});settingsSignature=`${settings.revision}|${JSON.stringify(settings)}`;renderSettings(settings);setStatus(status,`设置已保存，revision ${settings.revision} 已热生效。`,'success');if(currentMeta)setNotice(effectiveSummary(currentMeta,settings))}catch(error){setStatus(status,'保存失败：'+error.message,'error')}finally{button.disabled=false;startPolling()}}
 
 document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>switchView(tab.dataset.view)));
 document.querySelectorAll('input[name="theme_preference"]').forEach(input=>input.addEventListener('change',onThemePreferenceChange));
@@ -839,6 +835,7 @@ document.querySelector('#save-key').addEventListener('click',saveManagementKey);
 document.querySelector('#clear-key').addEventListener('click',clearManagementKey);
 document.querySelector('#management-key').addEventListener('keydown',event=>{if(event.key==='Enter')saveManagementKey()});
 document.querySelector('#search').addEventListener('input',resetPageAndRender);
+document.querySelector('#alive-filter').addEventListener('change',resetPageAndRender);
 document.querySelector('#status-filter').addEventListener('change',resetPageAndRender);
 document.querySelector('#demotion-filter').addEventListener('change',resetPageAndRender);
 document.querySelector('#bot-filter').addEventListener('change',resetPageAndRender);

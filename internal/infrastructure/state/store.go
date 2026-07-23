@@ -17,7 +17,7 @@ import (
 const (
 	SchemaVersion = 1
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.5.11"
+	PluginVersion = "0.6.0"
 )
 
 type DedupeState struct {
@@ -142,23 +142,35 @@ func decodeSnapshot(data []byte, snapshot *Snapshot) error {
 	if _, exists := raw.Settings["batch_operation_concurrency"]; !exists {
 		snapshot.Settings.BatchOperationConcurrency = 10
 	}
-	if _, exists := raw.Settings["cooldown_restore_enabled"]; !exists {
-		snapshot.Settings.CooldownRestoreEnabled = true
+	if _, exists := raw.Settings["debt_probe_threshold"]; !exists {
+		if snapshot.Settings.SoftDebtThreshold > 0 {
+			snapshot.Settings.DebtProbeThreshold = snapshot.Settings.SoftDebtThreshold
+		} else {
+			snapshot.Settings.DebtProbeThreshold = 2.0
+		}
 	}
-	if _, exists := raw.Settings["cooldown_restore_skip_bots"]; !exists {
-		snapshot.Settings.CooldownRestoreSkipBots = true
+	if _, exists := raw.Settings["watch_priority"]; !exists {
+		if snapshot.Settings.SoftDemotionPriority != 0 {
+			snapshot.Settings.WatchPriority = snapshot.Settings.SoftDemotionPriority
+		} else {
+			snapshot.Settings.WatchPriority = -10
+		}
 	}
-	if _, exists := raw.Settings["soft_demotion_enabled"]; !exists {
-		snapshot.Settings.SoftDemotionEnabled = true
+	if _, exists := raw.Settings["anomaly_priority"]; !exists {
+		snapshot.Settings.AnomalyPriority = -50
 	}
-	if _, exists := raw.Settings["soft_demotion_priority"]; !exists {
-		snapshot.Settings.SoftDemotionPriority = -10
+	if _, exists := raw.Settings["dead_priority"]; !exists {
+		if snapshot.Settings.DemotionPriority != 0 {
+			snapshot.Settings.DeadPriority = snapshot.Settings.DemotionPriority
+		} else {
+			snapshot.Settings.DeadPriority = -100
+		}
 	}
-	if _, exists := raw.Settings["soft_debt_threshold"]; !exists {
-		snapshot.Settings.SoftDebtThreshold = 2.0
+	if _, exists := raw.Settings["watch_reprobe_minutes"]; !exists {
+		snapshot.Settings.WatchReprobeMinutes = 30
 	}
-	if _, exists := raw.Settings["hard_debt_threshold"]; !exists {
-		snapshot.Settings.HardDebtThreshold = 4.5
+	if _, exists := raw.Settings["anomaly_reprobe_hours"]; !exists {
+		snapshot.Settings.AnomalyReprobeHours = 6
 	}
 	if _, exists := raw.Settings["debt_fail_401"]; !exists {
 		snapshot.Settings.DebtFail401 = 1.5
@@ -169,14 +181,18 @@ func decodeSnapshot(data []byte, snapshot *Snapshot) error {
 	if _, exists := raw.Settings["debt_success_decay"]; !exists {
 		snapshot.Settings.DebtSuccessDecay = 1.0
 	}
-	if _, exists := raw.Settings["half_open_enabled"]; !exists {
-		snapshot.Settings.HalfOpenEnabled = true
-	}
-	if _, exists := raw.Settings["half_open_success_threshold"]; !exists {
-		snapshot.Settings.HalfOpenSuccessThreshold = 2
-	}
 	if _, exists := raw.Settings["free_user_daily_token_limit"]; !exists {
 		snapshot.Settings.FreeUserDailyTokenLimit = 2_000_000
+	}
+	// Keep legacy mirrors filled for older state consumers.
+	if snapshot.Settings.DemotionPriority == 0 {
+		snapshot.Settings.DemotionPriority = snapshot.Settings.DeadPriority
+	}
+	if snapshot.Settings.SoftDemotionPriority == 0 {
+		snapshot.Settings.SoftDemotionPriority = snapshot.Settings.WatchPriority
+	}
+	if snapshot.Settings.SoftDebtThreshold == 0 {
+		snapshot.Settings.SoftDebtThreshold = snapshot.Settings.DebtProbeThreshold
 	}
 	return nil
 }
