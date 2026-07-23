@@ -2,7 +2,7 @@ package cpaabi
 
 const (
 	PluginID      = "cpa-grok-panel"
-	PluginVersion = "0.5.5"
+	PluginVersion = "0.5.6"
 	ABIVersion    = 1
 )
 
