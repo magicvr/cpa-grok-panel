@@ -104,6 +104,11 @@
       --plan-free-color:#93c5fd;--plan-free-border:#3b5f8a;--plan-free-bg:#152233;
       --plan-super-color:#fde68a;--plan-super-border:#806c2b;--plan-super-bg:#3a3218;
       --plan-heavy-color:#fbcfe8;--plan-heavy-border:#7a3f68;--plan-heavy-bg:#3a1830;
+      --alive-live-color:#4ade80;--alive-live-border:#397b68;--alive-live-bg:#183b32;
+      --alive-fail-color:#fde68a;--alive-fail-border:#806c2b;--alive-fail-bg:#3a3218;
+      --alive-dead-color:#fda4af;--alive-dead-border:#7f3341;--alive-dead-bg:#412027;
+      --alive-unusual-color:#fde68a;--alive-unusual-border:#806c2b;--alive-unusual-bg:#3a3218;
+      --alive-untested-color:#93a1ad;--alive-untested-border:#3a444c;--alive-untested-bg:#1a2228;
       --usage-track:#1a2228;--usage-fill-start:#397b68;--usage-fill-end:#4ade80;
       --usage-high-start:#b45309;--usage-high-end:#f59e0b;--usage-full-start:#7f3341;--usage-full-end:#f87171;
     }
@@ -126,6 +131,11 @@
       --plan-free-color:#0550ae;--plan-free-border:#54aeff;--plan-free-bg:#ddf4ff;
       --plan-super-color:#7d4e00;--plan-super-border:#d4a72c;--plan-super-bg:#fff8c5;
       --plan-heavy-color:#8250df;--plan-heavy-border:#c297ff;--plan-heavy-bg:#fbefff;
+      --alive-live-color:#0a7a4d;--alive-live-border:#1a7f64;--alive-live-bg:#dafbe1;
+      --alive-fail-color:#7d4e00;--alive-fail-border:#d4a72c;--alive-fail-bg:#fff8c5;
+      --alive-dead-color:#a40e26;--alive-dead-border:#cf222e;--alive-dead-bg:#ffebe9;
+      --alive-unusual-color:#7d4e00;--alive-unusual-border:#d4a72c;--alive-unusual-bg:#fff8c5;
+      --alive-untested-color:#656d76;--alive-untested-border:#d0d7de;--alive-untested-bg:#eef1f4;
       --usage-track:#eaeef2;--usage-fill-start:#1a7f64;--usage-fill-end:#2da44e;
       --usage-high-start:#bf8700;--usage-high-end:#d4a72c;--usage-full-start:#cf222e;--usage-full-end:#ff8182;
     }
@@ -273,6 +283,13 @@
     .plan-badge.free{color:var(--plan-free-color);border-color:var(--plan-free-border);background:var(--plan-free-bg)}
     .plan-badge.supergrok{color:var(--plan-super-color);border-color:var(--plan-super-border);background:var(--plan-super-bg)}
     .plan-badge.heavy{color:var(--plan-heavy-color);border-color:var(--plan-heavy-border);background:var(--plan-heavy-bg)}
+    /* 存活列徽章：Live 绿 / Failure·Unusual 黄 / Dead 红 / 未测 灰；与套餐列独立 */
+    .alive-badge{display:inline-flex;align-items:center;min-height:22px;padding:2px 8px;border:1px solid var(--line);border-radius:999px;font-size:12px;font-weight:700}
+    .alive-badge.live{color:var(--alive-live-color);border-color:var(--alive-live-border);background:var(--alive-live-bg)}
+    .alive-badge.failure{color:var(--alive-fail-color);border-color:var(--alive-fail-border);background:var(--alive-fail-bg)}
+    .alive-badge.dead{color:var(--alive-dead-color);border-color:var(--alive-dead-border);background:var(--alive-dead-bg)}
+    .alive-badge.unusual{color:var(--alive-unusual-color);border-color:var(--alive-unusual-border);background:var(--alive-unusual-bg)}
+    .alive-badge.untested{color:var(--alive-untested-color);border-color:var(--alive-untested-border);background:var(--alive-untested-bg)}
     .usage-cell{min-width:132px}
     .usage-text{font-weight:700;font-variant-numeric:tabular-nums}
     .usage-bar{margin-top:6px;height:7px;border-radius:999px;background:var(--usage-track);overflow:hidden;border:1px solid var(--line-soft)}
@@ -285,7 +302,7 @@
 <div class="cpa-page-shell">
 <main class="wrap">
   <header>
-    <div><h1>Grok 账号面板</h1><div class="sub">Soft demotion · Half-open 恢复 · v0.5.9</div></div>
+    <div><h1>Grok 账号面板</h1><div class="sub">Soft demotion · Half-open 恢复 · v0.5.10</div></div>
     <div class="actions"><button id="refresh" type="button">刷新</button></div>
   </header>
 
@@ -325,6 +342,7 @@
           <button class="small demote batch-action" type="button" data-batch-action="demote" disabled>批量降权</button>
           <button class="small restore batch-action" type="button" data-batch-action="restore" disabled>批量解除降权</button>
           <button class="small secondary batch-action" type="button" data-batch-action="set-priority" disabled>批量设置优先级</button>
+          <button id="refresh-plans" class="small secondary batch-action" type="button" data-batch-action="refresh-plan" disabled>批量刷新套餐</button>
           <button id="batch-probe" class="small secondary batch-action" type="button" data-batch-action="probe" disabled>批量测活</button>
           <button id="batch-resign" class="small secondary batch-action" type="button" data-batch-action="resign" disabled>批量重签</button>
           <button class="small danger batch-action" type="button" data-batch-action="delete" disabled>批量安全删除</button>
@@ -338,6 +356,7 @@
         <th class="select-cell"><input id="select-page" type="checkbox" aria-label="全选当前页" title="全选当前页"></th>
         <th data-sort="file"><button class="sort-button" type="button">账号文件 <span class="sort-indicator"></span></button></th>
         <th data-sort="plan"><button class="sort-button" type="button">套餐 <span class="sort-indicator"></span></button></th>
+        <th data-sort="alive"><button class="sort-button" type="button">存活 <span class="sort-indicator"></span></button></th>
         <th data-sort="status" title="启用/停用=CPA disabled；不可用=CPA unavailable（凭证运行时状态，非插件降权）"><button class="sort-button" type="button">状态 <span class="sort-indicator"></span></button></th>
         <th data-sort="bot"><button class="sort-button" type="button">机器人 <span class="sort-indicator"></span></button></th>
         <th data-sort="priority"><button class="sort-button" type="button">优先级 <span class="sort-indicator"></span></button></th>
@@ -487,7 +506,7 @@
           <h2>当前运行信息</h2>
           <p class="section-copy">以下项目只读。</p>
           <ul class="facts">
-            <li><span>插件版本</span><span id="fact-version">0.5.9</span></li>
+            <li><span>插件版本</span><span id="fact-version">0.5.10</span></li>
             <li><span>write_mode</span><span id="fact-write-mode">—</span></li>
             <li><span>始终计数状态</span><span>401 / 403</span></li>
             <li><span>设置 revision</span><span id="fact-revision">—</span></li>
@@ -538,7 +557,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const displayName=name=>String(name||'').replace(/^xai-/i,'').replace(/\.json$/i,'');
 const itemKey=item=>String(item?.auth_index||item?.exact_file_name||'');
 const fmtDate=value=>{const date=value?new Date(value):null;return date&&!Number.isNaN(date.getTime())?date.toLocaleString('zh-CN',{hour12:false}):'—'};
-const sortColumns={file:{direction:'asc',value:x=>x.exact_file_name||''},plan:{direction:'asc',value:x=>(x.quota?.plan||'unknown')},status:{direction:'asc',value:x=>`${x.enabled?'启用':'停用'}${x.unavailable?' / 不可用':''}`},bot:{direction:'asc',value:x=>x.bot_flag_known===true?(x.bot_flagged?1:0):2},priority:{direction:'desc',value:x=>Number(x.priority)||0},usage:{direction:'desc',value:x=>{const q=x.quota||{};const lim=Number(q.limit)||0;const used=Number(q.used)||0;return lim>0?used/lim:used}},success:{direction:'desc',value:x=>Number(x.usage?.successful_requests)||0},failed:{direction:'desc',value:x=>Number(x.usage?.failed_requests)||0}};
+const sortColumns={file:{direction:'asc',value:x=>x.exact_file_name||''},plan:{direction:'asc',value:x=>(x.quota?.plan||'unknown')},alive:{direction:'asc',value:x=>{const s=String(x.quota?.probe_status||'').toLowerCase();return {live:0,failure:1,unusual:2,dead:3}[s]??4}},status:{direction:'asc',value:x=>`${x.enabled?'启用':'停用'}${x.unavailable?' / 不可用':''}`},bot:{direction:'asc',value:x=>x.bot_flag_known===true?(x.bot_flagged?1:0):2},priority:{direction:'desc',value:x=>Number(x.priority)||0},usage:{direction:'desc',value:x=>{const q=x.quota||{};const lim=Number(q.limit)||0;const used=Number(q.used)||0;return lim>0?used/lim:used}},success:{direction:'desc',value:x=>Number(x.usage?.successful_requests)||0},failed:{direction:'desc',value:x=>Number(x.usage?.failed_requests)||0}};
 let allItems=[],currentMeta=null,currentSettings={auto_refresh_enabled:true,auto_refresh_interval_seconds:5,batch_operation_concurrency:10,daily_usage_reset_enabled:false,daily_usage_reset_time:'00:00',soft_demotion_enabled:true,soft_demotion_priority:-10,soft_debt_threshold:2,hard_debt_threshold:4.5,debt_fail_401:1.5,debt_fail_429:.5,debt_success_decay:1,demotion_priority:-100,cooldown_restore_enabled:true,cooldown_restore_skip_bots:true,half_open_enabled:true,half_open_success_threshold:2},currentPage=1,pageSize=50,sortKey='file',sortDirection='asc',actionPending=false;
 let currentView='accounts-view',settingsLoaded=false,refreshTimer=null,refreshInFlight=null,accountsSignature='',settingsSignature='',metaSignature='';
 const selectedAuthIndexes=new Set();
@@ -570,33 +589,213 @@ function planLabel(item){const plan=String(item?.quota?.plan||'unknown').trim()|
 function planClass(plan){const p=String(plan||'unknown').toLowerCase();if(p.includes('heavy'))return 'heavy';if(p.includes('supergrok'))return 'supergrok';if(p==='free')return 'free';return 'unknown'}
 function usageCell(item){const q=item.quota||{};const used=Number(q.used)||0;const limit=Number(q.limit)||0;const unit=q.unit||'';const text=limit>0?`${fmtCompact(used)} / ${fmtCompact(limit)}`:`${fmtCompact(used)}${unit?` ${unit}`:''}`;const pct=limit>0?Math.max(0,Math.min(100,(used/limit)*100)):0;const cls=pct>=95?'full':pct>=70?'high':'';const title=[`套餐：${planLabel(item)}`,`用量：${fmt(used)}`,`限额：${limit?fmt(limit):'—'}`,`来源：${q.source||'—'}`,`刷新：${fmtDate(q.fetched_at)}`,q.error?`错误：${q.error}`:''].filter(Boolean).join('\n');return `<td class="usage-cell" title="${esc(title)}"><div class="usage-text">${esc(text)}</div><div class="usage-bar ${cls}"><span style="width:${pct.toFixed(1)}%"></span></div></td>`}
 function planCell(item){const plan=planLabel(item);const title=[`套餐：${plan}`,item.quota?.fetched_at?`上次刷新：${fmtDate(item.quota.fetched_at)}`:'未刷新',item.quota?.error?`错误：${item.quota.error}`:''].filter(Boolean).join('\n');return `<td title="${esc(title)}"><span class="plan-badge ${planClass(plan)}">${esc(plan)}</span></td>`}
+function aliveLabel(status){return {live:'Live',failure:'Failure',dead:'Dead',unusual:'Unusual'}[status]||'未测'}
+function aliveClass(status){return {live:'live',failure:'failure',dead:'dead',unusual:'unusual'}[status]||'untested'}
+function aliveCell(item){
+  const q=item.quota||{};
+  const status=String(q.probe_status||'').toLowerCase();
+  const http=Number(q.probe_http)||0;
+  const title=[status?`状态：${aliveLabel(status)}`:'状态：未测',http?`HTTP：${http}`:'',q.probe_at?`时间：${fmtDate(q.probe_at)}`:'',q.probe_error?`错误：${q.probe_error}`:''].filter(Boolean).join('\n');
+  return `<td title="${esc(title)}"><span class="alive-badge ${aliveClass(status)}">${esc(aliveLabel(status))}</span></td>`;
+}
 
-function renderTable(){const filtered=filteredItems(),totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));currentPage=Math.min(Math.max(1,currentPage),totalPages);const items=sortedItems(filtered).slice((currentPage-1)*pageSize,currentPage*pageSize);document.querySelector('#rows').innerHTML=items.length?items.map(item=>{const totalTokens=item.usage?.total_tokens||0,key=itemKey(item),checked=selectedAuthIndexes.has(key)?' checked':'',disabled=actionPending?' disabled':'';return `<tr><td class="select-cell"><input class="row-select" type="checkbox" data-auth-index="${esc(key)}" aria-label="选择 ${esc(displayName(item.exact_file_name))}"${checked}${disabled}></td><td class="file" title="${esc(item.exact_file_name)}"><div class="file-main">${esc(displayName(item.exact_file_name))}</div></td>${planCell(item)}${statusCell(item)}${botFlagCell(item)}<td>${fmt(item.priority)}</td>${usageCell(item)}<td class="ok">${fmt(item.usage?.successful_requests)}</td><td class="bad">${fmt(item.usage?.failed_requests)}</td>${diagnosticCell(item)}<td>${rowActions(item)}</td></tr>`}).join(''):'<tr><td class="empty" colspan="11">没有符合当前条件的账号</td></tr>';const suffix=filtered.length===allItems.length?'':` · 全量 ${fmt(allItems.length)} 条`;const info=`共 ${fmt(filtered.length)} 条${suffix}`;document.querySelectorAll('.page-info').forEach(el=>{el.textContent=info});document.querySelectorAll('.total-pages').forEach(el=>{el.textContent=fmt(totalPages)});document.querySelectorAll('.page-input').forEach(input=>{input.value=String(currentPage);input.max=String(totalPages);input.disabled=actionPending;input.setCustomValidity('')});document.querySelectorAll('.first-page,.previous-page').forEach(btn=>{btn.disabled=actionPending||currentPage<=1});document.querySelectorAll('.next-page,.last-page').forEach(btn=>{btn.disabled=actionPending||currentPage>=totalPages});document.querySelectorAll('.jump-page').forEach(btn=>{btn.disabled=actionPending});document.querySelectorAll('.page-size-select').forEach(sel=>{sel.value=String(pageSize);sel.disabled=actionPending});document.querySelectorAll('.row-action').forEach(btn=>{btn.disabled=actionPending||btn.dataset.allowed==='false'});document.querySelectorAll('th[data-sort]').forEach(header=>{const active=header.dataset.sort===sortKey;header.classList.toggle('sorted',active);header.setAttribute('aria-sort',active?(sortDirection==='asc'?'ascending':'descending'):'none');header.querySelector('.sort-indicator').textContent=active?(sortDirection==='asc'?'▲':'▼'):''});updateSelectionUI(items,filtered)}
+function renderTable(){const filtered=filteredItems(),totalPages=Math.max(1,Math.ceil(filtered.length/pageSize));currentPage=Math.min(Math.max(1,currentPage),totalPages);const items=sortedItems(filtered).slice((currentPage-1)*pageSize,currentPage*pageSize);document.querySelector('#rows').innerHTML=items.length?items.map(item=>{const totalTokens=item.usage?.total_tokens||0,key=itemKey(item),checked=selectedAuthIndexes.has(key)?' checked':'',disabled=actionPending?' disabled':'';return `<tr><td class="select-cell"><input class="row-select" type="checkbox" data-auth-index="${esc(key)}" aria-label="选择 ${esc(displayName(item.exact_file_name))}"${checked}${disabled}></td><td class="file" title="${esc(item.exact_file_name)}"><div class="file-main">${esc(displayName(item.exact_file_name))}</div></td>${planCell(item)}${aliveCell(item)}${statusCell(item)}${botFlagCell(item)}<td>${fmt(item.priority)}</td>${usageCell(item)}<td class="ok">${fmt(item.usage?.successful_requests)}</td><td class="bad">${fmt(item.usage?.failed_requests)}</td>${diagnosticCell(item)}<td>${rowActions(item)}</td></tr>`}).join(''):'<tr><td class="empty" colspan="12">没有符合当前条件的账号</td></tr>';const suffix=filtered.length===allItems.length?'':` · 全量 ${fmt(allItems.length)} 条`;const info=`共 ${fmt(filtered.length)} 条${suffix}`;document.querySelectorAll('.page-info').forEach(el=>{el.textContent=info});document.querySelectorAll('.total-pages').forEach(el=>{el.textContent=fmt(totalPages)});document.querySelectorAll('.page-input').forEach(input=>{input.value=String(currentPage);input.max=String(totalPages);input.disabled=actionPending;input.setCustomValidity('')});document.querySelectorAll('.first-page,.previous-page').forEach(btn=>{btn.disabled=actionPending||currentPage<=1});document.querySelectorAll('.next-page,.last-page').forEach(btn=>{btn.disabled=actionPending||currentPage>=totalPages});document.querySelectorAll('.jump-page').forEach(btn=>{btn.disabled=actionPending});document.querySelectorAll('.page-size-select').forEach(sel=>{sel.value=String(pageSize);sel.disabled=actionPending});document.querySelectorAll('.row-action').forEach(btn=>{btn.disabled=actionPending||btn.dataset.allowed==='false'});document.querySelectorAll('th[data-sort]').forEach(header=>{const active=header.dataset.sort===sortKey;header.classList.toggle('sorted',active);header.setAttribute('aria-sort',active?(sortDirection==='asc'?'ascending':'descending'):'none');header.querySelector('.sort-indicator').textContent=active?(sortDirection==='asc'?'▲':'▼'):''});updateSelectionUI(items,filtered)}
 function jumpToPage(input){if(actionPending)return;const totalPages=pageCount(),target=Number(input.value);if(!Number.isInteger(target)||target<1||target>totalPages){input.setCustomValidity(`请输入 1 到 ${totalPages} 之间的整数页码`);input.reportValidity();return}currentPage=target;renderTable()}
 function resetPageAndRender(){currentPage=1;renderTable()}
 function changeSort(key){if(sortKey===key)sortDirection=sortDirection==='asc'?'desc':'asc';else{sortKey=key;sortDirection=sortColumns[key].direction}resetPageAndRender()}
 function applyRefreshUI(){document.querySelector('#refresh').hidden=currentView!=='accounts-view'||Boolean(currentSettings?.auto_refresh_enabled)}
-function renderSettings(settings){currentSettings={batch_operation_concurrency:10,daily_usage_reset_enabled:false,daily_usage_reset_time:'00:00',soft_demotion_enabled:true,soft_demotion_priority:-10,soft_debt_threshold:2,hard_debt_threshold:4.5,debt_fail_401:1.5,debt_fail_429:.5,debt_success_decay:1,demotion_priority:-100,cooldown_restore_enabled:true,cooldown_restore_skip_bots:true,half_open_enabled:true,half_open_success_threshold:2,free_user_daily_token_limit:2000000,outbound_proxy_url:'',...settings};settingsLoaded=true;document.querySelector('#auto-refresh-enabled').checked=Boolean(currentSettings.auto_refresh_enabled);document.querySelector('#auto-refresh-interval').value=currentSettings.auto_refresh_interval_seconds;document.querySelector('#batch-operation-concurrency').value=currentSettings.batch_operation_concurrency;document.querySelector('#outbound-proxy-url').value=currentSettings.outbound_proxy_url||'';document.querySelector('#daily-usage-reset-enabled').checked=Boolean(currentSettings.daily_usage_reset_enabled);document.querySelector('#daily-usage-reset-time').value=currentSettings.daily_usage_reset_time;document.querySelector('#failure-threshold').value=currentSettings.attributed_failure_threshold;document.querySelector('#soft-demotion-enabled').checked=Boolean(currentSettings.soft_demotion_enabled);document.querySelector('#soft-demotion-priority').value=currentSettings.soft_demotion_priority;document.querySelector('#soft-debt-threshold').value=currentSettings.soft_debt_threshold;document.querySelector('#hard-debt-threshold').value=currentSettings.hard_debt_threshold;document.querySelector('#debt-fail-401').value=currentSettings.debt_fail_401;document.querySelector('#debt-fail-429').value=currentSettings.debt_fail_429;document.querySelector('#debt-success-decay').value=currentSettings.debt_success_decay;document.querySelector('#count-429').checked=Boolean(currentSettings.count_status_429);document.querySelector('#count-5xx').checked=Boolean(currentSettings.count_status_5xx);document.querySelector('#demotion-priority').value=currentSettings.demotion_priority;document.querySelector('#restore-priority').value=currentSettings.default_restore_priority;document.querySelector('#cooldown-restore-enabled').checked=Boolean(currentSettings.cooldown_restore_enabled);document.querySelector('#cooldown-restore-skip-bots').checked=Boolean(currentSettings.cooldown_restore_skip_bots);document.querySelector('#half-open-enabled').checked=Boolean(currentSettings.half_open_enabled);document.querySelector('#half-open-success-threshold').value=currentSettings.half_open_success_threshold;document.querySelector('#free-user-daily-token-limit').value=currentSettings.free_user_daily_token_limit;document.querySelector('#fact-revision').textContent=fmt(currentSettings.revision);document.querySelector('#fact-source').textContent=currentSettings.source||'state';if(currentMeta){document.querySelector('#fact-version').textContent=currentMeta.plugin_version||'0.5.9';document.querySelector('#fact-write-mode').textContent=currentMeta.write_mode||currentSettings.write_mode||'—'}renderSummary();renderTable();applyRefreshUI()}
+function renderSettings(settings){currentSettings={batch_operation_concurrency:10,daily_usage_reset_enabled:false,daily_usage_reset_time:'00:00',soft_demotion_enabled:true,soft_demotion_priority:-10,soft_debt_threshold:2,hard_debt_threshold:4.5,debt_fail_401:1.5,debt_fail_429:.5,debt_success_decay:1,demotion_priority:-100,cooldown_restore_enabled:true,cooldown_restore_skip_bots:true,half_open_enabled:true,half_open_success_threshold:2,free_user_daily_token_limit:2000000,outbound_proxy_url:'',...settings};settingsLoaded=true;document.querySelector('#auto-refresh-enabled').checked=Boolean(currentSettings.auto_refresh_enabled);document.querySelector('#auto-refresh-interval').value=currentSettings.auto_refresh_interval_seconds;document.querySelector('#batch-operation-concurrency').value=currentSettings.batch_operation_concurrency;document.querySelector('#outbound-proxy-url').value=currentSettings.outbound_proxy_url||'';document.querySelector('#daily-usage-reset-enabled').checked=Boolean(currentSettings.daily_usage_reset_enabled);document.querySelector('#daily-usage-reset-time').value=currentSettings.daily_usage_reset_time;document.querySelector('#failure-threshold').value=currentSettings.attributed_failure_threshold;document.querySelector('#soft-demotion-enabled').checked=Boolean(currentSettings.soft_demotion_enabled);document.querySelector('#soft-demotion-priority').value=currentSettings.soft_demotion_priority;document.querySelector('#soft-debt-threshold').value=currentSettings.soft_debt_threshold;document.querySelector('#hard-debt-threshold').value=currentSettings.hard_debt_threshold;document.querySelector('#debt-fail-401').value=currentSettings.debt_fail_401;document.querySelector('#debt-fail-429').value=currentSettings.debt_fail_429;document.querySelector('#debt-success-decay').value=currentSettings.debt_success_decay;document.querySelector('#count-429').checked=Boolean(currentSettings.count_status_429);document.querySelector('#count-5xx').checked=Boolean(currentSettings.count_status_5xx);document.querySelector('#demotion-priority').value=currentSettings.demotion_priority;document.querySelector('#restore-priority').value=currentSettings.default_restore_priority;document.querySelector('#cooldown-restore-enabled').checked=Boolean(currentSettings.cooldown_restore_enabled);document.querySelector('#cooldown-restore-skip-bots').checked=Boolean(currentSettings.cooldown_restore_skip_bots);document.querySelector('#half-open-enabled').checked=Boolean(currentSettings.half_open_enabled);document.querySelector('#half-open-success-threshold').value=currentSettings.half_open_success_threshold;document.querySelector('#free-user-daily-token-limit').value=currentSettings.free_user_daily_token_limit;document.querySelector('#fact-revision').textContent=fmt(currentSettings.revision);document.querySelector('#fact-source').textContent=currentSettings.source||'state';if(currentMeta){document.querySelector('#fact-version').textContent=currentMeta.plugin_version||'0.5.10';document.querySelector('#fact-write-mode').textContent=currentMeta.write_mode||currentSettings.write_mode||'—'}renderSummary();renderTable();applyRefreshUI()}
 function renderKeyState(){const saved=Boolean(getManagementKey());const input=document.querySelector('#management-key');input.value='';input.placeholder=saved?'已保存（输入新值可替换）':'请输入 management key';document.querySelector('#clear-key').disabled=!saved;setStatus(document.querySelector('#key-status'),saved?'当前浏览器已保存管理密钥。':'当前浏览器尚未保存管理密钥。')}
 async function api(path,options={}){const key=getManagementKey();if(!key)throw new Error('尚未设置管理密钥，请到“设置”页填写');const headers={Authorization:'Bearer '+key,...options.headers};const response=await fetch(base+path,{cache:'no-store',credentials:'include',...options,headers});let data=null;try{data=await response.json()}catch{}if(response.status===401)throw new Error('管理密钥无效或已失效，请到“设置”页更新');if(!response.ok)throw new Error(data?.error?.message||data?.error||`接口返回异常 HTTP ${response.status}`);return data}
 async function setEnabledViaManagement(exactFileName,enabled){const key=getManagementKey();if(!key)throw new Error('尚未设置管理密钥，请到“设置”页填写');const response=await fetch('/v0/management/auth-files/status',{method:'PATCH',cache:'no-store',credentials:'include',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify({name:exactFileName,disabled:!enabled})});let data=null;try{data=await response.json()}catch{}if(response.status===401)throw new Error('管理密钥无效或已失效，请到“设置”页更新');if(!response.ok)throw new Error(data?.error||data?.message||`启停失败 HTTP ${response.status}`);return data}
 
 const XAI_BILLING_URLS=['https://cli-chat-proxy.grok.com/v1/billing','https://cli-chat-proxy.grok.com/v1/billing?format=credits'];
-const XAI_BILLING_HEADERS={'Authorization':'Bearer $TOKEN$','x-xai-token-auth':'xai-grok-cli','x-grok-client-version':'0.2.91','accept':'*/*','user-agent':'grok-pager/0.2.91 grok-shell/0.2.91 (macos; aarch64)'};
+// 对齐 GRA cpa_schema.DEFAULT_CLIENT_HEADERS（含 x-authenticateresponse / grok-pager）
+const XAI_GROK_CLIENT_VERSION='0.2.93';
+const XAI_BILLING_HEADERS={
+  'Authorization':'Bearer $TOKEN$',
+  'x-xai-token-auth':'xai-grok-cli',
+  'x-authenticateresponse':'authenticate-response',
+  'x-grok-client-identifier':'grok-pager',
+  'x-grok-client-version':XAI_GROK_CLIENT_VERSION,
+  'accept':'*/*',
+  'user-agent':`grok-pager/${XAI_GROK_CLIENT_VERSION} grok-shell/${XAI_GROK_CLIENT_VERSION} (linux; x86_64)`
+};
+// 测活仅 api-call / CPA 代理，禁止直连 cli-chat-proxy / api.x.ai
 const XAI_PROBE_URL='https://cli-chat-proxy.grok.com/v1/responses';
-const XAI_PROBE_BODY={"model":"grok-4.5","input":"ping","max_output_tokens":1,"store":false};
+// 真实极短 grok-4.5 请求；body 必须作为对象交给 managementApiCall（禁止双重 JSON.stringify）
+const XAI_PROBE_BODY={model:'grok-4.5',input:'Reply with exactly OK',max_output_tokens:8,store:false};
 const XAI_PROBE_HEADERS={...XAI_BILLING_HEADERS,'Content-Type':'application/json','Accept':'application/json'};
 function classifyPlan(raw){const p=String(raw||'').toLowerCase();if(p.includes('heavy'))return 'SuperGrok Heavy';if(p.includes('supergrok')||p.includes('super grok')||p.includes('super_grok'))return 'SuperGrok';return 'Free'}
 function extractPlanFromBilling(doc){const hits=[];const walk=v=>{if(!v||typeof v!=='object')return;if(Array.isArray(v)){v.forEach(walk);return}for(const [k,child] of Object.entries(v)){const key=k.toLowerCase().replace(/[_-]/g,'');if(typeof child==='string'&&(key.includes('plan')||key==='tier'||key.includes('subscription')))hits.push(child);walk(child)}};walk(doc);return hits[0]||''}
 function extractLimitUsed(doc){let limit=0,used=0;const walk=v=>{if(!v||typeof v!=='object')return;if(Array.isArray(v)){v.forEach(walk);return}for(const [k,child] of Object.entries(v)){const key=k.toLowerCase().replace(/[_-]/g,'');if(child&&typeof child==='object'&&!Array.isArray(child)&&('val' in child)){const n=Number(child.val);if(Number.isFinite(n)){if(key.includes('monthlylimit')||key==='limit')limit=limit||n;if(key==='used'||key.includes('includedused')||key.includes('totalused'))used=Math.max(used,n)}}walk(child)}};walk(doc);return {limit,used}}
-async function managementApiCall(authIndex,url,options={}){const key=getManagementKey();if(!key)throw new Error('尚未设置管理密钥，请到“设置”页填写');const method=String(options.method||'GET').toUpperCase();const header=options.header||XAI_BILLING_HEADERS;const payload={authIndex,method,url,header};if(options.body!==undefined&&options.body!==null){payload.body=typeof options.body==='string'?options.body:JSON.stringify(options.body)}const response=await fetch('/v0/management/api-call',{method:'POST',cache:'no-store',credentials:'include',headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},body:JSON.stringify(payload)});let data=null;try{data=await response.json()}catch{}if(response.status===401)throw new Error('管理密钥无效或已失效');if(!response.ok)throw new Error(data?.error||data?.message||`api-call HTTP ${response.status}`);return data}
+// CPA 宿主 api-call：payload.body 必须是对象（不要先 stringify 再塞进 payload，否则上游常 400）
+// 测活仅 api-call / CPA 代理，禁止直连
+async function managementApiCall(authIndex,url,options={}){
+  const key=getManagementKey();
+  if(!key)throw new Error('尚未设置管理密钥，请到“设置”页填写');
+  const method=String(options.method||'GET').toUpperCase();
+  const header=options.header||XAI_BILLING_HEADERS;
+  const payload={authIndex,method,url,header};
+  if(options.body!==undefined&&options.body!==null){
+    if(typeof options.body==='string'){
+      try{payload.body=JSON.parse(options.body)}catch{payload.body=options.body}
+    }else{
+      payload.body=options.body;
+    }
+  }
+  const response=await fetch('/v0/management/api-call',{
+    method:'POST',cache:'no-store',credentials:'include',
+    headers:{Authorization:'Bearer '+key,'Content-Type':'application/json'},
+    body:JSON.stringify(payload)
+  });
+  let data=null;try{data=await response.json()}catch{}
+  if(response.status===401)throw new Error('管理密钥无效或已失效');
+  if(!response.ok)throw new Error(data?.error||data?.message||`api-call HTTP ${response.status}`);
+  return data;
+}
 function parseApiCallBody(data){if(!data)throw new Error('空响应');const status=Number(data.status_code||0);if(status&&status!==200)throw new Error(`上游 HTTP ${status}`);let body=data.body??data.bodyText;if(typeof body==='string'){try{body=JSON.parse(body)}catch{throw new Error('billing body 不是 JSON')}}if(!body||typeof body!=='object')throw new Error('billing body 无效');return body}
+function snippetUpstreamBody(data,maxLen=160){
+  let body=data?.body??data?.bodyText??'';
+  if(body&&typeof body==='object'){try{body=JSON.stringify(body)}catch{body=String(body)}}
+  body=String(body||'').replace(/\s+/g,' ').trim();
+  if(!body)return '';
+  if(body.length>maxLen)return body.slice(0,maxLen)+'...';
+  return body;
+}
+function preserveProbeFields(prev){
+  const out={};
+  if(prev?.probe_status)out.probe_status=String(prev.probe_status);
+  if(Number(prev?.probe_http)>0)out.probe_http=Number(prev.probe_http);
+  if(prev?.probe_at)out.probe_at=prev.probe_at;
+  if(prev?.probe_error)out.probe_error=String(prev.probe_error);
+  return out;
+}
 async function saveQuotaSnapshot(authIndex,quota){return api('/accounts/quota',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({auth_index:authIndex,quota})})}
-async function refreshPlanForItem(item){const authIndex=item.auth_index;try{const bodies=await Promise.all(XAI_BILLING_URLS.map(async url=>{const data=await managementApiCall(authIndex,url);return parseApiCallBody(data)}));let planRaw='',limit=0,used=0;for(const body of bodies){if(!planRaw)planRaw=extractPlanFromBilling(body);const lu=extractLimitUsed(body);limit=limit||lu.limit;used=Math.max(used,lu.used)}const plan=classifyPlan(planRaw);const source=(plan==='Free'&&!(limit>0))?'local_estimate':'billing';const quota={plan,used,limit,unit:limit>0?'billing units':'tokens',source,fetched_at:new Date().toISOString(),error:''};await saveQuotaSnapshot(authIndex,quota);return {ok:true,plan}}catch(error){const quota={plan:'unknown',used:0,limit:0,unit:'',source:'refresh_failed',fetched_at:new Date().toISOString(),error:String(error.message||error)};await saveQuotaSnapshot(authIndex,quota);return {ok:false,plan:'unknown',error:quota.error}}}
-function classifyProbeStatus(statusCode){const status=Number(statusCode||0);if(status>=200&&status<300)return 'alive';if(status===401||status===402||status===403)return 'dead';return 'error'}
-async function probeLiveForItem(item){try{const data=await managementApiCall(item.auth_index,XAI_PROBE_URL,{method:'POST',body:XAI_PROBE_BODY,header:XAI_PROBE_HEADERS});const httpStatus=Number(data?.status_code||0);const status=classifyProbeStatus(httpStatus);if(status==='alive')return {status:'alive',httpStatus};if(status==='dead')return {status:'dead',httpStatus,message:`HTTP ${httpStatus}`};return {status:'error',httpStatus,message:httpStatus?`HTTP ${httpStatus}`:'missing status_code'}}catch(error){return {status:'error',httpStatus:0,message:String(error.message||error)}}}
-async function recordProbeOutcome(item,probe){const prev=item.quota||{};const parts=[`probe ${probe.status}`];if(probe.httpStatus)parts.push(`HTTP ${probe.httpStatus}`);if(probe.message&&!parts.some(p=>p.includes(String(probe.message).replace(/^HTTP\s+/,''))))parts.push(String(probe.message));const error=parts.join(' · ').replace(/\s+/g,' ').trim();const quota={plan:prev.plan||'unknown',used:Number(prev.used)||0,limit:Number(prev.limit)||0,unit:prev.unit||'',source:prev.source||'',fetched_at:prev.fetched_at||new Date().toISOString(),error};try{await saveQuotaSnapshot(item.auth_index,quota);item.quota={...prev,...quota}}catch{/* notice path still reports probe counts */}}
-async function performBatchProbe(){if(actionPending||selectedAuthIndexes.size===0)return;const targets=allItems.filter(item=>selectedAuthIndexes.has(itemKey(item)));if(targets.length===0){reconcileSelection(allItems);renderTable();return}let alive=0,dead=0,failed=0,refreshed=0;const reasons=[];actionPending=true;stopPolling();renderTable();setNotice(`正在批量测活 0/${targets.length}…`);try{if(refreshInFlight)await refreshInFlight;await runConcurrent(targets,Math.min(3,batchConcurrency()),async item=>{const probe=await probeLiveForItem(item);if(probe.status==='alive'){alive++;const result=await refreshPlanForItem(item);if(result.ok)refreshed++;else if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：活号但套餐刷新失败 ${result.error||''}`)}else if(probe.status==='dead'){dead++;await recordProbeOutcome(item,probe);if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：死号 ${probe.message||''}`)}else{failed++;await recordProbeOutcome(item,probe);if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：${probe.message||'测活失败'}`)}},(done,total)=>setNotice(`正在批量测活 ${done}/${total}…`))}finally{actionPending=false;const listOk=await refresh({silent:true,includeAccounts:true,showSyncNotice:false});if(!listOk)renderTable();let summary=`测活成功 ${alive} · 死号 ${dead} · 失败 ${failed} · 套餐已刷新 ${refreshed}`;if(reasons.length)summary+=`；${reasons.join('；')}`;if((dead+failed)>reasons.length)summary+=`；另 ${(dead+failed)-reasons.length} 项见列表悬停`;if(!listOk)summary+='；列表刷新失败';setNotice(summary,dead>0||failed>0||!listOk?'error':'success');startPolling()}}
+// 批量刷新套餐：billing 刷新，保留已有测活结果（不得清掉 probe_*）
+async function refreshPlanForItem(item){
+  const authIndex=item.auth_index;
+  const prev=item.quota||{};
+  const probeKeep=preserveProbeFields(prev);
+  try{
+    const bodies=await Promise.all(XAI_BILLING_URLS.map(async url=>{const data=await managementApiCall(authIndex,url);return parseApiCallBody(data)}));
+    let planRaw='',limit=0,used=0;
+    for(const body of bodies){if(!planRaw)planRaw=extractPlanFromBilling(body);const lu=extractLimitUsed(body);limit=limit||lu.limit;used=Math.max(used,lu.used)}
+    const plan=classifyPlan(planRaw);
+    const source=(plan==='Free'&&!(limit>0))?'local_estimate':'billing';
+    const quota={plan,used,limit,unit:limit>0?'billing units':'tokens',source,fetched_at:new Date().toISOString(),error:'',...probeKeep};
+    await saveQuotaSnapshot(authIndex,quota);
+    item.quota={...prev,...quota};
+    return {ok:true,plan};
+  }catch(error){
+    const quota={plan:'unknown',used:0,limit:0,unit:'',source:'refresh_failed',fetched_at:new Date().toISOString(),error:String(error.message||error),...probeKeep};
+    await saveQuotaSnapshot(authIndex,quota);
+    item.quota={...prev,...quota};
+    return {ok:false,plan:'unknown',error:quota.error};
+  }
+}
+async function performBatchRefreshPlans(){
+  if(actionPending||selectedAuthIndexes.size===0)return;
+  const targets=allItems.filter(item=>selectedAuthIndexes.has(itemKey(item)));
+  if(targets.length===0){reconcileSelection(allItems);renderTable();return}
+  let succeeded=0,failed=0;const reasons=[];
+  actionPending=true;stopPolling();renderTable();
+  setNotice(`正在批量刷新套餐 0/${targets.length}…`);
+  try{
+    if(refreshInFlight)await refreshInFlight;
+    await runConcurrent(targets,Math.min(3,batchConcurrency()),async item=>{
+      const result=await refreshPlanForItem(item);
+      if(result.ok)succeeded++;
+      else{failed++;if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：${result.error||'失败'}`)}
+    },(done,total)=>setNotice(`正在批量刷新套餐 ${done}/${total}…`));
+  }finally{
+    actionPending=false;
+    const refreshed=await refresh({silent:true,includeAccounts:true,showSyncNotice:false});
+    if(!refreshed)renderTable();
+    let summary=`套餐刷新成功 ${succeeded} · 失败 ${failed}`;
+    if(reasons.length)summary+=`；${reasons.join('；')}`;
+    if(failed>reasons.length)summary+=`；另 ${failed-reasons.length} 项失败`;
+    if(!refreshed)summary+='；列表刷新失败';
+    setNotice(summary,failed>0||!refreshed?'error':'success');
+    startPolling();
+  }
+}
+// 测活分类（用户指定，与旧 dead 合集不同）：2xx=live · 401=failure · 403=dead · 其它=unusual
+function classifyProbeStatus(statusCode){
+  const status=Number(statusCode||0);
+  if(status>=200&&status<300)return 'live';
+  if(status===401)return 'failure';
+  if(status===403)return 'dead';
+  return 'unusual';
+}
+// 测活：只走 CPA POST /v0/management/api-call（宿主代理出网），绝不插件直连
+async function probeLiveForItem(item){
+  try{
+    const data=await managementApiCall(item.auth_index,XAI_PROBE_URL,{method:'POST',body:XAI_PROBE_BODY,header:XAI_PROBE_HEADERS});
+    const httpStatus=Number(data?.status_code||0);
+    const status=classifyProbeStatus(httpStatus);
+    const snippet=snippetUpstreamBody(data);
+    if(status==='live')return {status:'live',httpStatus,message:''};
+    const message=httpStatus?(snippet?`HTTP ${httpStatus} · ${snippet}`:`HTTP ${httpStatus}`):(snippet||'missing status_code');
+    return {status,httpStatus,message};
+  }catch(error){
+    return {status:'unusual',httpStatus:0,message:String(error.message||error)};
+  }
+}
+// 持久化测活结果到 quota.probe_*（存活列展示）；不改 plan；不刷套餐
+async function recordProbeOutcome(item,probe){
+  const prev=item.quota||{};
+  const probeError=probe.status==='live'?'':String(probe.message||'').replace(/\s+/g,' ').trim().slice(0,200);
+  const quota={
+    plan:prev.plan||'unknown',
+    used:Number(prev.used)||0,
+    limit:Number(prev.limit)||0,
+    unit:prev.unit||'',
+    source:prev.source||'',
+    fetched_at:prev.fetched_at||new Date().toISOString(),
+    error:prev.error||'',
+    probe_status:probe.status,
+    probe_http:Number(probe.httpStatus)||0,
+    probe_at:new Date().toISOString()
+  };
+  if(probeError)quota.probe_error=probeError;
+  try{
+    await saveQuotaSnapshot(item.auth_index,quota);
+    item.quota={...prev,...quota};
+    if(!probeError)delete item.quota.probe_error;
+  }catch{/* notice path still reports probe counts */}
+}
+// 批量测活：只测活，绝不调用 refreshPlanForItem
+async function performBatchProbe(){
+  if(actionPending||selectedAuthIndexes.size===0)return;
+  const targets=allItems.filter(item=>selectedAuthIndexes.has(itemKey(item)));
+  if(targets.length===0){reconcileSelection(allItems);renderTable();return}
+  let live=0,failure=0,dead=0,unusual=0;const reasons=[];
+  actionPending=true;stopPolling();renderTable();
+  setNotice(`正在批量测活 0/${targets.length}…`);
+  try{
+    if(refreshInFlight)await refreshInFlight;
+    await runConcurrent(targets,Math.min(3,batchConcurrency()),async item=>{
+      const probe=await probeLiveForItem(item);
+      await recordProbeOutcome(item,probe);
+      if(probe.status==='live')live++;
+      else if(probe.status==='failure'){failure++;if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：Failure ${probe.message||''}`)}
+      else if(probe.status==='dead'){dead++;if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：Dead ${probe.message||''}`)}
+      else{unusual++;if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：Unusual ${probe.message||''}`)}
+    },(done,total)=>setNotice(`正在批量测活 ${done}/${total}…`));
+  }finally{
+    actionPending=false;
+    const listOk=await refresh({silent:true,includeAccounts:true,showSyncNotice:false});
+    if(!listOk)renderTable();
+    let summary=`Live ${live} · Failure ${failure} · Dead ${dead} · Unusual ${unusual}`;
+    if(reasons.length)summary+=`；${reasons.join('；')}`;
+    const bad=failure+dead+unusual;
+    if(bad>reasons.length)summary+=`；另 ${bad-reasons.length} 项见存活列悬停`;
+    if(!listOk)summary+='；列表刷新失败';
+    setNotice(summary,bad>0||!listOk?'error':'success');
+    startPolling();
+  }
+}
 async function resignForItem(item){return api('/accounts/resign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({auth_index:item.auth_index,exact_file_name:item.exact_file_name})})}
 async function performBatchResign(){if(actionPending||selectedAuthIndexes.size===0)return;const targets=allItems.filter(item=>selectedAuthIndexes.has(itemKey(item)));if(targets.length===0){reconcileSelection(allItems);renderTable();return}let succeeded=0,failed=0;const reasons=[];actionPending=true;stopPolling();renderTable();setNotice(`正在批量重签 0/${targets.length}…`);try{if(refreshInFlight)await refreshInFlight;await runConcurrent(targets,batchConcurrency(),async item=>{try{await resignForItem(item);succeeded++}catch(error){failed++;if(reasons.length<3)reasons.push(`${displayName(item.exact_file_name)}：${shortReason(error)}`)}},(done,total)=>setNotice(`正在批量重签 ${done}/${total}…`))}finally{actionPending=false;const refreshed=await refresh({silent:true,includeAccounts:true,showSyncNotice:false});if(!refreshed)renderTable();let summary=`重签成功 ${succeeded} · 失败 ${failed}`;if(reasons.length)summary+=`；${reasons.join('；')}`;if(failed>reasons.length)summary+=`；另 ${failed-reasons.length} 项失败`;if(!refreshed)summary+='；列表刷新失败';setNotice(summary,failed>0||!refreshed?'error':'success');startPolling()}}
 
@@ -648,7 +847,7 @@ document.querySelector('#select-filtered').addEventListener('click',()=>{selecte
 document.querySelector('#rows').addEventListener('click',event=>{const button=event.target.closest('.row-action');if(!button)return;const action=button.dataset.action;if(action==='delete')performSafeDelete(button);else performAction(button)});
 document.querySelector('#rows').addEventListener('change',event=>{const checkbox=event.target.closest('.row-select');if(!checkbox)return;if(checkbox.checked)selectedAuthIndexes.add(checkbox.dataset.authIndex);else selectedAuthIndexes.delete(checkbox.dataset.authIndex);renderTable()});
 document.querySelector('#select-page').addEventListener('change',event=>{const filtered=sortedItems(filteredItems()),items=filtered.slice((currentPage-1)*pageSize,currentPage*pageSize);items.forEach(item=>{const key=itemKey(item);if(event.target.checked)selectedAuthIndexes.add(key);else selectedAuthIndexes.delete(key)});renderTable()});
-document.querySelectorAll('.batch-action').forEach(button=>button.addEventListener('click',()=>{const action=button.dataset.batchAction;if(action==='delete')performBatchDelete();else if(action==='set-priority')performBatchSetPriority();else if(action==='probe')performBatchProbe();else if(action==='resign')performBatchResign();else performBatchAction(action)}));
+document.querySelectorAll('.batch-action').forEach(button=>button.addEventListener('click',()=>{const action=button.dataset.batchAction;if(action==='delete')performBatchDelete();else if(action==='set-priority')performBatchSetPriority();else if(action==='refresh-plan')performBatchRefreshPlans();else if(action==='probe')performBatchProbe();else if(action==='resign')performBatchResign();else performBatchAction(action)}));
 document.querySelectorAll('th[data-sort] .sort-button').forEach(button=>button.addEventListener('click',()=>changeSort(button.parentElement.dataset.sort)));
 document.querySelectorAll('.page-size-select').forEach(select=>select.addEventListener('change',event=>{pageSize=Number(event.target.value)||50;resetPageAndRender()}));
 document.querySelectorAll('.first-page').forEach(button=>button.addEventListener('click',()=>{if(currentPage>1){currentPage=1;renderTable()}}));

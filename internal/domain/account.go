@@ -40,6 +40,12 @@ type QuotaSnapshot struct {
 	Source    string    `json:"source,omitempty"`
 	FetchedAt time.Time `json:"fetched_at,omitempty"`
 	Error     string    `json:"error,omitempty"`
+	// 测活结果（存活列）；与套餐字段独立，批量刷新套餐不得清掉。
+	// probe_status: live | failure | dead | unusual（空=未测）
+	ProbeStatus string    `json:"probe_status,omitempty"`
+	ProbeHTTP   int       `json:"probe_http,omitempty"`
+	ProbeAt     time.Time `json:"probe_at,omitempty"`
+	ProbeError  string    `json:"probe_error,omitempty"`
 }
 
 type AccountState struct {
