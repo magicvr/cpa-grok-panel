@@ -45,8 +45,9 @@ func TestProjectAccountManaged(t *testing.T) {
 }
 
 func TestLegacyAppliedDemotionNormalizesToHard(t *testing.T) {
+	// Pre-v0.5 empty class with applied state migrates to dead (was hard).
 	demotion := (domain.DemotionState{State: "applied"}).Normalized()
-	if demotion.Class != domain.DemotionClassHard {
+	if demotion.Class != domain.DemotionClassDead {
 		t.Fatalf("demotion=%+v", demotion)
 	}
 }
@@ -59,20 +60,22 @@ func TestProjectAccountExposesDebtAndAppliedClass(t *testing.T) {
 		Failure:  domain.FailureState{DebtScore: 3.25},
 		Demotion: domain.DemotionState{State: "applied", Class: domain.DemotionClassSoft},
 	}, time.Now().UTC(), -100)
-	if view.DebtScore != 3.25 || view.Class != domain.DemotionClassSoft || !view.IsDemoted || !view.CanRestore {
+	// soft migrates to watch for class/is_demoted
+	if view.DebtScore != 3.25 || view.Class != domain.DemotionClassWatch || !view.IsDemoted || !view.CanRestore {
 		t.Fatalf("view=%+v", view)
 	}
 }
 
 func TestProjectAccountDemotionUsesPriorityThreshold(t *testing.T) {
+	// v0.6.0: is_demoted is class/state based — bare low priority is NOT demoted.
 	tests := []struct {
 		name      string
 		priority  int
 		isDemoted bool
 	}{
-		{name: "at threshold", priority: -100, isDemoted: true},
+		{name: "at threshold", priority: -100, isDemoted: false},
 		{name: "normal priority", priority: 0, isDemoted: false},
-		{name: "below threshold", priority: -101, isDemoted: true},
+		{name: "below threshold", priority: -101, isDemoted: false},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

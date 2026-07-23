@@ -15,8 +15,7 @@ func TestFailureDebtDecaysWithoutClearingHistory(t *testing.T) {
 	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
 	store := stateinfra.OpenMemory(now)
 	settings := application.DefaultSettings()
-	settings.SoftDebtThreshold = 100
-	settings.HardDebtThreshold = 200
+	settings.DebtProbeThreshold = 100
 	service := application.NewUsageServiceWithDemotion(store, func() time.Time { return now }, settings, nil)
 
 	handleUsage(t, service, usageEvent("debt-fail", now, "failure", 401))
@@ -28,179 +27,227 @@ func TestFailureDebtDecaysWithoutClearingHistory(t *testing.T) {
 	}
 }
 
-func TestDebtSoftDemotionWritesSoftPriority(t *testing.T) {
+func TestDebtThresholdRequestsAutoProbe(t *testing.T) {
 	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-	store, host, usage, accounts, settings := newStateMachineServices(now)
-
-	if result := handleUsage(t, usage, usageEvent("soft-1", now, "failure", 401)); result.DemotionRequested {
-		t.Fatalf("first failure requested demotion: %+v", result)
+	store, _, usage, _, settings := newStateMachineServices(now)
+	// default debt_fail_401=1.5, threshold=2.0 → second 401 triggers probe
+	if result := handleUsage(t, usage, usageEvent("soft-1", now, "failure", 401)); result.ProbeRequested || result.DemotionRequested {
+		t.Fatalf("first failure should not probe: %+v", result)
 	}
-	if result := handleUsage(t, usage, usageEvent("soft-2", now.Add(time.Minute), "failure", 401)); !result.DemotionRequested {
-		t.Fatalf("second failure did not request soft demotion: %+v", result)
+	if store.View().Accounts["idx-state-machine"].Failure.DebtScore != settings.DebtFail401 {
+		t.Fatalf("debt=%v", store.View().Accounts["idx-state-machine"].Failure.DebtScore)
 	}
-	if err := accounts.ApplyRequestedDemotion("idx-state-machine", settings.DemotionPriority); err != nil {
-		t.Fatal(err)
+	result := handleUsage(t, usage, usageEvent("soft-2", now.Add(time.Minute), "failure", 401))
+	if !result.ProbeRequested || result.DemotionRequested {
+		t.Fatalf("second failure should request probe only: %+v", result)
 	}
-
-	state := store.View().Accounts["idx-state-machine"]
-	if host.files[0].Priority != settings.SoftDemotionPriority || state.Demotion.State != "applied" || state.Demotion.Class != domain.DemotionClassSoft {
-		t.Fatalf("priority=%d state=%+v", host.files[0].Priority, state)
-	}
-	if state.Demotion.BaselinePriority == nil || *state.Demotion.BaselinePriority != 10 {
-		t.Fatalf("baseline=%v", state.Demotion.BaselinePriority)
+	// debt zeroed on threshold
+	if store.View().Accounts["idx-state-machine"].Failure.DebtScore != 0 {
+		t.Fatalf("debt should be zeroed: %v", store.View().Accounts["idx-state-machine"].Failure.DebtScore)
 	}
 }
 
-func TestHardStreakDemotesWithoutDebtContribution(t *testing.T) {
+func TestWatchAnomalyDoNotAccrueDebt(t *testing.T) {
+	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	store, _, usage, _, _ := newStateMachineServices(now)
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		state := snapshot.Accounts["idx-state-machine"]
+		state.Demotion = domain.DemotionState{State: "applied", Class: domain.DemotionClassWatch}
+		state.Failure.DebtScore = 0
+		snapshot.Accounts["idx-state-machine"] = state
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	result := handleUsage(t, usage, usageEvent("watch-fail", now, "failure", 401))
+	if result.ProbeRequested || result.DemotionRequested {
+		t.Fatalf("watch must not trigger: %+v", result)
+	}
+	if store.View().Accounts["idx-state-machine"].Failure.DebtScore != 0 {
+		t.Fatalf("watch debt should freeze: %v", store.View().Accounts["idx-state-machine"].Failure.DebtScore)
+	}
+}
+
+func TestDeadFreezesDebt(t *testing.T) {
+	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	store, _, usage, _, _ := newStateMachineServices(now)
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		state := snapshot.Accounts["idx-state-machine"]
+		state.Demotion = domain.DemotionState{State: "applied", Class: domain.DemotionClassDead}
+		state.Failure.DebtScore = 1.5
+		snapshot.Accounts["idx-state-machine"] = state
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_ = handleUsage(t, usage, usageEvent("dead-fail", now, "failure", 401))
+	if store.View().Accounts["idx-state-machine"].Failure.DebtScore != 1.5 {
+		t.Fatalf("dead debt frozen: %v", store.View().Accounts["idx-state-machine"].Failure.DebtScore)
+	}
+}
+
+func TestApplyProbeManualLiveDoesNotDemote(t *testing.T) {
+	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	store, host, _, accounts, settings := newStateMachineServices(now)
+	view, err := accounts.ApplyProbeResult("idx-state-machine", application.ProbeResult{Status: "live", HTTPStatus: 200}, domain.ProbeSourceManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Quota.ProbeStatus != domain.ProbeStatusLive {
+		t.Fatalf("probe=%+v", view.Quota)
+	}
+	if host.files[0].Priority != 10 {
+		t.Fatalf("priority changed: %d", host.files[0].Priority)
+	}
+	demotion := store.View().Accounts["idx-state-machine"].Demotion.Normalized()
+	if demotion.Class != domain.DemotionClassNone {
+		t.Fatalf("manual live must not demote: %+v settings=%+v", demotion, settings)
+	}
+}
+
+func TestApplyProbeManualDeadWritesDeadTier(t *testing.T) {
+	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	store, host, _, accounts, settings := newStateMachineServices(now)
+	view, err := accounts.ApplyProbeResult("idx-state-machine", application.ProbeResult{Status: "dead", HTTPStatus: 403}, domain.ProbeSourceManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !view.IsDemoted || view.Class != domain.DemotionClassDead {
+		t.Fatalf("view=%+v", view)
+	}
+	if host.files[0].Priority != settings.DeadPriority {
+		t.Fatalf("priority=%d want %d", host.files[0].Priority, settings.DeadPriority)
+	}
+	state := store.View().Accounts["idx-state-machine"]
+	if state.Demotion.Class != domain.DemotionClassDead || state.Demotion.State != "applied" {
+		t.Fatalf("demotion=%+v", state.Demotion)
+	}
+	if state.Demotion.NextProbeAt != nil {
+		t.Fatalf("dead should clear next probe: %+v", state.Demotion.NextProbeAt)
+	}
+}
+
+func TestApplyProbeAutoLiveEntersWatch(t *testing.T) {
+	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	store, host, _, accounts, settings := newStateMachineServices(now)
+	view, err := accounts.ApplyProbeResult("idx-state-machine", application.ProbeResult{Status: "live", HTTPStatus: 200}, domain.ProbeSourceAuto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Class != domain.DemotionClassWatch || host.files[0].Priority != settings.WatchPriority {
+		t.Fatalf("view class=%s priority=%d", view.Class, host.files[0].Priority)
+	}
+	demotion := store.View().Accounts["idx-state-machine"].Demotion
+	if demotion.NextProbeAt == nil {
+		t.Fatal("watch should schedule next probe")
+	}
+	want := now.Add(time.Duration(settings.WatchReprobeMinutes) * time.Minute)
+	if !demotion.NextProbeAt.Equal(want) {
+		t.Fatalf("next=%v want %v", demotion.NextProbeAt, want)
+	}
+}
+
+func TestApplyProbeAutoLiveOnWatchRestoresNone(t *testing.T) {
+	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	store, host, _, accounts, settings := newStateMachineServices(now)
+	// enter watch first
+	if _, err := accounts.ApplyProbeResult("idx-state-machine", application.ProbeResult{Status: "live", HTTPStatus: 200}, domain.ProbeSourceAuto); err != nil {
+		t.Fatal(err)
+	}
+	if host.files[0].Priority != settings.WatchPriority {
+		t.Fatalf("priority=%d", host.files[0].Priority)
+	}
+	// re-probe still live → restore
+	view, err := accounts.ApplyProbeResult("idx-state-machine", application.ProbeResult{Status: "live", HTTPStatus: 200}, domain.ProbeSourceAuto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.IsDemoted || view.Class != domain.DemotionClassNone {
+		t.Fatalf("view=%+v", view)
+	}
+	if host.files[0].Priority != settings.DefaultRestorePriority {
+		t.Fatalf("priority=%d want %d", host.files[0].Priority, settings.DefaultRestorePriority)
+	}
+	demotion := store.View().Accounts["idx-state-machine"].Demotion
+	if demotion.State != "restored" || demotion.NextProbeAt != nil {
+		t.Fatalf("demotion=%+v", demotion)
+	}
+}
+
+func TestApplyProbeCoolingIsAnomaly(t *testing.T) {
+	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	_, host, _, accounts, settings := newStateMachineServices(now)
+	view, err := accounts.ApplyProbeResult("idx-state-machine", application.ProbeResult{Status: "cooling", HTTPStatus: 429}, domain.ProbeSourceAuto)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if view.Class != domain.DemotionClassAnomaly || host.files[0].Priority != settings.AnomalyPriority {
+		t.Fatalf("class=%s priority=%d", view.Class, host.files[0].Priority)
+	}
+}
+
+func TestSuccessRestoresDemotedAccount(t *testing.T) {
 	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
 	store, host, usage, accounts, settings := newStateMachineServices(now)
+	if _, err := accounts.ApplyProbeResult("idx-state-machine", application.ProbeResult{Status: "error", HTTPStatus: 500}, domain.ProbeSourceAuto); err != nil {
+		t.Fatal(err)
+	}
+	if host.files[0].Priority != settings.AnomalyPriority {
+		t.Fatalf("priority=%d", host.files[0].Priority)
+	}
+	result := handleUsage(t, usage, usageEvent("ok-1", now.Add(time.Minute), "success", 0))
+	if !result.DemotionRequested {
+		t.Fatalf("success should request restore: %+v", result)
+	}
+	if err := accounts.ApplyRequestedDemotion("idx-state-machine", settings.DefaultRestorePriority); err != nil {
+		t.Fatal(err)
+	}
+	state := store.View().Accounts["idx-state-machine"]
+	if host.files[0].Priority != settings.DefaultRestorePriority || state.Demotion.Class != domain.DemotionClassNone {
+		t.Fatalf("priority=%d demotion=%+v", host.files[0].Priority, state.Demotion)
+	}
+	if state.Failure.DebtScore != 0 {
+		t.Fatalf("debt should clear: %v", state.Failure.DebtScore)
+	}
+	if state.Quota.ProbeStatus != domain.ProbeStatusLive {
+		t.Fatalf("probe should be live: %s", state.Quota.ProbeStatus)
+	}
+}
+
+func TestLegacyClassMigration(t *testing.T) {
+	for _, tc := range []struct {
+		in, want string
+	}{
+		{"soft", domain.DemotionClassWatch},
+		{"half_open", domain.DemotionClassWatch},
+		{"hard", domain.DemotionClassDead},
+	} {
+		got := domain.DemotionState{Class: tc.in, State: "applied"}.Normalized().Class
+		if got != tc.want {
+			t.Fatalf("%s → %s want %s", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestHardStreakTriggersProbeNotDirectDead(t *testing.T) {
+	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	store, _, usage, _, settings := newStateMachineServices(now)
 	settings.CountStatus5XX = true
+	settings.DebtProbeThreshold = 100 // prevent debt path
 	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
 		snapshot.Settings = &settings
 		return nil
 	}); err != nil {
 		t.Fatal(err)
 	}
-
 	for hit := 1; hit <= settings.AttributedFailureThreshold; hit++ {
 		result := handleUsage(t, usage, usageEvent(fmt.Sprintf("hard-%d", hit), now.Add(time.Duration(hit)*time.Minute), "failure", 500))
-		if result.DemotionRequested != (hit == settings.AttributedFailureThreshold) {
+		if result.ProbeRequested != (hit == settings.AttributedFailureThreshold) {
 			t.Fatalf("hit=%d result=%+v", hit, result)
 		}
-	}
-	if err := accounts.ApplyRequestedDemotion("idx-state-machine", settings.DemotionPriority); err != nil {
-		t.Fatal(err)
-	}
-	state := store.View().Accounts["idx-state-machine"]
-	if host.files[0].Priority != settings.DemotionPriority || state.Demotion.Class != domain.DemotionClassHard || state.Failure.DebtScore != 0 {
-		t.Fatalf("priority=%d state=%+v", host.files[0].Priority, state)
-	}
-}
-
-func TestSoftDemotionUpgradesToHard(t *testing.T) {
-	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-	store, host, usage, accounts, settings := newStateMachineServices(now)
-
-	handleUsage(t, usage, usageEvent("upgrade-1", now, "failure", 401))
-	handleUsage(t, usage, usageEvent("upgrade-2", now.Add(time.Minute), "failure", 401))
-	if err := accounts.ApplyRequestedDemotion("idx-state-machine", settings.DemotionPriority); err != nil {
-		t.Fatal(err)
-	}
-	if host.files[0].Priority != settings.SoftDemotionPriority {
-		t.Fatalf("soft priority=%d", host.files[0].Priority)
-	}
-
-	result := handleUsage(t, usage, usageEvent("upgrade-3", now.Add(2*time.Minute), "failure", 401))
-	if !result.DemotionRequested {
-		t.Fatalf("hard upgrade not requested: %+v", result)
-	}
-	if err := accounts.ApplyRequestedDemotion("idx-state-machine", settings.DemotionPriority); err != nil {
-		t.Fatal(err)
-	}
-	state := store.View().Accounts["idx-state-machine"]
-	if host.files[0].Priority != settings.DemotionPriority || state.Demotion.Class != domain.DemotionClassHard || state.Demotion.RestoreCooldownHours != 12 {
-		t.Fatalf("priority=%d state=%+v", host.files[0].Priority, state)
-	}
-	if state.Demotion.BaselinePriority == nil || *state.Demotion.BaselinePriority != 10 {
-		t.Fatalf("baseline=%v", state.Demotion.BaselinePriority)
-	}
-}
-
-func TestHalfOpenSuccessThresholdRestoresBaseline(t *testing.T) {
-	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-	store, host, usage, accounts, settings := newHardAppliedAccount(t, now)
-	now = now.Add(6 * time.Hour)
-	accounts = application.NewAccountsService(host, store, func() time.Time { return now }, settings)
-
-	entered, err := accounts.RestorePriorityAfterCooldown("idx-state-machine")
-	if err != nil || !entered {
-		t.Fatalf("entered=%t err=%v", entered, err)
-	}
-	state := store.View().Accounts["idx-state-machine"]
-	if host.files[0].Priority != settings.SoftDemotionPriority || state.Demotion.Class != domain.DemotionClassHalfOpen || state.Demotion.RestoreCooldownHours != 6 {
-		t.Fatalf("priority=%d state=%+v", host.files[0].Priority, state)
-	}
-
-	usage = application.NewUsageServiceWithDemotion(store, func() time.Time { return now }, settings, nil)
-	first := handleUsage(t, usage, usageEvent("half-success-1", now.Add(time.Minute), "success", 0))
-	if first.DemotionRequested || store.View().Accounts["idx-state-machine"].Demotion.HalfOpenSuccesses != 1 {
-		t.Fatalf("first=%+v state=%+v", first, store.View().Accounts["idx-state-machine"])
-	}
-	second := handleUsage(t, usage, usageEvent("half-success-2", now.Add(2*time.Minute), "success", 0))
-	if !second.DemotionRequested {
-		t.Fatalf("second=%+v", second)
-	}
-	if err := accounts.ApplyRequestedDemotion("idx-state-machine", settings.DemotionPriority); err != nil {
-		t.Fatal(err)
-	}
-	state = store.View().Accounts["idx-state-machine"]
-	if host.files[0].Priority != 10 || state.Demotion.Class != domain.DemotionClassNone || state.Demotion.State != "restored" || state.Failure != (domain.FailureState{}) {
-		t.Fatalf("priority=%d state=%+v", host.files[0].Priority, state)
-	}
-}
-
-func TestHalfOpenSuccessThresholdRestoresLowBaselineWithoutRedemotion(t *testing.T) {
-	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-	store, host, _, accounts, settings := newHardAppliedAccount(t, now)
-	baseline := -200
-	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
-		state := snapshot.Accounts["idx-state-machine"]
-		state.Demotion.BaselinePriority = &baseline
-		snapshot.Accounts["idx-state-machine"] = state
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	now = now.Add(6 * time.Hour)
-	accounts = application.NewAccountsService(host, store, func() time.Time { return now }, settings)
-
-	entered, err := accounts.RestorePriorityAfterCooldown("idx-state-machine")
-	if err != nil || !entered {
-		t.Fatalf("entered=%t err=%v", entered, err)
-	}
-	usage := application.NewUsageServiceWithDemotion(store, func() time.Time { return now }, settings, nil)
-	handleUsage(t, usage, usageEvent("half-low-success-1", now.Add(time.Minute), "success", 0))
-	second := handleUsage(t, usage, usageEvent("half-low-success-2", now.Add(2*time.Minute), "success", 0))
-	if !second.DemotionRequested {
-		t.Fatalf("second=%+v", second)
-	}
-	if err := accounts.ApplyRequestedDemotion("idx-state-machine", settings.DemotionPriority); err != nil {
-		t.Fatal(err)
-	}
-
-	items, _, err := accounts.List("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(items) != 1 || items[0].Priority != baseline || items[0].IsDemoted || items[0].CanRestore {
-		t.Fatalf("items=%+v", items)
-	}
-	state := store.View().Accounts["idx-state-machine"].Demotion
-	if state.State != "restored" || state.Class != domain.DemotionClassNone {
-		t.Fatalf("demotion=%+v", state)
-	}
-}
-
-func TestHalfOpenAttributedFailureReturnsHardAndAdvancesCooldown(t *testing.T) {
-	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
-	store, host, _, accounts, settings := newHardAppliedAccount(t, now)
-	now = now.Add(6 * time.Hour)
-	accounts = application.NewAccountsService(host, store, func() time.Time { return now }, settings)
-	if entered, err := accounts.RestorePriorityAfterCooldown("idx-state-machine"); err != nil || !entered {
-		t.Fatalf("entered=%t err=%v", entered, err)
-	}
-
-	usage := application.NewUsageServiceWithDemotion(store, func() time.Time { return now }, settings, nil)
-	result := handleUsage(t, usage, usageEvent("half-failure", now.Add(time.Minute), "failure", 401))
-	if !result.DemotionRequested {
-		t.Fatalf("result=%+v", result)
-	}
-	if err := accounts.ApplyRequestedDemotion("idx-state-machine", settings.DemotionPriority); err != nil {
-		t.Fatal(err)
-	}
-	state := store.View().Accounts["idx-state-machine"]
-	if host.files[0].Priority != settings.DemotionPriority || state.Demotion.Class != domain.DemotionClassHard || state.Demotion.RestoreCooldownHours != 12 {
-		t.Fatalf("priority=%d state=%+v", host.files[0].Priority, state)
+		if result.DemotionRequested {
+			t.Fatalf("should not direct-demote: hit=%d", hit)
+		}
 	}
 }
 
@@ -213,25 +260,6 @@ func newStateMachineServices(now time.Time) (*stateinfra.Store, *accountHost, *a
 	}
 	usage := application.NewUsageServiceWithDemotion(store, func() time.Time { return now }, settings, nil)
 	accounts := application.NewAccountsService(host, store, func() time.Time { return now }, settings)
-	return store, host, usage, accounts, settings
-}
-
-func newHardAppliedAccount(t *testing.T, now time.Time) (*stateinfra.Store, *accountHost, *application.UsageService, *application.AccountsService, application.Settings) {
-	t.Helper()
-	store, host, usage, accounts, settings := newStateMachineServices(now)
-	settings.CountStatus5XX = true
-	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
-		snapshot.Settings = &settings
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	for hit := 1; hit <= settings.AttributedFailureThreshold; hit++ {
-		handleUsage(t, usage, usageEvent(fmt.Sprintf("prepare-hard-%d", hit), now.Add(time.Duration(hit)*time.Minute), "failure", 500))
-	}
-	if err := accounts.ApplyRequestedDemotion("idx-state-machine", settings.DemotionPriority); err != nil {
-		t.Fatal(err)
-	}
 	return store, host, usage, accounts, settings
 }
 

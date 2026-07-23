@@ -95,7 +95,7 @@ func TestResignRefreshTokenSuccessUpdatesAuthFile(t *testing.T) {
 	}
 	// Demotion must remain applied — resign must not auto-restore.
 	state := store.View().Accounts["idx-resign"]
-	if state.Demotion.State != "applied" || state.Demotion.Class != domain.DemotionClassHard {
+	if state.Demotion.State != "applied" || state.Demotion.Class != domain.DemotionClassDead {
 		t.Fatalf("demotion changed: %+v", state.Demotion)
 	}
 }

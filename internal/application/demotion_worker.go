@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/magicvr/cpa-grok-panel/internal/domain"
 	stateinfra "github.com/magicvr/cpa-grok-panel/internal/infrastructure/state"
 )
 
@@ -21,7 +22,7 @@ type DemotionWorker struct {
 
 func NewDemotionWorker(accounts *AccountsService, store *stateinfra.Store, settings Settings) *DemotionWorker {
 	return &DemotionWorker{
-		accounts: accounts, store: store, settingsFallback: settings,
+		accounts: accounts, store: store, settingsFallback: NormalizeSettings(settings),
 		queue: make(chan string, demotionQueueSize), stop: make(chan struct{}), done: make(chan struct{}),
 	}
 }
@@ -31,6 +32,11 @@ func (worker *DemotionWorker) Start() {
 }
 
 func (worker *DemotionWorker) Enqueue(authIndex string) {
+	// Skip dead accounts for automatic priority rewrite recovery.
+	demotion := worker.store.View().Accounts[authIndex].Demotion.Normalized()
+	if demotion.Class == domain.DemotionClassDead && demotion.State == "applied" {
+		return
+	}
 	select {
 	case worker.queue <- authIndex:
 	default:
@@ -51,7 +57,7 @@ func (worker *DemotionWorker) run() {
 	for {
 		select {
 		case authIndex := <-worker.queue:
-			_ = worker.accounts.ApplyRequestedDemotion(authIndex, worker.settings().DemotionPriority)
+			_ = worker.accounts.ApplyRequestedDemotion(authIndex, worker.settings().DeadPriority)
 		case <-ticker.C:
 			worker.processRequested()
 		case <-worker.stop:
@@ -63,15 +69,18 @@ func (worker *DemotionWorker) run() {
 func (worker *DemotionWorker) processRequested() {
 	_ = worker.accounts.ReconcileDemotions()
 	for authIndex, account := range worker.store.View().Accounts {
-		if account.Demotion.Normalized().State == "requested" {
-			_ = worker.accounts.ApplyRequestedDemotion(authIndex, worker.settings().DemotionPriority)
+		demotion := account.Demotion.Normalized()
+		if demotion.State != "requested" {
+			continue
 		}
+		// Still apply requested writes for dead (manual demote path); only skip re-enqueue of applied dead.
+		_ = worker.accounts.ApplyRequestedDemotion(authIndex, worker.settings().DeadPriority)
 	}
 }
 
 func (worker *DemotionWorker) settings() Settings {
 	if settings := worker.store.View().Settings; settings != nil {
-		return *settings
+		return NormalizeSettings(*settings)
 	}
-	return worker.settingsFallback
+	return NormalizeSettings(worker.settingsFallback)
 }

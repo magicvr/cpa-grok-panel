@@ -4,13 +4,17 @@
     {
       "id": "cpa-grok-panel",
       "name": "Grok 账号面板",
-      "description": "xAI OAuth 账号 soft/hard 降权、half-open 恢复、安全删除与受控写操作面板",
+      "description": "xAI OAuth 账号测活降权（观察/异常/死号）、套餐与安全删除面板",
       "author": "magicvr",
-      "version": "0.5.11",
+      "version": "0.6.0",
       "repository": "https://github.com/magicvr/cpa-grok-panel",
       "homepage": "https://github.com/magicvr/cpa-grok-panel",
       "license": "MIT",
-      "tags": ["Management", "Grok", "OAuth"]
+      "tags": [
+        "Management",
+        "Grok",
+        "OAuth"
+      ]
     }
   ]
 }

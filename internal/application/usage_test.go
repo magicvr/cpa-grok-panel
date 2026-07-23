@@ -32,14 +32,16 @@ func TestParseCPAUsageRecordCounts401TowardThreshold(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if result.DemotionRequested != (hit >= 2) {
-			t.Fatalf("hit=%d result=%+v state=%+v", hit, result, store.View().Accounts["a1"].Demotion)
+		// debt_fail_401=1.5, threshold=2.0 → probe at hit 2; debt zeroed then hit 3 accrues again without threshold
+		if hit == 2 && !result.ProbeRequested {
+			t.Fatalf("hit=%d expected probe: %+v", hit, result)
+		}
+		if result.DemotionRequested {
+			t.Fatalf("hit=%d should not direct demote: %+v", hit, result)
 		}
 	}
-	if store.View().Accounts["a1"].Demotion.State != "requested" {
-		t.Fatalf("state=%+v", store.View().Accounts["a1"].Demotion)
-	}
 }
+
 
 func TestParseCPAUsageRecordFieldCompatibility(t *testing.T) {
 	requestedAt := "2026-07-16T12:34:56.789Z"
@@ -149,6 +151,7 @@ func TestUsageServiceWeakDedupe(t *testing.T) {
 }
 
 func TestUsageDemotion401NeedsThreshold(t *testing.T) {
+	// v0.6.0: debt/streak triggers auto probe (ProbeRequested), not direct demotion.
 	dir := t.TempDir()
 	store, err := stateinfra.Open(dir, time.Now().UTC())
 	if err != nil {
@@ -157,6 +160,7 @@ func TestUsageDemotion401NeedsThreshold(t *testing.T) {
 	defer store.Close()
 	settings := application.DefaultSettings()
 	settings.AttributedFailureThreshold = 3
+	settings.DebtProbeThreshold = 3.0 // 1.5+1.5=3 → probe on 2nd 401
 	settings.AttributedFailureStatuses = nil
 	settings.CountStatus429 = false
 	settings.CountStatus5XX = false
@@ -167,8 +171,13 @@ func TestUsageDemotion401NeedsThreshold(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if result.DemotionRequested != (hit >= 2) {
-			t.Fatalf("hit=%d result=%+v state=%+v", hit, result, store.View().Accounts["a1"].Demotion)
+		if result.DemotionRequested {
+			t.Fatalf("hit=%d should not direct-demote: %+v", hit, result)
+		}
+		// hit1: debt=1.5 streak=1; hit2: debt=3→probe+zero streak=2; hit3: debt=1.5 streak=3→probe via streak
+		wantProbe := hit >= 2
+		if result.ProbeRequested != wantProbe {
+			t.Fatalf("hit=%d result=%+v debt=%v streak=%d", hit, result, store.View().Accounts["a1"].Failure.DebtScore, store.View().Accounts["a1"].Failure.ConsecutiveAttributedFailures)
 		}
 	}
 }
@@ -208,6 +217,7 @@ func TestAppliedDemotionPriorityDriftReconcilesToRequested(t *testing.T) {
 }
 
 func TestUsageDemotion429NeedsThreshold(t *testing.T) {
+	// v0.6.0: streak threshold → ProbeRequested (auto probe), not DemotionRequested.
 	dir := t.TempDir()
 	store, err := stateinfra.Open(dir, time.Now().UTC())
 	if err != nil {
@@ -216,6 +226,7 @@ func TestUsageDemotion429NeedsThreshold(t *testing.T) {
 	defer store.Close()
 	settings := application.DefaultSettings()
 	settings.AttributedFailureThreshold = 3
+	settings.DebtProbeThreshold = 100 // only streak path
 	settings.CountStatus429 = true
 	svc := application.NewUsageServiceWithDemotion(store, time.Now, settings, nil)
 	for i := 1; i <= 2; i++ {
@@ -224,8 +235,8 @@ func TestUsageDemotion429NeedsThreshold(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if result.DemotionRequested {
-			t.Fatalf("429 should not demote before threshold on hit %d", i)
+		if result.DemotionRequested || result.ProbeRequested {
+			t.Fatalf("429 should not probe/demote before threshold on hit %d", i)
 		}
 	}
 	event := domain.UsageEvent{AuthIndex: "a2", EventID: "e3", Outcome: "failure", StatusCode: 429, Provider: "xai", OccurredAt: time.Now().UTC()}
@@ -233,8 +244,8 @@ func TestUsageDemotion429NeedsThreshold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.DemotionRequested {
-		t.Fatalf("429 should demote at threshold: streak=%d", store.View().Accounts["a2"].Failure.ConsecutiveAttributedFailures)
+	if result.DemotionRequested || !result.ProbeRequested {
+		t.Fatalf("429 should probe at streak threshold: result=%+v streak=%d", result, store.View().Accounts["a2"].Failure.ConsecutiveAttributedFailures)
 	}
 }
 
@@ -242,6 +253,7 @@ func TestUsageDemotionUsesUpdatedSettings(t *testing.T) {
 	store := stateinfra.OpenMemory(time.Now().UTC())
 	initial := application.DefaultSettings()
 	initial.AttributedFailureThreshold = 10
+	initial.DebtProbeThreshold = 100
 	initial.CountStatus429 = false
 	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
 		snapshot.Settings = &initial
@@ -251,7 +263,7 @@ func TestUsageDemotionUsesUpdatedSettings(t *testing.T) {
 	}
 	svc := application.NewUsageServiceWithDemotion(store, time.Now, initial, nil)
 	first := domain.UsageEvent{AuthIndex: "hot", EventID: "before", Outcome: "failure", StatusCode: 429, Provider: "xai", OccurredAt: time.Now().UTC()}
-	if result, err := svc.Handle(first); err != nil || result.DemotionRequested {
+	if result, err := svc.Handle(first); err != nil || result.DemotionRequested || result.ProbeRequested {
 		t.Fatalf("before update result=%+v err=%v", result, err)
 	}
 
@@ -271,7 +283,10 @@ func TestUsageDemotionUsesUpdatedSettings(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if (index == 2) != result.DemotionRequested {
+		if result.DemotionRequested {
+			t.Fatalf("hit=%d should not direct demote: %+v", index, result)
+		}
+		if (index == 2) != result.ProbeRequested {
 			t.Fatalf("hit=%d result=%+v state=%+v", index, result, store.View().Accounts["hot"])
 		}
 	}
