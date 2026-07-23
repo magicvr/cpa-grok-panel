@@ -134,8 +134,50 @@ func TestHalfOpenSuccessThresholdRestoresBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 	state = store.View().Accounts["idx-state-machine"]
-	if host.files[0].Priority != 10 || state.Demotion.Class != domain.DemotionClassNone || state.Demotion.State != "none" || state.Failure != (domain.FailureState{}) {
+	if host.files[0].Priority != 10 || state.Demotion.Class != domain.DemotionClassNone || state.Demotion.State != "restored" || state.Failure != (domain.FailureState{}) {
 		t.Fatalf("priority=%d state=%+v", host.files[0].Priority, state)
+	}
+}
+
+func TestHalfOpenSuccessThresholdRestoresLowBaselineWithoutRedemotion(t *testing.T) {
+	now := time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC)
+	store, host, _, accounts, settings := newHardAppliedAccount(t, now)
+	baseline := -200
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		state := snapshot.Accounts["idx-state-machine"]
+		state.Demotion.BaselinePriority = &baseline
+		snapshot.Accounts["idx-state-machine"] = state
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(6 * time.Hour)
+	accounts = application.NewAccountsService(host, store, func() time.Time { return now }, settings)
+
+	entered, err := accounts.RestorePriorityAfterCooldown("idx-state-machine")
+	if err != nil || !entered {
+		t.Fatalf("entered=%t err=%v", entered, err)
+	}
+	usage := application.NewUsageServiceWithDemotion(store, func() time.Time { return now }, settings, nil)
+	handleUsage(t, usage, usageEvent("half-low-success-1", now.Add(time.Minute), "success", 0))
+	second := handleUsage(t, usage, usageEvent("half-low-success-2", now.Add(2*time.Minute), "success", 0))
+	if !second.DemotionRequested {
+		t.Fatalf("second=%+v", second)
+	}
+	if err := accounts.ApplyRequestedDemotion("idx-state-machine", settings.DemotionPriority); err != nil {
+		t.Fatal(err)
+	}
+
+	items, _, err := accounts.List("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Priority != baseline || items[0].IsDemoted || items[0].CanRestore {
+		t.Fatalf("items=%+v", items)
+	}
+	state := store.View().Accounts["idx-state-machine"].Demotion
+	if state.State != "restored" || state.Class != domain.DemotionClassNone {
+		t.Fatalf("demotion=%+v", state)
 	}
 }
 

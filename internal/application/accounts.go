@@ -779,7 +779,10 @@ func (service *AccountsService) markRequestedPriorityApplied(authIndex, exactFil
 		now := service.now().UTC()
 		switch class {
 		case domain.DemotionClassNone:
-			demotion.State = "none"
+			// A none-class request is the successful half-open recovery write-back.
+			// Preserve that provenance so a legitimately low baseline is not
+			// reclassified as an active demotion by the priority fallback.
+			demotion.State = "restored"
 			demotion.Class = domain.DemotionClassNone
 			demotion.HalfOpenSince = nil
 			demotion.HalfOpenSuccesses = 0

@@ -87,6 +87,21 @@ func TestProjectAccountDemotionUsesPriorityThreshold(t *testing.T) {
 	}
 }
 
+func TestProjectAccountRestoredLowBaselineIsNotDemoted(t *testing.T) {
+	baseline := -200
+	view := domain.ProjectAccount(domain.AuthFile{
+		AuthIndex: "idx", Name: "xai-a.json", Provider: "xai", Type: "xai",
+		AccountType: "oauth", Priority: baseline,
+	}, domain.AccountState{
+		Demotion: domain.DemotionState{
+			State: "restored", Class: domain.DemotionClassNone, BaselinePriority: &baseline,
+		},
+	}, time.Now().UTC(), -100)
+	if view.IsDemoted || view.CanRestore {
+		t.Fatalf("restored low baseline must not be demoted: %+v", view)
+	}
+}
+
 func TestApplyHostRequestDisplayPrefersHostDeltaWhenHigher(t *testing.T) {
 	// baseline=0 → host delta equals host totals; host > plugin → show host.
 	baseline := &domain.HostRequestBaseline{Success: 0, Failed: 0}
