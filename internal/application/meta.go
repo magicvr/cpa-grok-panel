@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/magicvr/cpa-grok-panel/internal/config"
+	"github.com/magicvr/cpa-grok-panel/internal/domain"
 	stateinfra "github.com/magicvr/cpa-grok-panel/internal/infrastructure/state"
 )
 
@@ -20,18 +21,15 @@ func DefaultSettings() Settings {
 		Revision: 1, AutoRefreshEnabled: true, AutoRefreshIntervalSeconds: 5,
 		DailyUsageResetEnabled: false, DailyUsageResetTime: "00:00",
 		OperationConcurrency: 1, BatchOperationConcurrency: 10, AttributedFailureThreshold: 3,
-		// 401/403 always count toward the shared consecutive-failure threshold (legacy streak;
-		// v0.6.0 debt-based auto-probe is the primary path).
 		AttributedFailureStatuses: []int{401, 403},
 		DebtProbeThreshold:        2.0,
 		DebtFail401:               1.5, DebtFail429: 0.5, DebtSuccessDecay: 1.0,
+		PriorityLive: 0, PriorityInvalid: -50, PriorityDead: -100,
+		PriorityThrottled: -50, PriorityUnknown: 10, PriorityError: -50,
+		// Legacy mirrors (ignored by v0.7 policy; kept for older JSON readers).
 		WatchPriority: -10, AnomalyPriority: -50, DeadPriority: -100,
-		DefaultRestorePriority: 0,
-		WatchReprobeMinutes:    30, AnomalyReprobeHours: 6,
-		// Legacy mirrors so older persisted JSON / tests that still read these fields work.
-		DemotionPriority: -100, SoftDemotionPriority: -10, SoftDebtThreshold: 2.0, HardDebtThreshold: 4.5,
-		SoftDemotionEnabled: true, CooldownRestoreEnabled: false, CooldownRestoreSkipBots: true,
-		HalfOpenEnabled: false, HalfOpenSuccessThreshold: 2,
+		DefaultRestorePriority: 0, DemotionPriority: -100, SoftDemotionPriority: -10,
+		SoftDebtThreshold: 2.0, HardDebtThreshold: 4.5,
 		ProtectionLevel: "strict", FreeUserDailyTokenLimit: 2_000_000,
 		CountStatus429: false, CountStatus5XX: false,
 		DefaultTokenCapacity: 1_000_000, PerAccountTokenCapacity: map[string]uint64{},
@@ -40,8 +38,26 @@ func DefaultSettings() Settings {
 	}
 }
 
+// PriorityForProbeStatus returns the configured priority for a canonical probe status.
+func PriorityForProbeStatus(settings Settings, status string) int {
+	settings = NormalizeSettings(settings)
+	switch domain.CanonicalProbeStatus(status, 0) {
+	case domain.ProbeStatusLive:
+		return settings.PriorityLive
+	case domain.ProbeStatusInvalid:
+		return settings.PriorityInvalid
+	case domain.ProbeStatusDead:
+		return settings.PriorityDead
+	case domain.ProbeStatusThrottled:
+		return settings.PriorityThrottled
+	case domain.ProbeStatusError:
+		return settings.PriorityError
+	default:
+		return settings.PriorityUnknown
+	}
+}
+
 // ValidateOutboundProxyURL accepts empty (env fallback) or a parseable absolute proxy URL.
-// Does not log the value (may contain credentials).
 func ValidateOutboundProxyURL(value string) error {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -82,27 +98,56 @@ func LoadSettings() Settings {
 	settings.DebtFail401 = envFloat("CPA_GROK_DEBT_FAIL_401", settings.DebtFail401, 0, 1_000_000)
 	settings.DebtFail429 = envFloat("CPA_GROK_DEBT_FAIL_429", settings.DebtFail429, 0, 1_000_000)
 	settings.DebtSuccessDecay = envFloat("CPA_GROK_DEBT_SUCCESS_DECAY", settings.DebtSuccessDecay, 0, 1_000_000)
-	settings.WatchPriority = envInt("CPA_GROK_WATCH_PRIORITY", settings.WatchPriority, -1_000_000, 1_000_000)
-	settings.AnomalyPriority = envInt("CPA_GROK_ANOMALY_PRIORITY", settings.AnomalyPriority, -1_000_000, 1_000_000)
-	settings.DeadPriority = envInt("CPA_GROK_DEAD_PRIORITY", settings.DeadPriority, -1_000_000, 1_000_000)
-	// Legacy alias: CPA_GROK_DEMOTION_PRIORITY → dead_priority
+	settings.PriorityLive = envInt("CPA_GROK_PRIORITY_LIVE", settings.PriorityLive, -1_000_000, 1_000_000)
+	settings.PriorityInvalid = envInt("CPA_GROK_PRIORITY_INVALID", settings.PriorityInvalid, -1_000_000, 1_000_000)
+	settings.PriorityDead = envInt("CPA_GROK_PRIORITY_DEAD", settings.PriorityDead, -1_000_000, 1_000_000)
+	settings.PriorityThrottled = envInt("CPA_GROK_PRIORITY_THROTTLED", settings.PriorityThrottled, -1_000_000, 1_000_000)
+	settings.PriorityUnknown = envInt("CPA_GROK_PRIORITY_UNKNOWN", settings.PriorityUnknown, -1_000_000, 1_000_000)
+	settings.PriorityError = envInt("CPA_GROK_PRIORITY_ERROR", settings.PriorityError, -1_000_000, 1_000_000)
+	// Legacy env aliases → new fields when new env unset.
+	if v := strings.TrimSpace(os.Getenv("CPA_GROK_DEAD_PRIORITY")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			if strings.TrimSpace(os.Getenv("CPA_GROK_PRIORITY_DEAD")) == "" {
+				settings.PriorityDead = n
+			}
+			settings.DeadPriority = n
+		}
+	}
 	if v := strings.TrimSpace(os.Getenv("CPA_GROK_DEMOTION_PRIORITY")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
-			settings.DeadPriority = n
+			if strings.TrimSpace(os.Getenv("CPA_GROK_PRIORITY_DEAD")) == "" && strings.TrimSpace(os.Getenv("CPA_GROK_DEAD_PRIORITY")) == "" {
+				settings.PriorityDead = n
+			}
 			settings.DemotionPriority = n
+			settings.DeadPriority = n
 		}
-	} else {
-		settings.DemotionPriority = settings.DeadPriority
 	}
-	settings.DefaultRestorePriority = envInt("CPA_GROK_DEFAULT_RESTORE_PRIORITY", settings.DefaultRestorePriority, -1_000_000, 1_000_000)
-	settings.WatchReprobeMinutes = envInt("CPA_GROK_WATCH_REPROBE_MINUTES", settings.WatchReprobeMinutes, 1, 10_080)
-	settings.AnomalyReprobeHours = envInt("CPA_GROK_ANOMALY_REPROBE_HOURS", settings.AnomalyReprobeHours, 1, 168)
+	if v := strings.TrimSpace(os.Getenv("CPA_GROK_DEFAULT_RESTORE_PRIORITY")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			if strings.TrimSpace(os.Getenv("CPA_GROK_PRIORITY_LIVE")) == "" {
+				settings.PriorityLive = n
+			}
+			settings.DefaultRestorePriority = n
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv("CPA_GROK_ANOMALY_PRIORITY")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			if strings.TrimSpace(os.Getenv("CPA_GROK_PRIORITY_ERROR")) == "" {
+				settings.PriorityError = n
+				settings.PriorityInvalid = n
+				settings.PriorityThrottled = n
+			}
+			settings.AnomalyPriority = n
+		}
+	}
 	settings.CountStatus429 = envBool("CPA_GROK_COUNT_429", false)
 	settings.CountStatus5XX = envBool("CPA_GROK_COUNT_5XX", false)
-	return settings
+	return NormalizeSettings(settings)
 }
 
-// NormalizeSettings fills v0.6.0 fields from legacy values when upgrading persisted settings.
+// NormalizeSettings fills v0.7.0 priority_* from legacy fields when upgrading persisted settings.
+// Note: priority_live default is 0 (valid). Other priority_* zeros are filled with product defaults
+// unless a fully-legacy blob is detected (all priority_* zero with legacy watch/anomaly/dead set).
 func NormalizeSettings(settings Settings) Settings {
 	if settings.DebtProbeThreshold <= 0 {
 		if settings.SoftDebtThreshold > 0 {
@@ -111,30 +156,85 @@ func NormalizeSettings(settings Settings) Settings {
 			settings.DebtProbeThreshold = 2.0
 		}
 	}
-	if settings.WatchPriority == 0 && settings.SoftDemotionPriority != 0 {
-		settings.WatchPriority = settings.SoftDemotionPriority
-	}
-	if settings.WatchPriority == 0 {
-		settings.WatchPriority = -10
-	}
-	if settings.AnomalyPriority == 0 {
-		settings.AnomalyPriority = -50
-	}
-	if settings.DeadPriority == 0 {
-		if settings.DemotionPriority != 0 {
-			settings.DeadPriority = settings.DemotionPriority
+	defaults := DefaultSettings()
+	allNewZero := settings.PriorityLive == 0 && settings.PriorityInvalid == 0 &&
+		settings.PriorityDead == 0 && settings.PriorityThrottled == 0 &&
+		settings.PriorityUnknown == 0 && settings.PriorityError == 0
+	legacyPresent := settings.DeadPriority != 0 || settings.AnomalyPriority != 0 ||
+		settings.DemotionPriority != 0 || settings.DefaultRestorePriority != 0 ||
+		settings.WatchPriority != 0 || settings.SoftDemotionPriority != 0
+
+	if allNewZero && legacyPresent {
+		if settings.DefaultRestorePriority != 0 {
+			settings.PriorityLive = settings.DefaultRestorePriority
+		}
+		if settings.AnomalyPriority != 0 {
+			settings.PriorityInvalid = settings.AnomalyPriority
+			settings.PriorityThrottled = settings.AnomalyPriority
+			settings.PriorityError = settings.AnomalyPriority
 		} else {
-			settings.DeadPriority = -100
+			settings.PriorityInvalid = defaults.PriorityInvalid
+			settings.PriorityThrottled = defaults.PriorityThrottled
+			settings.PriorityError = defaults.PriorityError
+		}
+		if settings.DeadPriority != 0 {
+			settings.PriorityDead = settings.DeadPriority
+		} else if settings.DemotionPriority != 0 {
+			settings.PriorityDead = settings.DemotionPriority
+		} else {
+			settings.PriorityDead = defaults.PriorityDead
+		}
+		settings.PriorityUnknown = defaults.PriorityUnknown
+	} else if allNewZero {
+		settings.PriorityLive = defaults.PriorityLive
+		settings.PriorityInvalid = defaults.PriorityInvalid
+		settings.PriorityDead = defaults.PriorityDead
+		settings.PriorityThrottled = defaults.PriorityThrottled
+		settings.PriorityUnknown = defaults.PriorityUnknown
+		settings.PriorityError = defaults.PriorityError
+	} else {
+		// Partial upgrade: fill missing non-live zeros from defaults or legacy.
+		if settings.PriorityDead == 0 {
+			if settings.DeadPriority != 0 {
+				settings.PriorityDead = settings.DeadPriority
+			} else if settings.DemotionPriority != 0 {
+				settings.PriorityDead = settings.DemotionPriority
+			} else {
+				settings.PriorityDead = defaults.PriorityDead
+			}
+		}
+		if settings.PriorityInvalid == 0 {
+			if settings.AnomalyPriority != 0 {
+				settings.PriorityInvalid = settings.AnomalyPriority
+			} else {
+				settings.PriorityInvalid = defaults.PriorityInvalid
+			}
+		}
+		if settings.PriorityThrottled == 0 {
+			if settings.AnomalyPriority != 0 {
+				settings.PriorityThrottled = settings.AnomalyPriority
+			} else {
+				settings.PriorityThrottled = defaults.PriorityThrottled
+			}
+		}
+		if settings.PriorityError == 0 {
+			if settings.AnomalyPriority != 0 {
+				settings.PriorityError = settings.AnomalyPriority
+			} else {
+				settings.PriorityError = defaults.PriorityError
+			}
+		}
+		if settings.PriorityUnknown == 0 {
+			settings.PriorityUnknown = defaults.PriorityUnknown
 		}
 	}
-	// Keep DemotionPriority as alias of DeadPriority for any remaining readers.
-	settings.DemotionPriority = settings.DeadPriority
-	if settings.WatchReprobeMinutes <= 0 {
-		settings.WatchReprobeMinutes = 30
-	}
-	if settings.AnomalyReprobeHours <= 0 {
-		settings.AnomalyReprobeHours = 6
-	}
+
+	settings.DeadPriority = settings.PriorityDead
+	settings.DemotionPriority = settings.PriorityDead
+	settings.AnomalyPriority = settings.PriorityError
+	settings.DefaultRestorePriority = settings.PriorityLive
+	settings.SoftDemotionPriority = settings.WatchPriority
+	settings.SoftDebtThreshold = settings.DebtProbeThreshold
 	return settings
 }
 
@@ -201,8 +301,8 @@ func BuildMeta(snapshot stateinfra.Snapshot, stateInfo ...stateinfra.Info) Meta 
 		StatisticsStartedAt: snapshot.StatisticsStartedAt, DedupeMode: dedupeMode, ConditionalWrite: false,
 		Capabilities: []string{
 			"usage", "auth_list", "auth_get", "auth_save", "management_routes", "set_enabled",
-			"demote", "restore_priority", "auto_demotion", "alive_probe", "watch_anomaly_dead",
-			"debt_probe_threshold", "safe_delete", "daily_usage_reset", "token_resign",
+			"alive_probe", "alive_priority_bind", "debt_probe_threshold", "safe_delete",
+			"daily_usage_reset", "token_resign",
 		},
 		UnavailableFeatures: []Unavailable{{Feature: "checks", Reason: "host.auth.invoke 未提供"}}}
 }

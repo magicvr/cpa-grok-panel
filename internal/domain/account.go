@@ -32,13 +32,17 @@ type HostRequestBaseline struct {
 	BoundPeriodStartedAt time.Time `json:"bound_period_started_at"`
 }
 
-// Probe status values (persisted lowercase). UI labels: Live/Exceed/Dead/Cooling/Error/Unknown.
+// Probe status values (persisted lowercase). UI: 正常/无效/死号/限流/未知/异常.
 const (
-	ProbeStatusLive    = "live"
-	ProbeStatusExceed  = "exceed"
-	ProbeStatusDead    = "dead"
-	ProbeStatusCooling = "cooling"
-	ProbeStatusError   = "error"
+	ProbeStatusLive      = "live"
+	ProbeStatusInvalid   = "invalid"
+	ProbeStatusDead      = "dead"
+	ProbeStatusThrottled = "throttled"
+	ProbeStatusError     = "error"
+	ProbeStatusUnknown   = "unknown"
+	// Legacy aliases kept for NormalizeProbeStatus input only.
+	ProbeStatusExceed  = "exceed"  // → invalid
+	ProbeStatusCooling = "cooling" // → throttled
 )
 
 type QuotaSnapshot struct {
@@ -50,7 +54,7 @@ type QuotaSnapshot struct {
 	FetchedAt time.Time `json:"fetched_at,omitempty"`
 	Error     string    `json:"error,omitempty"`
 	// 测活结果（存活列）；与套餐字段独立，批量刷新套餐不得清掉。
-	// probe_status: live | exceed | dead | cooling | error（空=Unknown/未测）
+	// probe_status: live | invalid | dead | throttled | error | unknown（空=未知/未测）
 	ProbeStatus string    `json:"probe_status,omitempty"`
 	ProbeHTTP   int       `json:"probe_http,omitempty"`
 	ProbeAt     time.Time `json:"probe_at,omitempty"`
@@ -62,7 +66,7 @@ type AccountState struct {
 	Usage               UsageCounters        `json:"usage"`
 	Quota               QuotaSnapshot        `json:"quota"`
 	Failure             FailureState         `json:"failure"`
-	Demotion            DemotionState        `json:"demotion"`
+	Demotion            DemotionState        `json:"demotion"` // legacy JSON; ignored by v0.7.0 policy
 	HostRequestBaseline *HostRequestBaseline `json:"host_request_baseline,omitempty"`
 	FirstSeenAt         time.Time            `json:"first_seen_at,omitempty"`
 	LastSeenAt          time.Time            `json:"last_seen_at,omitempty"`
@@ -76,28 +80,27 @@ type FailureState struct {
 	LastFailureCode               string     `json:"last_failure_code,omitempty"`
 }
 
+// DemotionState is retained for JSON compatibility with pre-v0.7.0 state files.
+// v0.7.0 policy uses probe_status + priority only.
 type DemotionState struct {
-	State            string     `json:"state"`
-	Class            string     `json:"class"`
-	BaselinePriority *int       `json:"baseline_priority,omitempty"`
-	TargetPriority   *int       `json:"target_priority,omitempty"`
-	TriggeredAt      *time.Time `json:"triggered_at,omitempty"`
-	// NextProbeAt schedules auto re-probe for watch/anomaly classes.
-	NextProbeAt *time.Time `json:"next_probe_at,omitempty"`
-	// Legacy fields retained for JSON compatibility; ignored by v0.6.0 logic.
+	State                string     `json:"state"`
+	Class                string     `json:"class"`
+	BaselinePriority     *int       `json:"baseline_priority,omitempty"`
+	TargetPriority       *int       `json:"target_priority,omitempty"`
+	TriggeredAt          *time.Time `json:"triggered_at,omitempty"`
+	NextProbeAt          *time.Time `json:"next_probe_at,omitempty"`
 	RestoreCooldownHours int        `json:"restore_cooldown_hours,omitempty"`
 	HalfOpenSince        *time.Time `json:"half_open_since,omitempty"`
 	HalfOpenSuccesses    int        `json:"half_open_successes,omitempty"`
 	FailureCode          string     `json:"failure_code,omitempty"`
 }
 
-// Demotion class values (v0.6.0). Legacy soft/hard/half_open are migrated in Normalized().
+// Legacy demotion class constants (no longer used by policy).
 const (
-	DemotionClassNone    = "none"
-	DemotionClassWatch   = "watch"
-	DemotionClassAnomaly = "anomaly"
-	DemotionClassDead    = "dead"
-	// Legacy constants kept so older fixtures/tests can still name them before Normalize.
+	DemotionClassNone     = "none"
+	DemotionClassWatch    = "watch"
+	DemotionClassAnomaly  = "anomaly"
+	DemotionClassDead     = "dead"
 	DemotionClassSoft     = "soft"
 	DemotionClassHard     = "hard"
 	DemotionClassHalfOpen = "half_open"
@@ -112,7 +115,6 @@ func (state DemotionState) Normalized() DemotionState {
 	if state.State == "" {
 		state.State = "none"
 	}
-	// Migrate pre-v0.6.0 class names.
 	switch state.Class {
 	case DemotionClassSoft, DemotionClassHalfOpen:
 		state.Class = DemotionClassWatch
@@ -122,7 +124,6 @@ func (state DemotionState) Normalized() DemotionState {
 	if state.Class == "" {
 		switch state.State {
 		case "requested", "applied", "failed":
-			// Pre-v0.5.0 records only represented hard demotion → dead.
 			state.Class = DemotionClassDead
 		default:
 			state.Class = DemotionClassNone
@@ -133,10 +134,8 @@ func (state DemotionState) Normalized() DemotionState {
 
 func IsActiveDemotionClass(class string) bool {
 	switch class {
-	case DemotionClassWatch, DemotionClassAnomaly, DemotionClassDead:
-		return true
-	// Accept un-normalized legacy names for safety.
-	case DemotionClassSoft, DemotionClassHard, DemotionClassHalfOpen:
+	case DemotionClassWatch, DemotionClassAnomaly, DemotionClassDead,
+		DemotionClassSoft, DemotionClassHard, DemotionClassHalfOpen:
 		return true
 	default:
 		return false
@@ -147,15 +146,22 @@ func IsActiveDemotionClass(class string) bool {
 func NormalizeProbeStatus(status string, httpStatus int) string {
 	s := strings.ToLower(strings.TrimSpace(status))
 	switch s {
-	case ProbeStatusLive, ProbeStatusExceed, ProbeStatusDead, ProbeStatusCooling, ProbeStatusError:
+	case ProbeStatusLive, ProbeStatusInvalid, ProbeStatusDead, ProbeStatusThrottled, ProbeStatusError, ProbeStatusUnknown:
 		return s
-	case "failure": // v0.5.x → exceed
-		return ProbeStatusExceed
-	case "unusual": // v0.5.x → error (or cooling if 429)
+	case ProbeStatusExceed, "failure":
+		return ProbeStatusInvalid
+	case ProbeStatusCooling:
+		return ProbeStatusThrottled
+	case "unusual":
 		if httpStatus == 429 {
-			return ProbeStatusCooling
+			return ProbeStatusThrottled
 		}
 		return ProbeStatusError
+	case "":
+		if httpStatus > 0 {
+			return ClassifyProbeHTTP(httpStatus)
+		}
+		return ""
 	}
 	if httpStatus > 0 {
 		return ClassifyProbeHTTP(httpStatus)
@@ -163,22 +169,48 @@ func NormalizeProbeStatus(status string, httpStatus int) string {
 	return s
 }
 
-// ClassifyProbeHTTP maps HTTP codes to probe_status.
+// ClassifyProbeHTTP maps HTTP codes to probe_status (v0.7.0).
 func ClassifyProbeHTTP(httpStatus int) string {
 	switch {
 	case httpStatus >= 200 && httpStatus < 300:
 		return ProbeStatusLive
 	case httpStatus == 401:
-		return ProbeStatusExceed
+		return ProbeStatusInvalid
 	case httpStatus == 403:
 		return ProbeStatusDead
 	case httpStatus == 429:
-		return ProbeStatusCooling
+		return ProbeStatusThrottled
 	case httpStatus == 0:
 		return ProbeStatusError
 	default:
 		return ProbeStatusError
 	}
+}
+
+// CanonicalProbeStatus returns normalized status for comparison; empty and "unknown" are equivalent.
+func CanonicalProbeStatus(status string, httpStatus int) string {
+	s := NormalizeProbeStatus(status, httpStatus)
+	if s == "" || s == ProbeStatusUnknown {
+		return ProbeStatusUnknown
+	}
+	return s
+}
+
+// IsUnknownProbe reports empty / unknown (never probed or cleared after resign).
+func IsUnknownProbe(status string) bool {
+	s := strings.ToLower(strings.TrimSpace(status))
+	return s == "" || s == ProbeStatusUnknown
+}
+
+// IsLiveProbe reports healthy live status.
+func IsLiveProbe(status string) bool {
+	return strings.ToLower(strings.TrimSpace(status)) == ProbeStatusLive
+}
+
+// IsUnhealthyProbe is true when status is neither live nor unknown (convenient is_demoted).
+func IsUnhealthyProbe(status string) bool {
+	s := CanonicalProbeStatus(status, 0)
+	return s != ProbeStatusLive && s != ProbeStatusUnknown
 }
 
 type AccountView struct {
@@ -216,15 +248,13 @@ func IsXAIOAuth(file AuthFile) bool {
 	if !isXAI {
 		return false
 	}
-	// oauth preferred; empty treated as acceptable for file-backed xai credentials
 	if accountType == "" && authType == "" {
 		return true
 	}
 	return accountType == "oauth" || authType == "oauth"
 }
 
-// ProjectAccount builds the list-row view. isDemoted is class/state based (v0.5.7+);
-// dead_priority is never used as "priority ≤ X ⇒ dead".
+// ProjectAccount builds the list-row view. is_demoted = probe not live and not unknown.
 func ProjectAccount(file AuthFile, state AccountState, now time.Time, _ int) AccountView {
 	usage := state.Usage
 	if usage.DedupeMode == "" {
@@ -233,26 +263,23 @@ func ProjectAccount(file AuthFile, state AccountState, now time.Time, _ int) Acc
 	if usage.PeriodStartedAt.IsZero() {
 		usage.PeriodStartedAt = now.UTC()
 	}
-	// Display-only: max(plugin ledger, host delta since period baseline). Tokens stay plugin-only.
 	usage = ApplyHostRequestDisplay(usage, file.Success, file.Failed, state.HostRequestBaseline)
 	demotion := state.Demotion.Normalized()
-	// Class/state driven: applied or requested active class. Do not use priority thresholds.
-	isDemoted := IsActiveDemotionClass(demotion.Class) && (demotion.State == "applied" || demotion.State == "requested")
 	quota := state.Quota
 	if strings.TrimSpace(quota.Plan) == "" {
 		quota.Plan = "unknown"
 	}
-	// Normalize legacy probe labels for UI consumers of the API.
 	if quota.ProbeStatus != "" {
 		quota.ProbeStatus = NormalizeProbeStatus(quota.ProbeStatus, quota.ProbeHTTP)
 	}
+	isDemoted := IsUnhealthyProbe(quota.ProbeStatus)
 	return AccountView{
 		AuthIndex: file.AuthIndex, ExactFileName: file.Name, Email: file.Email,
 		Enabled: !file.Disabled, Unavailable: file.Unavailable, Status: file.Status,
 		StatusMessage: file.StatusMessage, Priority: file.Priority, Provider: "xai",
 		AuthType: "oauth", Usage: usage, Quota: quota, Failure: state.Failure, Demotion: demotion,
 		DebtScore: state.Failure.DebtScore, Class: demotion.Class,
-		IsDemoted: isDemoted, CanRestore: isDemoted,
+		IsDemoted: isDemoted, CanRestore: false,
 		LastSeenAt: now.UTC(), WriteMode: "managed",
 	}
 }
@@ -268,11 +295,6 @@ func NeedsHostRequestBaselineBind(state AccountState) bool {
 }
 
 // BindHostRequestBaseline chooses the host snapshot for the current usage period.
-//
-//   - No baseline yet and plugin already has request counts (upgrade / first bind with
-//     ledger): baseline=0 so host under-report is compensated immediately.
-//   - No baseline with empty plugin counters, or period changed after clear/reset:
-//     baseline = current host success/failed so display restarts near zero.
 func BindHostRequestBaseline(state AccountState, hostSuccess, hostFailed int64, periodStartedAt time.Time) HostRequestBaseline {
 	if periodStartedAt.IsZero() {
 		periodStartedAt = time.Now().UTC()
@@ -283,12 +305,10 @@ func BindHostRequestBaseline(state AccountState, hostSuccess, hostFailed int64, 
 		}
 		return HostRequestBaseline{Success: hostSuccess, Failed: hostFailed, BoundPeriodStartedAt: periodStartedAt}
 	}
-	// Period changed (daily reset cleared usage period; baseline stale or cleared).
 	return HostRequestBaseline{Success: hostSuccess, Failed: hostFailed, BoundPeriodStartedAt: periodStartedAt}
 }
 
 // ApplyHostRequestDisplay overlays host period-delta onto request counters for AccountView only.
-// It does not mutate demotion, debt, or the persisted usage ledger.
 func ApplyHostRequestDisplay(usage UsageCounters, hostSuccess, hostFailed int64, baseline *HostRequestBaseline) UsageCounters {
 	if baseline == nil {
 		return usage

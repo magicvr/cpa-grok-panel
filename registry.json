@@ -4,9 +4,9 @@
     {
       "id": "cpa-grok-panel",
       "name": "Grok 账号面板",
-      "description": "xAI OAuth 账号测活降权（观察/异常/死号）、套餐与安全删除面板",
+      "description": "xAI OAuth 账号存活状态绑定 priority、套餐与安全删除面板",
       "author": "magicvr",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "repository": "https://github.com/magicvr/cpa-grok-panel",
       "homepage": "https://github.com/magicvr/cpa-grok-panel",
       "license": "MIT",

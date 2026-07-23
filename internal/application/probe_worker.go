@@ -9,12 +9,12 @@ import (
 )
 
 const (
-	probeQueueSize     = 256
-	probeScanInterval  = 30 * time.Second
+	probeQueueSize    = 256
+	probeScanInterval = 30 * time.Second
 )
 
-// ProbeWorker runs automatic alive probes: debt-triggered enqueue and scheduled
-// re-probes for watch/anomaly (NextProbeAt <= now). Dead is always skipped.
+// ProbeWorker runs automatic alive probes from debt-triggered enqueue.
+// v0.7.0: no watch/anomaly scheduled re-probe chain.
 type ProbeWorker struct {
 	accounts *AccountsService
 	store    *stateinfra.Store
@@ -45,14 +45,13 @@ func (worker *ProbeWorker) EnqueueProbe(authIndex string) {
 		return
 	}
 	// Never auto-probe dead accounts.
-	demotion := worker.store.View().Accounts[authIndex].Demotion.Normalized()
-	if demotion.Class == domain.DemotionClassDead {
+	probe := worker.store.View().Accounts[authIndex].Quota.ProbeStatus
+	if domain.NormalizeProbeStatus(probe, 0) == domain.ProbeStatusDead {
 		return
 	}
 	select {
 	case worker.queue <- authIndex:
 	default:
-		// Durable NextProbeAt / debt path will pick up on next scan if queue full.
 	}
 }
 
@@ -62,38 +61,23 @@ func (worker *ProbeWorker) Stop() {
 }
 
 func (worker *ProbeWorker) ProcessOnce() {
-	// Drain due scheduled re-probes.
-	now := time.Now().UTC()
-	for authIndex, account := range worker.store.View().Accounts {
-		demotion := account.Demotion.Normalized()
-		if demotion.Class == domain.DemotionClassDead {
-			continue
-		}
-		if demotion.Class != domain.DemotionClassWatch && demotion.Class != domain.DemotionClassAnomaly {
-			continue
-		}
-		if demotion.NextProbeAt == nil || demotion.NextProbeAt.After(now) {
-			continue
-		}
-		_, _ = worker.accounts.ProbeAccount(authIndex, "", domain.ProbeSourceAuto)
-	}
+	// v0.7.0: no scheduled NextProbeAt scan.
 }
 
 func (worker *ProbeWorker) run() {
 	defer close(worker.done)
 	ticker := time.NewTicker(worker.interval)
 	defer ticker.Stop()
-	worker.ProcessOnce()
 	for {
 		select {
 		case authIndex := <-worker.queue:
-			demotion := worker.store.View().Accounts[authIndex].Demotion.Normalized()
-			if demotion.Class == domain.DemotionClassDead {
+			probe := worker.store.View().Accounts[authIndex].Quota.ProbeStatus
+			if domain.NormalizeProbeStatus(probe, 0) == domain.ProbeStatusDead {
 				continue
 			}
 			_, _ = worker.accounts.ProbeAccount(authIndex, "", domain.ProbeSourceAuto)
 		case <-ticker.C:
-			worker.ProcessOnce()
+			// reserved for future periodic work
 		case <-worker.stop:
 			return
 		}

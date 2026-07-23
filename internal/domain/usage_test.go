@@ -52,56 +52,68 @@ func TestLegacyAppliedDemotionNormalizesToHard(t *testing.T) {
 	}
 }
 
-func TestProjectAccountExposesDebtAndAppliedClass(t *testing.T) {
+func TestProjectAccountExposesDebtAndProbeBasedIsDemoted(t *testing.T) {
+	// v0.7.0: is_demoted from probe_status (non-live, non-unknown); can_restore always false.
 	view := domain.ProjectAccount(domain.AuthFile{
+		AuthIndex: "idx", Name: "xai-a.json", Provider: "xai", Type: "xai",
+		AccountType: "oauth", Priority: -50,
+	}, domain.AccountState{
+		Failure: domain.FailureState{DebtScore: 3.25},
+		Quota:   domain.QuotaSnapshot{ProbeStatus: domain.ProbeStatusInvalid},
+	}, time.Now().UTC(), -100)
+	if view.DebtScore != 3.25 || !view.IsDemoted || view.CanRestore {
+		t.Fatalf("view=%+v", view)
+	}
+	// legacy demotion class still exposed for JSON but does not drive is_demoted alone
+	view2 := domain.ProjectAccount(domain.AuthFile{
 		AuthIndex: "idx", Name: "xai-a.json", Provider: "xai", Type: "xai",
 		AccountType: "oauth", Priority: -10,
 	}, domain.AccountState{
-		Failure:  domain.FailureState{DebtScore: 3.25},
+		Failure:  domain.FailureState{DebtScore: 1},
 		Demotion: domain.DemotionState{State: "applied", Class: domain.DemotionClassSoft},
 	}, time.Now().UTC(), -100)
-	// soft migrates to watch for class/is_demoted
-	if view.DebtScore != 3.25 || view.Class != domain.DemotionClassWatch || !view.IsDemoted || !view.CanRestore {
-		t.Fatalf("view=%+v", view)
+	if view2.IsDemoted || view2.CanRestore {
+		t.Fatalf("unknown probe must not demote from legacy class alone: %+v", view2)
+	}
+	if view2.Class != domain.DemotionClassWatch {
+		t.Fatalf("soft still normalizes to watch for JSON: class=%s", view2.Class)
 	}
 }
 
-func TestProjectAccountDemotionUsesPriorityThreshold(t *testing.T) {
-	// v0.6.0: is_demoted is class/state based — bare low priority is NOT demoted.
+func TestProjectAccountIsDemotedFromProbeStatus(t *testing.T) {
 	tests := []struct {
 		name      string
-		priority  int
+		status    string
 		isDemoted bool
 	}{
-		{name: "at threshold", priority: -100, isDemoted: false},
-		{name: "normal priority", priority: 0, isDemoted: false},
-		{name: "below threshold", priority: -101, isDemoted: false},
+		{name: "empty unknown", status: "", isDemoted: false},
+		{name: "unknown", status: domain.ProbeStatusUnknown, isDemoted: false},
+		{name: "live", status: domain.ProbeStatusLive, isDemoted: false},
+		{name: "invalid", status: domain.ProbeStatusInvalid, isDemoted: true},
+		{name: "dead", status: domain.ProbeStatusDead, isDemoted: true},
+		{name: "throttled", status: domain.ProbeStatusThrottled, isDemoted: true},
+		{name: "error", status: domain.ProbeStatusError, isDemoted: true},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			view := domain.ProjectAccount(domain.AuthFile{
 				AuthIndex: "idx", Name: "xai-a.json", Provider: "xai", Type: "xai",
-				AccountType: "oauth", Priority: test.priority,
-			}, domain.AccountState{}, time.Now().UTC(), -100)
-			if view.IsDemoted != test.isDemoted || view.CanRestore != test.isDemoted {
-				t.Fatalf("priority=%d is_demoted=%t can_restore=%t", test.priority, view.IsDemoted, view.CanRestore)
+				AccountType: "oauth", Priority: 0,
+			}, domain.AccountState{Quota: domain.QuotaSnapshot{ProbeStatus: test.status}}, time.Now().UTC(), -100)
+			if view.IsDemoted != test.isDemoted || view.CanRestore {
+				t.Fatalf("status=%q is_demoted=%t can_restore=%t", test.status, view.IsDemoted, view.CanRestore)
 			}
 		})
 	}
 }
 
-func TestProjectAccountRestoredLowBaselineIsNotDemoted(t *testing.T) {
-	baseline := -200
+func TestProjectAccountUnknownProbeNotDemoted(t *testing.T) {
 	view := domain.ProjectAccount(domain.AuthFile{
 		AuthIndex: "idx", Name: "xai-a.json", Provider: "xai", Type: "xai",
-		AccountType: "oauth", Priority: baseline,
-	}, domain.AccountState{
-		Demotion: domain.DemotionState{
-			State: "restored", Class: domain.DemotionClassNone, BaselinePriority: &baseline,
-		},
-	}, time.Now().UTC(), -100)
+		AccountType: "oauth", Priority: -200,
+	}, domain.AccountState{}, time.Now().UTC(), -100)
 	if view.IsDemoted || view.CanRestore {
-		t.Fatalf("restored low baseline must not be demoted: %+v", view)
+		t.Fatalf("empty probe must not be demoted: %+v", view)
 	}
 }
 

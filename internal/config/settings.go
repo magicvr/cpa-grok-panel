@@ -8,34 +8,44 @@ type Settings struct {
 	DailyUsageResetTime        string            `json:"daily_usage_reset_time"`
 	OperationConcurrency       int               `json:"operation_concurrency"`
 	BatchOperationConcurrency  int               `json:"batch_operation_concurrency"`
-	AttributedFailureThreshold int               `json:"attributed_failure_threshold"`
-	AttributedFailureStatuses  []int             `json:"attributed_failure_statuses"`
-	CountStatus429             bool              `json:"count_status_429"`
-	CountStatus5XX             bool              `json:"count_status_5xx"`
-	// v0.6.0: single debt threshold → auto probe (replaces soft/hard dual thresholds).
+	// AttributedFailureThreshold is retained for JSON/env compatibility; v0.7.0 no longer
+	// uses consecutive-failure as a probe trigger (debt threshold only).
+	AttributedFailureThreshold int   `json:"attributed_failure_threshold"`
+	AttributedFailureStatuses  []int `json:"attributed_failure_statuses"`
+	CountStatus429             bool  `json:"count_status_429"`
+	CountStatus5XX             bool  `json:"count_status_5xx"`
+
+	// Debt → auto probe (v0.7.0 primary path).
 	DebtProbeThreshold float64 `json:"debt_probe_threshold"`
 	DebtFail401        float64 `json:"debt_fail_401"`
 	DebtFail429        float64 `json:"debt_fail_429"`
 	DebtSuccessDecay   float64 `json:"debt_success_decay"`
-	// Tier priorities for watch / anomaly / dead demotion classes.
-	WatchPriority          int `json:"watch_priority"`
-	AnomalyPriority        int `json:"anomaly_priority"`
-	DeadPriority           int `json:"dead_priority"`
-	DefaultRestorePriority int `json:"default_restore_priority"`
-	// Scheduled re-probe for watch / anomaly.
-	WatchReprobeMinutes  int `json:"watch_reprobe_minutes"`
-	AnomalyReprobeHours  int `json:"anomaly_reprobe_hours"`
-	// Legacy fields (pre-v0.6.0): still unmarshaled from JSON but ignored by policy.
-	// DemotionPriority mirrors DeadPriority for older clients that still PATCH it.
-	SoftDemotionEnabled      bool    `json:"soft_demotion_enabled,omitempty"`
-	SoftDemotionPriority     int     `json:"soft_demotion_priority,omitempty"`
-	SoftDebtThreshold        float64 `json:"soft_debt_threshold,omitempty"`
-	HardDebtThreshold        float64 `json:"hard_debt_threshold,omitempty"`
-	DemotionPriority         int     `json:"demotion_priority,omitempty"`
-	CooldownRestoreEnabled     bool    `json:"cooldown_restore_enabled,omitempty"`
-	CooldownRestoreSkipBots    bool    `json:"cooldown_restore_skip_bots,omitempty"`
-	HalfOpenEnabled          bool    `json:"half_open_enabled,omitempty"`
-	HalfOpenSuccessThreshold int     `json:"half_open_success_threshold,omitempty"`
+
+	// Priority bound to each alive/probe status (written on status change).
+	PriorityLive      int `json:"priority_live"`
+	PriorityInvalid   int `json:"priority_invalid"`
+	PriorityDead      int `json:"priority_dead"`
+	PriorityThrottled int `json:"priority_throttled"`
+	PriorityUnknown   int `json:"priority_unknown"`
+	PriorityError     int `json:"priority_error"`
+
+	// Legacy fields (pre-v0.7.0): still unmarshaled from JSON; ignored by policy except
+	// NormalizeSettings migration into priority_* when new fields are zero.
+	WatchPriority          int     `json:"watch_priority,omitempty"`
+	AnomalyPriority        int     `json:"anomaly_priority,omitempty"`
+	DeadPriority           int     `json:"dead_priority,omitempty"`
+	DefaultRestorePriority int     `json:"default_restore_priority,omitempty"`
+	WatchReprobeMinutes    int     `json:"watch_reprobe_minutes,omitempty"`
+	AnomalyReprobeHours    int     `json:"anomaly_reprobe_hours,omitempty"`
+	SoftDemotionEnabled    bool    `json:"soft_demotion_enabled,omitempty"`
+	SoftDemotionPriority   int     `json:"soft_demotion_priority,omitempty"`
+	SoftDebtThreshold      float64 `json:"soft_debt_threshold,omitempty"`
+	HardDebtThreshold      float64 `json:"hard_debt_threshold,omitempty"`
+	DemotionPriority       int     `json:"demotion_priority,omitempty"`
+	CooldownRestoreEnabled   bool    `json:"cooldown_restore_enabled,omitempty"`
+	CooldownRestoreSkipBots  bool    `json:"cooldown_restore_skip_bots,omitempty"`
+	HalfOpenEnabled        bool    `json:"half_open_enabled,omitempty"`
+	HalfOpenSuccessThreshold int   `json:"half_open_success_threshold,omitempty"`
 
 	ProtectionLevel         string            `json:"protection_level"`
 	DefaultTokenCapacity    uint64            `json:"default_token_capacity"`
