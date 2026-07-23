@@ -6,7 +6,7 @@
       "name": "Grok 账号面板",
       "description": "xAI OAuth 账号 soft/hard 降权、half-open 恢复、安全删除与受控写操作面板",
       "author": "magicvr",
-      "version": "0.5.10",
+      "version": "0.5.11",
       "repository": "https://github.com/magicvr/cpa-grok-panel",
       "homepage": "https://github.com/magicvr/cpa-grok-panel",
       "license": "MIT",
