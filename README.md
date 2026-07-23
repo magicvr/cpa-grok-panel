@@ -7,7 +7,7 @@
 **CLIProxyAPI（CPA）** 的 Grok / xAI OAuth 账号运维面板。
 
 在 CPA 管理页集中查看账号状态、Token 用量与套餐缓存，并安全地启用 / 停用 / 降权 / 删除账号。  
-插件 id：`cpa-grok-panel` · 当前文档对应 **v0.5.10**（Linux **amd64 / arm64** · Windows **amd64 / arm64**）。
+插件 id：`cpa-grok-panel` · 当前文档对应 **v0.5.11**（Linux **amd64 / arm64** · Windows **amd64 / arm64**）。
 
 ## 友链
 
@@ -88,7 +88,7 @@ https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
 | --- | --- |
 | `id` | `cpa-grok-panel` |
 | `name` | Grok 账号面板 |
-| `version` | 与最新 Release 对齐（如 `0.5.10`） |
+| `version` | 与最新 Release 对齐（如 `0.5.11`） |
 | `repository` | `https://github.com/magicvr/cpa-grok-panel` |
 
 ```bash
@@ -117,7 +117,7 @@ plugins:
 
 1. 打开 CPA 管理页（如 `http://<cpa-host>:<port>/management.html`），用 management key 登录  
 2. **插件 / 插件商店** → 找到 **Grok 账号面板**（id `cpa-grok-panel`）  
-3. 选择版本（一般最新，如 `0.5.10`）并安装
+3. 选择版本（一般最新，如 `0.5.11`）并安装
 4. **完整停止并重新启动整个 CPA 进程**（原生 `.so`：热更新 / 只重载配置可能仍加载旧库）
 
 Management API 示例：
@@ -127,7 +127,7 @@ POST /v0/management/plugin-store/cpa-grok-panel/install
 Authorization: Bearer <management_key>
 Content-Type: application/json
 
-{"version":"0.5.10"}
+{"version":"0.5.11"}
 ```
 
 版本号为去掉 `v` 前缀的 semver，须与 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 已发布 tag 一致。
@@ -142,10 +142,10 @@ Content-Type: application/json
 适合不改 `store-sources`、离线拷包或商店链路不通。
 
 1. 在 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 按 CPA 主机架构下载  
-   - **Linux x86_64：** `cpa-grok-panel_0.5.10_linux_amd64.zip`  
-   - **Linux arm64：** `cpa-grok-panel_0.5.10_linux_arm64.zip`  
-   - **Windows x64：** `cpa-grok-panel_0.5.10_windows_amd64.zip`（根目录 `cpa-grok-panel.dll`）  
-   - **Windows ARM64：** `cpa-grok-panel_0.5.10_windows_arm64.zip`  
+   - **Linux x86_64：** `cpa-grok-panel_0.5.11_linux_amd64.zip`  
+   - **Linux arm64：** `cpa-grok-panel_0.5.11_linux_arm64.zip`  
+   - **Windows x64：** `cpa-grok-panel_0.5.11_windows_amd64.zip`（根目录 `cpa-grok-panel.dll`）  
+   - **Windows ARM64：** `cpa-grok-panel_0.5.11_windows_arm64.zip`  
    - （可选）`checksums.txt`  
 2. CPA **插件管理**里本地安装 / 上传该 zip  
    - zip **根目录**必须是 `cpa-grok-panel.so`，不要改包内结构  
@@ -193,7 +193,7 @@ Content-Type: application/json
 | **套餐列** | 仅显示缓存类型：`unknown` / `Free` / `SuperGrok` / `SuperGrok Heavy`（不覆盖测活态） |
 | **存活列** | `Live` / `Failure` / `Dead` / `Unusual` / `未测`；数据来自 `quota.probe_status` 等 |
 | **批量刷新套餐** | 批量栏独立按钮；GET billing 经 `api-call` 落盘；**保留**既有测活结果 |
-| **批量测活** | 批量栏「批量测活」；经 CPA 宿主 `api-call` 对 `https://cli-chat-proxy.grok.com/v1/responses` 发短请求（`model=grok-4.5`，`input=Reply with exactly OK`，`max_output_tokens=8`）；**只测活，不刷套餐**；body 传对象（避免双重 JSON）；含 GRA 头 `x-authenticateresponse` |
+| **批量测活** | 批量栏「批量测活」；经 CPA 宿主 `api-call` 对 `https://cli-chat-proxy.grok.com/v1/responses` 发短请求（`model=grok-4.5`，`input=Reply with exactly OK`，`max_output_tokens=8`）；**只测活，不刷套餐**；envelope 字段 **`data`=JSON 字符串**（CPA CLIProxyAPI 官方字段，勿写 `body`）；含 GRA 头 `x-authenticateresponse` |
 | **测活分类** | 上游 `status_code`：2xx → **Live**；401 → **Failure**；403 → **Dead**；其它 HTTP / 网络 / 解析失败 → **Unusual**（不删号） |
 | **刷新成功** | SuperGrok / SuperGrok Heavy 按证据映射；其余成功结果记为 **Free** |
 | **刷新失败** | 记为 **unknown**（并保留错误信息供悬停查看） |
@@ -220,7 +220,8 @@ Content-Type: application/json
 - **v0.5.7**：半开/自动恢复成功后状态标为 `restored`；合法低 baseline 不再被 `priority<=demotion_priority` 误判为已降权、设置优先级、**批量重签**（refresh_token 换票）、安全删除  
 - **v0.5.8**：顶部「降权中」汇总拆分 soft/hard/半开；`demotion-filter` 按 class/state 筛选（正常 / Soft / Hard / Half-open / 处理中 / 失败 / 任意降权中）；徽章中文标签（观察档/硬降权/半开）
 - **v0.5.9**：「批量刷新套餐」改为「**批量测活**」（`data-batch-action=probe`）：先 `/v1/responses` 测活，**仅 alive** 再刷 billing 套餐；汇总示例 `测活成功 n · 死号 n · 失败 n · 套餐已刷新 m`；**默认不删除 dead**
-- **v0.5.10**：恢复「批量刷新套餐」+ 独立「批量测活」；测活仅 `api-call`（body 对象 + GRA 头）；新增「存活」列（Live/Failure/Dead/Unusual）；套餐列只显示套餐；汇总 `Live n · Failure n · Dead n · Unusual n` 
+- **v0.5.11**：修测活 HTTP 400：CPA `api-call` 上游 body 字段是 **`data`（字符串）** 而非 `body` 对象；空 body 导致 `Failed to parse the request body as JSON: EOF`
+- **v0.5.10**：恢复「批量刷新套餐」+ 独立「批量测活」；测活仅 `api-call` + GRA 头；新增「存活」列（Live/Failure/Dead/Unusual）；套餐列只显示套餐
 - 批量设置优先级：输入整数，经 fields API 按精确文件名写入  
 - 有限并发（默认 10，设置页 1–50）；测活并发更保守（约 3，≤ batchConcurrency）  
 - 批量删除须输入 `DELETE`，且每项删除前再校验映射  
@@ -326,15 +327,15 @@ checksums.txt
 一键打包（本机有 `aarch64-linux-gnu-gcc` 时会同时打 arm64）：
 
 ```bash
-./scripts/package_release.sh 0.5.10
+./scripts/package_release.sh 0.5.11
 # 生成例如：
-#   dist/cpa-grok-panel_0.5.10_linux_amd64.zip
-#   dist/cpa-grok-panel_0.5.10_linux_arm64.zip
+#   dist/cpa-grok-panel_0.5.11_linux_amd64.zip
+#   dist/cpa-grok-panel_0.5.11_linux_arm64.zip
 #   dist/checksums.txt
 
-gh release upload v0.5.10 \
-  dist/cpa-grok-panel_0.5.10_linux_amd64.zip \
-  dist/cpa-grok-panel_0.5.10_linux_arm64.zip \
+gh release upload v0.5.11 \
+  dist/cpa-grok-panel_0.5.11_linux_amd64.zip \
+  dist/cpa-grok-panel_0.5.11_linux_arm64.zip \
   dist/checksums.txt \
   --clobber
 ```
@@ -345,4 +346,4 @@ gh release upload v0.5.10 \
 - 评审与探测：[docs/reviews/](docs/reviews/)
 - 发行版：[Releases](https://github.com/magicvr/cpa-grok-panel/releases)
 
-README 以当前可安装版本 **v0.5.10** 为准。
+README 以当前可安装版本 **v0.5.11** 为准。
