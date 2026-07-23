@@ -55,14 +55,12 @@ func Registration() map[string]any {
 		{"Method": "GET", "Path": APIPrefix + "/settings", "Description": "只读设置"},
 		{"Method": "PUT", "Path": APIPrefix + "/settings", "Description": "更新插件设置"},
 		{"Method": "PATCH", "Path": APIPrefix + "/settings", "Description": "部分更新插件设置"},
-		{"Method": "POST", "Path": APIPrefix + "/accounts/demote", "Description": "手动降低账号优先级"},
-		{"Method": "POST", "Path": APIPrefix + "/accounts/restore-priority", "Description": "恢复账号优先级"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/set-enabled", "Description": "启用或停用账号"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/clear-diagnostic", "Description": "清空账号失败诊断"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/priority-written", "Description": "确认 Management 优先级写入并更新插件状态"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/clear-state", "Description": "删除账号后清理插件本地状态"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/quota", "Description": "保存账号额度快照"},
-		{"Method": "POST", "Path": APIPrefix + "/accounts/apply-probe", "Description": "应用测活结果并按规则改档"},
+		{"Method": "POST", "Path": APIPrefix + "/accounts/apply-probe", "Description": "应用测活结果并绑定 priority"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/resign", "Description": "用 refresh_token 重签并写回 CPA auth 文件"},
 	}
 	resources := []map[string]any{
@@ -104,25 +102,9 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 			"host_snapshot_revision": nil, "stale": false,
 		})
 	case method == "POST" && matchesPath(path, "/accounts/restore-priority"):
-		var body accountTargetRequest
-		if err := decodeStrictBody(request.Body, &body); err != nil {
-			return apiError(400, "invalid_argument", err.Error(), false)
-		}
-		account, err := router.accounts.RestorePriority(body.AuthIndex, body.ExactFileName)
-		if err != nil {
-			return accountErrorResponse(err)
-		}
-		return jsonResponse(200, map[string]any{"account": account})
+		return apiError(410, "gone", "解除降权已移除（v0.7.0）", false)
 	case method == "POST" && matchesPath(path, "/accounts/demote"):
-		var body accountTargetRequest
-		if err := decodeStrictBody(request.Body, &body); err != nil {
-			return apiError(400, "invalid_argument", err.Error(), false)
-		}
-		account, err := router.accounts.Demote(body.AuthIndex, body.ExactFileName)
-		if err != nil {
-			return accountErrorResponse(err)
-		}
-		return jsonResponse(200, map[string]any{"account": account})
+		return apiError(410, "gone", "手动降权已移除（v0.7.0）", false)
 	case method == "POST" && matchesPath(path, "/accounts/set-enabled"):
 		var body setEnabledRequest
 		if err := decodeStrictBody(request.Body, &body); err != nil {
@@ -298,17 +280,21 @@ type settingsUpdateRequest struct {
 	DebtFail401                *float64 `json:"debt_fail_401"`
 	DebtFail429                *float64 `json:"debt_fail_429"`
 	DebtSuccessDecay           *float64 `json:"debt_success_decay"`
-	WatchPriority              *int     `json:"watch_priority"`
-	AnomalyPriority            *int     `json:"anomaly_priority"`
-	DeadPriority               *int     `json:"dead_priority"`
-	DefaultRestorePriority     *int     `json:"default_restore_priority"`
-	WatchReprobeMinutes        *int     `json:"watch_reprobe_minutes"`
-	AnomalyReprobeHours        *int     `json:"anomaly_reprobe_hours"`
-	// Legacy aliases (accepted, mapped into v0.6.0 fields).
-	SoftDemotionPriority *int     `json:"soft_demotion_priority"`
-	SoftDebtThreshold    *float64 `json:"soft_debt_threshold"`
-	HardDebtThreshold    *float64 `json:"hard_debt_threshold"`
-	DemotionPriority     *int     `json:"demotion_priority"`
+	PriorityLive               *int     `json:"priority_live"`
+	PriorityInvalid            *int     `json:"priority_invalid"`
+	PriorityDead               *int     `json:"priority_dead"`
+	PriorityThrottled          *int     `json:"priority_throttled"`
+	PriorityUnknown            *int     `json:"priority_unknown"`
+	PriorityError              *int     `json:"priority_error"`
+	// Legacy aliases (accepted, mapped into priority_*).
+	WatchPriority          *int     `json:"watch_priority"`
+	AnomalyPriority        *int     `json:"anomaly_priority"`
+	DeadPriority           *int     `json:"dead_priority"`
+	DefaultRestorePriority *int     `json:"default_restore_priority"`
+	SoftDemotionPriority   *int     `json:"soft_demotion_priority"`
+	SoftDebtThreshold      *float64 `json:"soft_debt_threshold"`
+	HardDebtThreshold      *float64 `json:"hard_debt_threshold"`
+	DemotionPriority       *int     `json:"demotion_priority"`
 	FreeUserDailyTokenLimit *uint64 `json:"free_user_daily_token_limit"`
 	OutboundProxyURL        *string `json:"outbound_proxy_url"`
 }
@@ -333,8 +319,10 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		update.BatchOperationConcurrency == nil &&
 		update.AttributedFailureThreshold == nil && update.CountStatus429 == nil && update.CountStatus5XX == nil &&
 		update.DebtProbeThreshold == nil && update.DebtFail401 == nil && update.DebtFail429 == nil && update.DebtSuccessDecay == nil &&
+		update.PriorityLive == nil && update.PriorityInvalid == nil && update.PriorityDead == nil &&
+		update.PriorityThrottled == nil && update.PriorityUnknown == nil && update.PriorityError == nil &&
 		update.WatchPriority == nil && update.AnomalyPriority == nil && update.DeadPriority == nil &&
-		update.DefaultRestorePriority == nil && update.WatchReprobeMinutes == nil && update.AnomalyReprobeHours == nil &&
+		update.DefaultRestorePriority == nil &&
 		update.SoftDemotionPriority == nil && update.SoftDebtThreshold == nil && update.HardDebtThreshold == nil && update.DemotionPriority == nil &&
 		update.FreeUserDailyTokenLimit == nil && update.OutboundProxyURL == nil {
 		return application.Settings{}, fmt.Errorf("至少提供一个可配置字段")
@@ -368,14 +356,11 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 	if update.SoftDebtThreshold != nil && *update.SoftDebtThreshold == 0 {
 		return application.Settings{}, fmt.Errorf("soft_debt_threshold 必须大于 0")
 	}
-	if update.WatchReprobeMinutes != nil && (*update.WatchReprobeMinutes < 1 || *update.WatchReprobeMinutes > 10080) {
-		return application.Settings{}, fmt.Errorf("watch_reprobe_minutes 必须在 1..10080 范围内")
-	}
-	if update.AnomalyReprobeHours != nil && (*update.AnomalyReprobeHours < 1 || *update.AnomalyReprobeHours > 168) {
-		return application.Settings{}, fmt.Errorf("anomaly_reprobe_hours 必须在 1..168 范围内")
-	}
 	const minPriority, maxPriority = -1_000_000, 1_000_000
 	for name, value := range map[string]*int{
+		"priority_live": update.PriorityLive, "priority_invalid": update.PriorityInvalid,
+		"priority_dead": update.PriorityDead, "priority_throttled": update.PriorityThrottled,
+		"priority_unknown": update.PriorityUnknown, "priority_error": update.PriorityError,
 		"watch_priority": update.WatchPriority, "anomaly_priority": update.AnomalyPriority,
 		"dead_priority": update.DeadPriority, "default_restore_priority": update.DefaultRestorePriority,
 		"soft_demotion_priority": update.SoftDemotionPriority, "demotion_priority": update.DemotionPriority,
@@ -438,31 +423,49 @@ func (router *Router) updateSettings(update settingsUpdateRequest) (application.
 		if update.DebtSuccessDecay != nil {
 			settings.DebtSuccessDecay = *update.DebtSuccessDecay
 		}
+		if update.PriorityLive != nil {
+			settings.PriorityLive = *update.PriorityLive
+		} else if update.DefaultRestorePriority != nil {
+			settings.PriorityLive = *update.DefaultRestorePriority
+		}
+		if update.PriorityInvalid != nil {
+			settings.PriorityInvalid = *update.PriorityInvalid
+		}
+		if update.PriorityDead != nil {
+			settings.PriorityDead = *update.PriorityDead
+		} else if update.DeadPriority != nil {
+			settings.PriorityDead = *update.DeadPriority
+		} else if update.DemotionPriority != nil {
+			settings.PriorityDead = *update.DemotionPriority
+		}
+		if update.PriorityThrottled != nil {
+			settings.PriorityThrottled = *update.PriorityThrottled
+		} else if update.AnomalyPriority != nil {
+			settings.PriorityThrottled = *update.AnomalyPriority
+		}
+		if update.PriorityUnknown != nil {
+			settings.PriorityUnknown = *update.PriorityUnknown
+		}
+		if update.PriorityError != nil {
+			settings.PriorityError = *update.PriorityError
+		} else if update.AnomalyPriority != nil {
+			settings.PriorityError = *update.AnomalyPriority
+		}
+		if update.PriorityInvalid == nil && update.AnomalyPriority != nil {
+			settings.PriorityInvalid = *update.AnomalyPriority
+		}
+		// Keep legacy mirrors for persisted JSON readers.
+		settings.DeadPriority = settings.PriorityDead
+		settings.DemotionPriority = settings.PriorityDead
+		settings.DefaultRestorePriority = settings.PriorityLive
+		settings.AnomalyPriority = settings.PriorityError
 		if update.WatchPriority != nil {
 			settings.WatchPriority = *update.WatchPriority
 		} else if update.SoftDemotionPriority != nil {
 			settings.WatchPriority = *update.SoftDemotionPriority
 		}
-		if update.AnomalyPriority != nil {
-			settings.AnomalyPriority = *update.AnomalyPriority
-		}
-		if update.DeadPriority != nil {
-			settings.DeadPriority = *update.DeadPriority
-		} else if update.DemotionPriority != nil {
-			settings.DeadPriority = *update.DemotionPriority
-		}
-		settings.DemotionPriority = settings.DeadPriority
 		settings.SoftDemotionPriority = settings.WatchPriority
 		settings.SoftDebtThreshold = settings.DebtProbeThreshold
-		if update.DefaultRestorePriority != nil {
-			settings.DefaultRestorePriority = *update.DefaultRestorePriority
-		}
-		if update.WatchReprobeMinutes != nil {
-			settings.WatchReprobeMinutes = *update.WatchReprobeMinutes
-		}
-		if update.AnomalyReprobeHours != nil {
-			settings.AnomalyReprobeHours = *update.AnomalyReprobeHours
-		}
 		if update.FreeUserDailyTokenLimit != nil {
 			settings.FreeUserDailyTokenLimit = *update.FreeUserDailyTokenLimit
 		}

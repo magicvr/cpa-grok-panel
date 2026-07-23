@@ -24,20 +24,13 @@ const (
 
 // ProbeResult is the outcome of a live check (manual panel or auto Go path).
 type ProbeResult struct {
-	Status     string // live | exceed | dead | cooling | error
+	Status     string // live | invalid | dead | throttled | error
 	HTTPStatus int
 	Error      string
 }
 
-// ApplyProbeResult updates quota.probe_* and, when required, demotion class/priority.
-//
-// Rules:
-//   - always write probe_* + probe_at
-//   - manual + live: probe only (no class/priority change)
-//   - manual + non-live OR auto: reclassify tier
-//   - auto + live while already watch: restore to none (scheduled re-probe success)
-//   - auto + live otherwise: enter watch
-//   - exceed/dead → dead; cooling/error → anomaly
+// ApplyProbeResult updates quota.probe_* and always ApplyAliveStatus (priority bind).
+// No "manual live does not change priority" exception (v0.7.0).
 func (service *AccountsService) ApplyProbeResult(authIndex string, result ProbeResult, source string) (domain.AccountView, error) {
 	service.write.Lock()
 	defer service.write.Unlock()
@@ -46,6 +39,8 @@ func (service *AccountsService) ApplyProbeResult(authIndex string, result ProbeR
 	if source != domain.ProbeSourceManual && source != domain.ProbeSourceAuto {
 		source = domain.ProbeSourceManual
 	}
+	_ = source
+
 	status := domain.NormalizeProbeStatus(result.Status, result.HTTPStatus)
 	if status == "" {
 		status = domain.ClassifyProbeHTTP(result.HTTPStatus)
@@ -53,8 +48,11 @@ func (service *AccountsService) ApplyProbeResult(authIndex string, result ProbeR
 	if status == "" {
 		status = domain.ProbeStatusError
 	}
+	if status == domain.ProbeStatusUnknown {
+		// explicit unknown from caller → clear path uses ApplyAliveStatus separately
+		status = domain.ProbeStatusError
+	}
 
-	settings := service.settings()
 	now := service.now().UTC()
 	file, err := service.resolveByAuthIndex(authIndex)
 	if err != nil {
@@ -81,95 +79,82 @@ func (service *AccountsService) ApplyProbeResult(authIndex string, result ProbeR
 		return domain.AccountView{}, &AccountError{Code: "state_write_failed", Message: err.Error(), HTTPStatus: 503, Retryable: true}
 	}
 
-	// manual + live → probe only
-	if source == domain.ProbeSourceManual && status == domain.ProbeStatusLive {
-		return service.project(file), nil
+	return service.applyAliveStatusLocked(authIndex, status, false)
+}
+
+// ApplyAliveStatus writes probe status (if needed) and binds CPA priority to the
+// configured value for that status. clearDebt zeros failure debt when true.
+func (service *AccountsService) ApplyAliveStatus(authIndex, status string, clearDebt bool) (domain.AccountView, error) {
+	service.write.Lock()
+	defer service.write.Unlock()
+	return service.applyAliveStatusLocked(authIndex, status, clearDebt)
+}
+
+// applyAliveStatusLocked binds priority for status. Caller must hold service.write.
+// Status "" or "unknown" clears probe fields and uses priority_unknown.
+func (service *AccountsService) applyAliveStatusLocked(authIndex, status string, clearDebt bool) (domain.AccountView, error) {
+	settings := service.settings()
+	file, err := service.resolveByAuthIndex(authIndex)
+	if err != nil {
+		return domain.AccountView{}, err
 	}
 
-	current := service.store.View().Accounts[authIndex].Demotion.Normalized()
+	canonical := domain.CanonicalProbeStatus(status, 0)
+	targetPriority := PriorityForProbeStatus(settings, canonical)
+	now := service.now().UTC()
 
-	var (
-		targetClass string
-		targetPrio  int
-		nextProbe   *time.Time
-		restoreNone bool
-	)
-
-	switch status {
-	case domain.ProbeStatusLive:
-		if source == domain.ProbeSourceAuto && current.Class == domain.DemotionClassWatch {
-			restoreNone = true
-			targetClass = domain.DemotionClassNone
-			targetPrio = settings.DefaultRestorePriority
-			nextProbe = nil
-		} else if source == domain.ProbeSourceAuto {
-			targetClass = domain.DemotionClassWatch
-			targetPrio = settings.WatchPriority
-			at := now.Add(time.Duration(settings.WatchReprobeMinutes) * time.Minute)
-			nextProbe = &at
-		} else {
-			return service.project(file), nil
-		}
-	case domain.ProbeStatusExceed, domain.ProbeStatusDead:
-		targetClass = domain.DemotionClassDead
-		targetPrio = settings.DeadPriority
-		nextProbe = nil
-	default: // cooling, error, unknown
-		targetClass = domain.DemotionClassAnomaly
-		targetPrio = settings.AnomalyPriority
-		at := now.Add(time.Duration(settings.AnomalyReprobeHours) * time.Hour)
-		nextProbe = &at
-	}
-
-	// Already at desired applied tier with matching priority: only refresh schedule.
-	if !restoreNone && current.State == "applied" && current.Class == targetClass && file.Priority == targetPrio {
-		_ = service.store.Update(func(snapshot *stateinfra.Snapshot) error {
-			state := snapshot.Accounts[authIndex]
-			demotion := state.Demotion.Normalized()
-			demotion.NextProbeAt = nextProbe
-			demotion.TriggeredAt = &now
-			state.Demotion = demotion
-			snapshot.Accounts[authIndex] = state
-			return nil
-		})
-		return service.project(file), nil
-	}
-
+	// Persist probe_* for unknown (clear) or when status string is canonical.
 	if err := service.store.Update(func(snapshot *stateinfra.Snapshot) error {
 		state := snapshot.Accounts[authIndex]
-		demotion := state.Demotion.Normalized()
-		if demotion.BaselinePriority == nil && domain.IsActiveDemotionClass(targetClass) {
-			if demotion.Class == domain.DemotionClassNone || demotion.Class == "" {
-				demotion.BaselinePriority = intPointer(file.Priority)
+		state.ExactFileName = file.Name
+		if canonical == domain.ProbeStatusUnknown {
+			state.Quota.ProbeStatus = ""
+			state.Quota.ProbeHTTP = 0
+			state.Quota.ProbeAt = time.Time{}
+			state.Quota.ProbeError = ""
+		} else {
+			// Keep existing http/at/error if already set for same status; only ensure status.
+			if domain.NormalizeProbeStatus(state.Quota.ProbeStatus, state.Quota.ProbeHTTP) != canonical {
+				state.Quota.ProbeStatus = canonical
+				if state.Quota.ProbeAt.IsZero() {
+					state.Quota.ProbeAt = now
+				}
+			} else {
+				state.Quota.ProbeStatus = canonical
 			}
 		}
-		demotion.State = "requested"
-		demotion.Class = targetClass
-		demotion.TargetPriority = intPointer(targetPrio)
-		demotion.TriggeredAt = &now
-		demotion.NextProbeAt = nextProbe
-		demotion.FailureCode = ""
-		if restoreNone {
-			demotion.Class = domain.DemotionClassNone
-			demotion.TargetPriority = intPointer(settings.DefaultRestorePriority)
-			demotion.NextProbeAt = nil
+		if clearDebt {
 			state.Failure.DebtScore = 0
 			state.Failure.ConsecutiveAttributedFailures = 0
 		}
-		state.ExactFileName = file.Name
-		state.Demotion = demotion
+		// Clear legacy demotion bookkeeping so list doesn't show stale tiers.
+		state.Demotion = domain.DemotionState{State: "none", Class: domain.DemotionClassNone}
 		snapshot.Accounts[authIndex] = state
 		return nil
 	}); err != nil {
 		return domain.AccountView{}, &AccountError{Code: "state_write_failed", Message: err.Error(), HTTPStatus: 503, Retryable: true}
 	}
 
-	if err := service.applyRequestedDemotionLocked(authIndex, targetPrio); err != nil {
+	if file.Priority == targetPriority {
+		return service.project(file), nil
+	}
+
+	var document map[string]any
+	if service.priorityWriter == nil {
+		document, err = service.host.GetAuthFile(authIndex)
+		if err != nil {
+			return domain.AccountView{}, hostError("auth_get_failed", err)
+		}
+	}
+	if err := service.writePriority(file, targetPriority, document); err != nil {
 		return domain.AccountView{}, err
 	}
 	verified, err := service.resolveExact(authIndex, file.Name)
 	if err != nil {
 		return domain.AccountView{}, err
+	}
+	if verified.Priority != targetPriority {
+		return domain.AccountView{}, &AccountError{Code: "write_verification_failed", Message: "优先级写后校验不一致", HTTPStatus: 502, Retryable: true}
 	}
 	return service.project(verified), nil
 }
@@ -188,9 +173,9 @@ func (service *AccountsService) ProbeAccount(authIndex, exactFileName, source st
 	if exactFileName != "" && file.Name != exactFileName {
 		return domain.AccountView{}, &AccountError{Code: "account_mapping_changed", Message: "账号文件映射已变化，请刷新列表", HTTPStatus: 409}
 	}
-	// Skip dead for auto enqueue-style probes unless explicitly manual source (manual uses panel).
-	demotion := service.store.View().Accounts[authIndex].Demotion.Normalized()
-	if source == domain.ProbeSourceAuto && demotion.Class == domain.DemotionClassDead {
+	// Skip auto probes for accounts already classified dead (frozen).
+	probe := service.store.View().Accounts[authIndex].Quota.ProbeStatus
+	if source == domain.ProbeSourceAuto && domain.NormalizeProbeStatus(probe, 0) == domain.ProbeStatusDead {
 		return service.project(file), nil
 	}
 
@@ -206,7 +191,6 @@ func (service *AccountsService) ProbeAccount(authIndex, exactFileName, source st
 	}
 	proxyURL := firstNonEmptyString(document, "proxy_url", "proxyUrl", "proxy")
 	if proxyURL == "" {
-		// Nested common locations
 		proxyURL = nestedString(document, "proxy_url")
 	}
 	if proxyURL == "" {

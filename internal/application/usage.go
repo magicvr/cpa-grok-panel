@@ -26,12 +26,17 @@ type UsageResult struct {
 	Accepted          bool   `json:"accepted"`
 	Duplicate         bool   `json:"duplicate"`
 	DedupeMode        string `json:"dedupe_mode"`
-	DemotionRequested bool   `json:"demotion_requested"`
+	DemotionRequested bool   `json:"demotion_requested"` // legacy; always false in v0.7.0
+	// PriorityRequested is set when success heals a non-live account (priority → live).
+	PriorityRequested bool `json:"priority_requested,omitempty"`
 	// ProbeRequested is set when debt threshold is crossed and auto probe should run.
 	ProbeRequested bool `json:"probe_requested,omitempty"`
+	// HealAuthIndex is set with PriorityRequested for the async priority writer.
+	HealAuthIndex string `json:"-"`
 }
 
-type DemotionEnqueuer interface {
+// PriorityEnqueuer schedules ApplyAliveStatus(live) after success heal.
+type PriorityEnqueuer interface {
 	Enqueue(authIndex string)
 }
 
@@ -40,11 +45,14 @@ type ProbeEnqueuer interface {
 	EnqueueProbe(authIndex string)
 }
 
+// DemotionEnqueuer is an alias retained for older constructors (maps to PriorityEnqueuer).
+type DemotionEnqueuer = PriorityEnqueuer
+
 type UsageService struct {
 	store            *stateinfra.Store
 	now              func() time.Time
 	settingsFallback Settings
-	demotions        DemotionEnqueuer
+	priority         PriorityEnqueuer
 	probes           ProbeEnqueuer
 }
 
@@ -52,8 +60,8 @@ func NewUsageService(store *stateinfra.Store, now func() time.Time) *UsageServic
 	return NewUsageServiceWithDemotion(store, now, DefaultSettings(), nil)
 }
 
-func NewUsageServiceWithDemotion(store *stateinfra.Store, now func() time.Time, settings Settings, demotions DemotionEnqueuer) *UsageService {
-	return &UsageService{store: store, now: now, settingsFallback: NormalizeSettings(settings), demotions: demotions}
+func NewUsageServiceWithDemotion(store *stateinfra.Store, now func() time.Time, settings Settings, priority PriorityEnqueuer) *UsageService {
+	return &UsageService{store: store, now: now, settingsFallback: NormalizeSettings(settings), priority: priority}
 }
 
 func (service *UsageService) SetProbeEnqueuer(probes ProbeEnqueuer) {
@@ -89,9 +97,13 @@ func (service *UsageService) Handle(event domain.UsageEvent) (UsageResult, error
 		if err := domain.ApplyUsage(&account.Usage, event); err != nil {
 			return err
 		}
-		demotionReq, probeReq := service.applyFailurePolicy(&account, event, now, settings)
-		result.DemotionRequested = demotionReq
+		priorityReq, probeReq := service.applyFailurePolicy(&account, event, now, settings)
+		result.PriorityRequested = priorityReq
 		result.ProbeRequested = probeReq
+		if priorityReq {
+			result.HealAuthIndex = event.AuthIndex
+			// DemotionRequested kept false; heal goes through PriorityEnqueuer.
+		}
 		snapshot.Accounts[event.AuthIndex] = account
 		if mode == "exact" {
 			snapshot.EventDedupe.ExactIDs[key] = now
@@ -102,8 +114,8 @@ func (service *UsageService) Handle(event domain.UsageEvent) (UsageResult, error
 		trimDedupe(snapshot)
 		return nil
 	})
-	if err == nil && result.DemotionRequested && service.demotions != nil {
-		service.demotions.Enqueue(event.AuthIndex)
+	if err == nil && result.PriorityRequested && service.priority != nil {
+		service.priority.Enqueue(event.AuthIndex)
 	}
 	if err == nil && result.ProbeRequested && service.probes != nil {
 		service.probes.EnqueueProbe(event.AuthIndex)
@@ -111,14 +123,13 @@ func (service *UsageService) Handle(event domain.UsageEvent) (UsageResult, error
 	return result, err
 }
 
-// applyFailurePolicy implements v0.6.0 debt → auto-probe and success restore rules.
-// Returns (demotionRequested, probeRequested).
+// applyFailurePolicy implements v0.7.0 debt → auto-probe and success alive heal.
+// Returns (priorityRequested, probeRequested).
 func (service *UsageService) applyFailurePolicy(account *domain.AccountState, event domain.UsageEvent, now time.Time, settings Settings) (bool, bool) {
 	evidenceAt := event.OccurredAt.UTC()
 	if evidenceAt.IsZero() {
 		evidenceAt = now.UTC()
 	}
-	demotion := account.Demotion.Normalized()
 	settings = NormalizeSettings(settings)
 
 	if isSuccessfulOutcome(event.Outcome) {
@@ -126,33 +137,15 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 		account.Failure.DebtScore = math.Max(0, account.Failure.DebtScore-settings.DebtSuccessDecay)
 		account.Failure.LastEvidenceAt = &evidenceAt
 
-		// Success marks probe live when previously non-live / empty.
-		probe := strings.ToLower(strings.TrimSpace(account.Quota.ProbeStatus))
-		if probe != domain.ProbeStatusLive {
+		// Success: if alive ≠ live → mark live + clear debt + request priority_live write.
+		if !domain.IsLiveProbe(account.Quota.ProbeStatus) {
 			account.Quota.ProbeStatus = domain.ProbeStatusLive
 			account.Quota.ProbeHTTP = 200
 			account.Quota.ProbeAt = evidenceAt
 			account.Quota.ProbeError = ""
-		}
-
-		// Success while demoted → restore to normal (default_restore_priority + clear debt + cancel re-probe).
-		if demotion.Class != domain.DemotionClassNone && demotion.Class != "" {
-			// Dead freezes: do not auto-restore dead on success alone — operator must manual restore
-			// or probe reclassification. Spec: success restores class≠none; apply to all including dead
-			// when traffic succeeds (account is working). Spec says:
-			// "success：… 若 class≠none → 恢复正常"
-			target := settings.DefaultRestorePriority
-			demotion.State = "requested"
-			demotion.Class = domain.DemotionClassNone
-			demotion.TargetPriority = &target
-			demotion.TriggeredAt = &evidenceAt
-			demotion.NextProbeAt = nil
-			demotion.FailureCode = ""
-			demotion.HalfOpenSince = nil
-			demotion.HalfOpenSuccesses = 0
-			account.Demotion = demotion
 			account.Failure.DebtScore = 0
 			account.Failure.ConsecutiveAttributedFailures = 0
+			account.Demotion = domain.DemotionState{State: "none", Class: domain.DemotionClassNone}
 			return true, false
 		}
 		return false, false
@@ -167,22 +160,14 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 		return false, false
 	}
 
-	// dead: freeze debt scoring
-	if demotion.Class == domain.DemotionClassDead {
-		account.Failure.LastEvidenceAt = &evidenceAt
-		account.Failure.LastFailureAt = &evidenceAt
-		account.Failure.LastFailureCode = fmt.Sprintf("http_%d", event.StatusCode)
-		return false, false
-	}
-	// watch/anomaly: no debt scoring, no debt-triggered probe
-	if demotion.Class == domain.DemotionClassWatch || demotion.Class == domain.DemotionClassAnomaly {
+	// dead probe: freeze debt scoring (no auto probe from debt).
+	if domain.NormalizeProbeStatus(account.Quota.ProbeStatus, account.Quota.ProbeHTTP) == domain.ProbeStatusDead {
 		account.Failure.LastEvidenceAt = &evidenceAt
 		account.Failure.LastFailureAt = &evidenceAt
 		account.Failure.LastFailureCode = fmt.Sprintf("http_%d", event.StatusCode)
 		return false, false
 	}
 
-	// only class==none accrues debt / streak
 	account.Failure.LastEvidenceAt = &evidenceAt
 	account.Failure.LastFailureAt = &evidenceAt
 	account.Failure.LastFailureCode = fmt.Sprintf("http_%d", event.StatusCode)
@@ -196,21 +181,15 @@ func (service *UsageService) applyFailurePolicy(account *domain.AccountState, ev
 		}
 	}
 
-	// debt ≥ threshold → zero debt and request auto probe (not direct demotion)
+	// debt ≥ threshold → zero debt and request auto probe (only trigger path in v0.7).
 	if account.Failure.DebtScore >= settings.DebtProbeThreshold {
 		account.Failure.DebtScore = 0
 		return false, true
 	}
-	// Legacy hard streak path: consecutive attributed failures still request auto probe
-	// rather than jumping to dead (probe decides the tier).
-	if account.Failure.ConsecutiveAttributedFailures >= settings.AttributedFailureThreshold {
-		account.Failure.DebtScore = 0
-		return false, true
-	}
+	// Consecutive failure path removed in v0.7.0 (field may still increment for diagnostics).
 	return false, false
 }
 
-// All attributed statuses enter the consecutive-threshold path.
 func countsThresholdStatus(settings Settings, status int) bool {
 	if status == 401 || status == 403 {
 		return true
@@ -229,7 +208,6 @@ func countsThresholdStatus(settings Settings, status int) bool {
 	return false
 }
 
-// countsStatus is kept for diagnostics / tests: any status that can contribute to demotion.
 func (service *UsageService) countsStatus(status int) bool {
 	return countsThresholdStatus(service.settings(), status)
 }

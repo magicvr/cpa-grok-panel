@@ -298,8 +298,8 @@ func (service *AccountsService) commitResign(authIndex, exactFileName, previousA
 		}
 	}
 
-	// Do not touch demotion / restore state — resign only refreshes tokens.
-	return service.project(file), nil
+	// v0.7.0: resign success → probe unknown + priority_unknown.
+	return service.applyAliveStatusLocked(authIndex, domain.ProbeStatusUnknown, false)
 }
 
 func (service *AccountsService) SetTokenRefresher(refresher TokenRefresher) {

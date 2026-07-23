@@ -87,16 +87,26 @@ func TestResignRefreshTokenSuccessUpdatesAuthFile(t *testing.T) {
 	if doc["access_token"] != "new-access" || doc["refresh_token"] != "rt-new" || doc["id_token"] != "new-id" {
 		t.Fatalf("tokens not updated: %#v", doc)
 	}
-	if doc["email"] != "user@example.com" || doc["priority"].(float64) != 5 || doc["disabled"] != false {
+	if doc["email"] != "user@example.com" || doc["disabled"] != false {
 		t.Fatalf("preserved fields lost: %#v", doc)
 	}
 	if _, ok := doc["sso"].(map[string]any); !ok {
 		t.Fatalf("sso not preserved: %#v", doc["sso"])
 	}
-	// Demotion must remain applied — resign must not auto-restore.
+	// v0.7.0: resign → probe unknown + priority_unknown (default 10).
+	settings := application.DefaultSettings()
+	if int(doc["priority"].(float64)) != settings.PriorityUnknown {
+		t.Fatalf("priority after resign=%v want=%d", doc["priority"], settings.PriorityUnknown)
+	}
+	if host.files[0].Priority != settings.PriorityUnknown {
+		t.Fatalf("host priority=%d", host.files[0].Priority)
+	}
 	state := store.View().Accounts["idx-resign"]
-	if state.Demotion.State != "applied" || state.Demotion.Class != domain.DemotionClassDead {
-		t.Fatalf("demotion changed: %+v", state.Demotion)
+	if state.Quota.ProbeStatus != "" {
+		t.Fatalf("probe should be cleared unknown: %+v", state.Quota)
+	}
+	if state.Demotion.State != "none" || state.Demotion.Class != domain.DemotionClassNone {
+		t.Fatalf("legacy demotion should be cleared: %+v", state.Demotion)
 	}
 }
 

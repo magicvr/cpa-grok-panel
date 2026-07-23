@@ -4,12 +4,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/magicvr/cpa-grok-panel/internal/domain"
 	stateinfra "github.com/magicvr/cpa-grok-panel/internal/infrastructure/state"
 )
 
-const demotionQueueSize = 256
-
+// DemotionWorker in v0.7.0 applies success-heal priority writes (priority_live).
+// Name kept for runtime wiring compatibility.
 type DemotionWorker struct {
 	accounts         *AccountsService
 	store            *stateinfra.Store
@@ -23,7 +22,7 @@ type DemotionWorker struct {
 func NewDemotionWorker(accounts *AccountsService, store *stateinfra.Store, settings Settings) *DemotionWorker {
 	return &DemotionWorker{
 		accounts: accounts, store: store, settingsFallback: NormalizeSettings(settings),
-		queue: make(chan string, demotionQueueSize), stop: make(chan struct{}), done: make(chan struct{}),
+		queue: make(chan string, 256), stop: make(chan struct{}), done: make(chan struct{}),
 	}
 }
 
@@ -32,15 +31,12 @@ func (worker *DemotionWorker) Start() {
 }
 
 func (worker *DemotionWorker) Enqueue(authIndex string) {
-	// Skip dead accounts for automatic priority rewrite recovery.
-	demotion := worker.store.View().Accounts[authIndex].Demotion.Normalized()
-	if demotion.Class == domain.DemotionClassDead && demotion.State == "applied" {
+	if authIndex == "" {
 		return
 	}
 	select {
 	case worker.queue <- authIndex:
 	default:
-		// The requested state is durable; the recovery scan will pick it up.
 	}
 }
 
@@ -51,30 +47,18 @@ func (worker *DemotionWorker) Stop() {
 
 func (worker *DemotionWorker) run() {
 	defer close(worker.done)
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
-	worker.processRequested()
 	for {
 		select {
 		case authIndex := <-worker.queue:
-			_ = worker.accounts.ApplyRequestedDemotion(authIndex, worker.settings().DeadPriority)
+			// Success heal: ensure priority_live is applied.
+			_, _ = worker.accounts.ApplyAliveStatus(authIndex, "live", true)
 		case <-ticker.C:
-			worker.processRequested()
+			// no-op scan (legacy requested demotions no longer used)
 		case <-worker.stop:
 			return
 		}
-	}
-}
-
-func (worker *DemotionWorker) processRequested() {
-	_ = worker.accounts.ReconcileDemotions()
-	for authIndex, account := range worker.store.View().Accounts {
-		demotion := account.Demotion.Normalized()
-		if demotion.State != "requested" {
-			continue
-		}
-		// Still apply requested writes for dead (manual demote path); only skip re-enqueue of applied dead.
-		_ = worker.accounts.ApplyRequestedDemotion(authIndex, worker.settings().DeadPriority)
 	}
 }
 

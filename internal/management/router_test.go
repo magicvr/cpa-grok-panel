@@ -51,32 +51,34 @@ func TestRouterPanelPath(t *testing.T) {
 		t.Fatalf("not html panel: %s", string(resp.Body)[:80])
 	}
 	for _, marker := range []string{
-		"v0.6.0", "account_file_filter", "cpa_management_bearer", "data-1p-ignore",
-		"测活积分阈值", "debt_probe_threshold", "watch_reprobe_minutes", "观察复测间隔", "anomaly_reprobe_hours",
+		"v0.7.0", "account_file_filter", "cpa_management_bearer", "data-1p-ignore",
+		"测活积分阈值", "debt_probe_threshold", "priority_live", "priority_invalid", "priority_dead",
+		"priority_throttled", "priority_unknown", "priority_error", "priority-live", "priority-unknown",
 		"data-sort=\"bot\"", "id=\"bot-filter\"", "matchesBot", "id=\"plan-filter\"", "matchesPlan",
 		"id=\"alive-filter\"", "matchesAlive", "批量刷新套餐", "data-batch-action=\"refresh-plan\"", "performBatchRefreshPlans",
 		"批量测活", "data-batch-action=\"probe\"", "performBatchProbe", "probeLiveForItem", "XAI_PROBE_URL",
 		"/v1/responses", "max_output_tokens", "classifyProbeStatus", "Reply with exactly OK",
 		"x-authenticateresponse", "x-grok-client-identifier", "api-call", "禁止直连", "payload.data",
 		"CLIProxyAPI", "空 body", "存活", "data-sort=\"alive\"", "alive-badge", "aliveCell", "probe_status",
-		"Live", "Exceed", "Dead", "Cooling", "Error", "Unknown", "批量重签", "data-batch-action=\"resign\"",
+		"aliveLabel", "正常", "无效", "死号", "限流", "异常", "未知", "批量重签", "data-batch-action=\"resign\"",
 		"/accounts/resign", "performBatchResign", "clearDiagnostic", "/accounts/clear-diagnostic", ">诊断<",
 		"bot_flag_known", "首页", "末页", "跳转", "page-input", "清除选中", "全部选中", "select-filtered",
-		"watch_priority", "anomaly_priority", "dead_priority", "apply-probe", "/accounts/apply-probe",
-		"source:'manual'", "normalizeProbeStatus", ">风控<", "观察", "异常", "死号", "debt-probe-threshold",
-		"cpa-grok-panel.theme_preference", "data-panel-theme", "html[data-panel-theme=\"light\"]",
-		"外观 / 主题", "跟随系统（跟随 CPA）", "debt_fail_401", "debt_fail_429", "debt_success_decay",
-		"outbound_proxy_url", "出站代理（批量重签）", "CPA_GROK_OUTBOUND_PROXY", "解除降权未生效",
+		"apply-probe", "/accounts/apply-probe", "source:'manual'", "normalizeProbeStatus", ">风控<",
+		"debt-probe-threshold", "cpa-grok-panel.theme_preference", "data-panel-theme",
+		"html[data-panel-theme=\"light\"]", "外观 / 主题", "跟随系统（跟随 CPA）", "debt_fail_401", "debt_fail_429",
+		"debt_success_decay", "outbound_proxy_url", "出站代理（批量重签）", "CPA_GROK_OUTBOUND_PROXY",
 		"executeAccountAction", "statusCell(item)", "unavailable=true", "CPA 标记该凭证当前不可调度",
-		"id=\"demoted-breakdown\"", "id=\"demoted-card\"", "matchesDemotionFilter", "demotionClassLabel",
-		"任意降权中", "value=\"watch\"", "value=\"anomaly\"", "value=\"requested\"", "value=\"failed\"",
-		"value=\"normal\"", "value=\"active\"", "降权中",
+		"id=\"alive-breakdown\"", "id=\"alive-summary\"", "isDemotedEffective", "matchesAliveFilter",
 	} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("panel missing %q", marker)
 		}
 	}
-	for _, forbidden := range []string{`data-action="refresh-plan"`, "performRowRefreshPlan"} {
+	for _, forbidden := range []string{
+		`data-action="refresh-plan"`, "performRowRefreshPlan",
+		`data-action="demote"`, "matchesDemotionFilter", "demotionClassLabel",
+		`id="demoted-card"`, "watch_reprobe_minutes", "观察复测",
+	} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("panel should not contain %q", forbidden)
 		}
@@ -135,17 +137,20 @@ func TestRouterClearDiagnostic(t *testing.T) {
 func TestRouterConfirmsManagementPriorityWrite(t *testing.T) {
 	store := stateinfra.OpenMemory(time.Now().UTC())
 	host := &writableHost{files: []domain.AuthFile{{
-		AuthIndex: "idx-1", Name: "xai-a.json", Provider: "xai", Type: "xai", AccountType: "oauth", Priority: -100,
+		AuthIndex: "idx-1", Name: "xai-a.json", Provider: "xai", Type: "xai", AccountType: "oauth", Priority: 12,
 	}}}
 	router := management.NewRouter(application.NewAccountsService(host, store, time.Now), store)
+	// demote/restore confirmations removed in v0.7.0
 	body := []byte(`{"auth_index":"idx-1","exact_file_name":"xai-a.json","operation":"demote","priority":-100,"previous_priority":7}`)
 	response := router.Handle(management.Request{Method: "POST", Path: management.APIPrefix + "/accounts/priority-written", Body: body})
-	if response.StatusCode != 200 {
+	if response.StatusCode != 410 {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
 	}
-	state := store.View().Accounts["idx-1"].Demotion
-	if state.State != "applied" || state.BaselinePriority == nil || *state.BaselinePriority != 7 {
-		t.Fatalf("state=%+v", state)
+	// set confirms Management already wrote priority (host must already match)
+	body = []byte(`{"auth_index":"idx-1","exact_file_name":"xai-a.json","operation":"set","priority":12}`)
+	response = router.Handle(management.Request{Method: "POST", Path: management.APIPrefix + "/accounts/priority-written", Body: body})
+	if response.StatusCode != 200 {
+		t.Fatalf("set status=%d body=%s", response.StatusCode, response.Body)
 	}
 }
 
@@ -175,36 +180,18 @@ func TestRouterRestorePriority(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	baseline, target := 10, -100
-	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
-		snapshot.Accounts["idx-1"] = domain.AccountState{Demotion: domain.DemotionState{
-			State: "applied", BaselinePriority: &baseline, TargetPriority: &target,
-		}}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
 	host := &writableHost{files: []domain.AuthFile{{
-		AuthIndex: "idx-1", Name: "xai-a.json", Provider: "xai", Type: "xai", AccountType: "oauth", Priority: target,
+		AuthIndex: "idx-1", Name: "xai-a.json", Provider: "xai", Type: "xai", AccountType: "oauth", Priority: -100,
 	}}}
 	router := management.NewRouter(application.NewAccountsService(host, store, time.Now), store)
 	body := []byte(`{"auth_index":"idx-1","exact_file_name":"xai-a.json"}`)
 	response := router.Handle(management.Request{Method: "POST", Path: "/v0/management/cpa-grok-panel/api/v1/accounts/restore-priority", Body: body})
-	if response.StatusCode != 200 {
+	if response.StatusCode != 410 {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
 	}
-	// v0.6.0: manual restore writes default_restore_priority (0), not baseline.
-	if host.files[0].Priority != 0 {
-		t.Fatalf("priority=%d want=%d", host.files[0].Priority, 0)
+	if !strings.Contains(string(response.Body), "gone") {
+		t.Fatalf("body=%s", response.Body)
 	}
-	state := store.View().Accounts["idx-1"]
-	if state.Demotion.State != "restored" || state.Demotion.Class != "none" {
-		t.Fatalf("demotion=%+v", state.Demotion)
-	}
-	if state.Quota.ProbeStatus != "" {
-		t.Fatalf("probe should be Unknown after restore: %+v", state.Quota)
-	}
-	_ = baseline
 }
 
 func TestRouterDemote(t *testing.T) {
@@ -219,15 +206,11 @@ func TestRouterDemote(t *testing.T) {
 	router := management.NewRouter(application.NewAccountsService(host, store, time.Now), store)
 	body := []byte(`{"auth_index":"idx-1","exact_file_name":"xai-a.json"}`)
 	response := router.Handle(management.Request{Method: "POST", Path: "/v0/management/cpa-grok-panel/api/v1/accounts/demote", Body: body})
-	if response.StatusCode != 200 {
+	if response.StatusCode != 410 {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
 	}
-	if host.files[0].Priority != -100 {
-		t.Fatalf("priority=%d", host.files[0].Priority)
-	}
-	state := store.View().Accounts["idx-1"].Demotion
-	if state.State != "applied" || state.BaselinePriority == nil || *state.BaselinePriority != 10 {
-		t.Fatalf("demotion=%+v", state)
+	if !strings.Contains(string(response.Body), "gone") {
+		t.Fatalf("body=%s", response.Body)
 	}
 }
 
@@ -245,7 +228,7 @@ func TestRouterUpdateSettingsThenGet(t *testing.T) {
 		t.Fatal(err)
 	}
 	router := management.NewRouter(application.NewAccountsService(fakeLister{}, store, time.Now, defaults), store, defaults)
-	body := []byte(`{"auto_refresh_enabled":false,"auto_refresh_interval_seconds":12,"batch_operation_concurrency":17,"daily_usage_reset_enabled":true,"daily_usage_reset_time":"03:45","attributed_failure_threshold":7,"count_status_429":true,"count_status_5xx":true,"debt_probe_threshold":3.5,"debt_fail_401":2.5,"debt_fail_429":0.75,"debt_success_decay":1.25,"watch_priority":-20,"anomaly_priority":-60,"dead_priority":-250,"default_restore_priority":12,"watch_reprobe_minutes":45,"anomaly_reprobe_hours":8}`)
+	body := []byte(`{"auto_refresh_enabled":false,"auto_refresh_interval_seconds":12,"batch_operation_concurrency":17,"daily_usage_reset_enabled":true,"daily_usage_reset_time":"03:45","attributed_failure_threshold":7,"count_status_429":true,"count_status_5xx":true,"debt_probe_threshold":3.5,"debt_fail_401":2.5,"debt_fail_429":0.75,"debt_success_decay":1.25,"priority_live":12,"priority_invalid":-20,"priority_dead":-250,"priority_throttled":-60,"priority_unknown":15,"priority_error":-55}`)
 	response := router.Handle(management.Request{Method: "PUT", Path: "/v0/management/cpa-grok-panel/api/v1/settings", Body: body})
 	if response.StatusCode != 200 {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
@@ -262,7 +245,7 @@ func TestRouterUpdateSettingsThenGet(t *testing.T) {
 	if err := json.Unmarshal(response.Body, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.AutoRefreshEnabled || got.AutoRefreshIntervalSeconds != 12 || got.BatchOperationConcurrency != 17 || !got.DailyUsageResetEnabled || got.DailyUsageResetTime != "03:45" || got.AttributedFailureThreshold != 7 || !got.CountStatus429 || !got.CountStatus5XX || got.DebtProbeThreshold != 3.5 || got.DebtFail401 != 2.5 || got.DebtFail429 != 0.75 || got.DebtSuccessDecay != 1.25 || got.WatchPriority != -20 || got.AnomalyPriority != -60 || got.DeadPriority != -250 || got.DefaultRestorePriority != 12 || got.WatchReprobeMinutes != 45 || got.AnomalyReprobeHours != 8 {
+	if got.AutoRefreshEnabled || got.AutoRefreshIntervalSeconds != 12 || got.BatchOperationConcurrency != 17 || !got.DailyUsageResetEnabled || got.DailyUsageResetTime != "03:45" || got.AttributedFailureThreshold != 7 || !got.CountStatus429 || !got.CountStatus5XX || got.DebtProbeThreshold != 3.5 || got.DebtFail401 != 2.5 || got.DebtFail429 != 0.75 || got.DebtSuccessDecay != 1.25 || got.PriorityLive != 12 || got.PriorityInvalid != -20 || got.PriorityDead != -250 || got.PriorityThrottled != -60 || got.PriorityUnknown != 15 || got.PriorityError != -55 {
 		t.Fatalf("settings=%+v", got.Settings)
 	}
 	if got.Revision != defaults.Revision+1 || got.Source != "state" {
@@ -297,12 +280,12 @@ func TestRouterRejectsInvalidSettings(t *testing.T) {
 	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "大于 0") {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
 	}
-	response = router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"watch_reprobe_minutes":0}`)})
-	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "1..10080") {
+	response = router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"priority_dead":1000001}`)})
+	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "priority_dead") {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
 	}
-	response = router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"anomaly_reprobe_hours":0}`)})
-	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "1..168") {
+	response = router.Handle(management.Request{Method: "PATCH", Path: management.APIPrefix + "/settings", Body: []byte(`{"priority_unknown":-1000001}`)})
+	if response.StatusCode != 400 || !strings.Contains(string(response.Body), "priority_unknown") {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
 	}
 }
@@ -321,11 +304,9 @@ func TestDefaultAutoRefreshSettings(t *testing.T) {
 	if settings.DebtProbeThreshold != 2 {
 		t.Fatalf("debt_probe_threshold=%v", settings.DebtProbeThreshold)
 	}
-	if settings.WatchPriority != -10 || settings.AnomalyPriority != -50 || settings.DeadPriority != -100 || settings.DefaultRestorePriority != 0 {
-		t.Fatalf("tier priority defaults=%+v", settings)
-	}
-	if settings.WatchReprobeMinutes != 30 || settings.AnomalyReprobeHours != 6 {
-		t.Fatalf("reprobe defaults=%+v", settings)
+	if settings.PriorityLive != 0 || settings.PriorityInvalid != -50 || settings.PriorityDead != -100 ||
+		settings.PriorityThrottled != -50 || settings.PriorityUnknown != 10 || settings.PriorityError != -50 {
+		t.Fatalf("priority_* defaults=%+v", settings)
 	}
 	if settings.DebtFail401 != 1.5 || settings.DebtFail429 != 0.5 || settings.DebtSuccessDecay != 1 {
 		t.Fatalf("debt score defaults=%+v", settings)
@@ -345,22 +326,25 @@ func TestLoadSettingsBatchConcurrencyFromEnvironment(t *testing.T) {
 
 func TestLoadSettingsSoftDemotionFromEnvironment(t *testing.T) {
 	t.Setenv("CPA_GROK_DEBT_PROBE_THRESHOLD", "3.25")
-	t.Setenv("CPA_GROK_WATCH_PRIORITY", "-25")
-	t.Setenv("CPA_GROK_DEAD_PRIORITY", "-90")
+	t.Setenv("CPA_GROK_PRIORITY_DEAD", "-90")
+	t.Setenv("CPA_GROK_PRIORITY_INVALID", "-40")
+	t.Setenv("CPA_GROK_PRIORITY_UNKNOWN", "11")
 	t.Setenv("CPA_GROK_DEBT_FAIL_401", "2")
 	t.Setenv("CPA_GROK_DEBT_FAIL_429", "0.75")
 	t.Setenv("CPA_GROK_DEBT_SUCCESS_DECAY", "1.25")
 	settings := application.LoadSettings()
-	if settings.DebtProbeThreshold != 3.25 || settings.WatchPriority != -25 || settings.DeadPriority != -90 || settings.DebtFail401 != 2 || settings.DebtFail429 != 0.75 || settings.DebtSuccessDecay != 1.25 {
+	if settings.DebtProbeThreshold != 3.25 || settings.PriorityDead != -90 || settings.PriorityInvalid != -40 || settings.PriorityUnknown != 11 || settings.DebtFail401 != 2 || settings.DebtFail429 != 0.75 || settings.DebtSuccessDecay != 1.25 {
 		t.Fatalf("settings=%+v", settings)
 	}
 }
 
 func TestLoadSettingsCooldownRestoreFromEnvironment(t *testing.T) {
-	t.Setenv("CPA_GROK_WATCH_REPROBE_MINUTES", "15")
-	t.Setenv("CPA_GROK_ANOMALY_REPROBE_HOURS", "3")
+	// Legacy dead/anomaly env aliases map into priority_* when new env unset.
+	t.Setenv("CPA_GROK_DEAD_PRIORITY", "-88")
+	t.Setenv("CPA_GROK_ANOMALY_PRIORITY", "-44")
+	t.Setenv("CPA_GROK_DEFAULT_RESTORE_PRIORITY", "3")
 	settings := application.LoadSettings()
-	if settings.WatchReprobeMinutes != 15 || settings.AnomalyReprobeHours != 3 {
+	if settings.PriorityDead != -88 || settings.PriorityError != -44 || settings.PriorityLive != 3 {
 		t.Fatalf("settings=%+v", settings)
 	}
 }
