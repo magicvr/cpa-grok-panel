@@ -1086,3 +1086,35 @@ func numberAsInt(value any) (int, bool) {
 	}
 	return number, true
 }
+
+func TestConfirmPriorityWriteRestoreClearsDemotion(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	host := &accountHost{files: []domain.AuthFile{xaiFile("idx-restore", "xai-restore.json", -100)}}
+	service := application.NewAccountsService(host, store, time.Now)
+	baseline := 8
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-restore"] = domain.AccountState{
+			ExactFileName: "xai-restore.json",
+			Demotion: domain.DemotionState{
+				State: "applied", Class: domain.DemotionClassHard,
+				BaselinePriority: &baseline, TargetPriority: func() *int { v:=-100; return &v }(),
+			},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	host.files[0].Priority = 8
+	account, err := service.ConfirmPriorityWrite("idx-restore", "xai-restore.json", "restore", 8, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if account.IsDemoted || account.Priority != 8 {
+		t.Fatalf("account=%+v", account)
+	}
+	state := store.View().Accounts["idx-restore"].Demotion
+	if state.State != "restored" || state.Class != domain.DemotionClassNone || state.RestoreCooldownHours != 0 || state.HalfOpenSuccesses != 0 {
+		t.Fatalf("demotion=%+v", state)
+	}
+}
+

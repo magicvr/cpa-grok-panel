@@ -630,6 +630,8 @@ func (service *AccountsService) ConfirmPriorityWrite(authIndex, exactFileName, o
 			state.Demotion.Class = domain.DemotionClassNone
 			state.Demotion.FailureCode = ""
 			state.Demotion.RestoreCooldownHours = 0
+			state.Demotion.HalfOpenSince = nil
+			state.Demotion.HalfOpenSuccesses = 0
 		case "set":
 			state.Demotion = domain.DemotionState{State: "none", Class: domain.DemotionClassNone}
 		default:
