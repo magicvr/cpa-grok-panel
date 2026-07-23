@@ -158,7 +158,11 @@ func ProjectAccount(file AuthFile, state AccountState, now time.Time, demotionPr
 	// Display-only: max(plugin ledger, host delta since period baseline). Tokens stay plugin-only.
 	usage = ApplyHostRequestDisplay(usage, file.Success, file.Failed, state.HostRequestBaseline)
 	demotion := state.Demotion.Normalized()
-	isDemoted := (demotion.State == "applied" && IsActiveDemotionClass(demotion.Class)) || file.Priority <= demotionPriority
+	// A restored account can legitimately have a baseline below the demotion
+	// threshold. Keep the priority fallback for legacy and incomplete records,
+	// but do not reinterpret a verified restored baseline as an active demotion.
+	restoredToBaseline := demotion.State == "restored" && demotion.BaselinePriority != nil && file.Priority == *demotion.BaselinePriority
+	isDemoted := (demotion.State == "applied" && IsActiveDemotionClass(demotion.Class)) || (!restoredToBaseline && file.Priority <= demotionPriority)
 	quota := state.Quota
 	if strings.TrimSpace(quota.Plan) == "" {
 		quota.Plan = "unknown"

@@ -806,6 +806,82 @@ func TestRestorePriorityBelowConfiguredTargetUsesRecordedBaseline(t *testing.T) 
 	}
 }
 
+func TestRestorePriorityToLowBaselineClearsDemotion(t *testing.T) {
+	baseline, target := -200, -100
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-low-baseline"] = domain.AccountState{
+			ExactFileName: "xai-low-baseline.json",
+			Demotion: domain.DemotionState{
+				State: "applied", Class: domain.DemotionClassHard,
+				BaselinePriority: &baseline, TargetPriority: &target,
+			},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	host := &accountHost{
+		files:     []domain.AuthFile{xaiFile("idx-low-baseline", "xai-low-baseline.json", target)},
+		documents: map[string]cpaabi.AuthDocument{"idx-low-baseline": {"priority": target, "disabled": false}},
+	}
+	settings := application.DefaultSettings()
+	settings.DemotionPriority = target
+	service := application.NewAccountsService(host, store, time.Now, settings)
+
+	account, err := service.RestorePriority("idx-low-baseline", "xai-low-baseline.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if account.Priority != baseline || account.IsDemoted || account.CanRestore {
+		t.Fatalf("account=%+v", account)
+	}
+	state := store.View().Accounts["idx-low-baseline"].Demotion
+	if state.State != "restored" || state.Class != domain.DemotionClassNone {
+		t.Fatalf("demotion=%+v", state)
+	}
+}
+
+func TestCooldownRestoreToLowBaselineClearsProjectedDemotion(t *testing.T) {
+	now := time.Date(2026, 7, 23, 12, 0, 0, 0, time.UTC)
+	baseline, target := -200, -100
+	triggeredAt := now.Add(-6 * time.Hour)
+	store := stateinfra.OpenMemory(now)
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		snapshot.Accounts["idx-auto-low-baseline"] = domain.AccountState{
+			ExactFileName: "xai-auto-low-baseline.json",
+			Demotion: domain.DemotionState{
+				State: "applied", Class: domain.DemotionClassHard,
+				BaselinePriority: &baseline, TargetPriority: &target,
+				TriggeredAt: &triggeredAt, RestoreCooldownHours: 6,
+			},
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	host := &accountHost{
+		files:     []domain.AuthFile{xaiFile("idx-auto-low-baseline", "xai-auto-low-baseline.json", target)},
+		documents: map[string]cpaabi.AuthDocument{"idx-auto-low-baseline": {"priority": target, "disabled": false}},
+	}
+	settings := application.DefaultSettings()
+	settings.DemotionPriority = target
+	settings.HalfOpenEnabled = false
+	service := application.NewAccountsService(host, store, func() time.Time { return now }, settings)
+
+	restored, err := service.RestorePriorityAfterCooldown("idx-auto-low-baseline")
+	if err != nil || !restored {
+		t.Fatalf("restored=%t err=%v", restored, err)
+	}
+	items, _, err := service.List("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Priority != baseline || items[0].IsDemoted || items[0].CanRestore {
+		t.Fatalf("items=%+v", items)
+	}
+}
+
 func TestCooldownRestoreLadderIncrementsAndAutomaticRestorePreservesIt(t *testing.T) {
 	now := time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC)
 	store := stateinfra.OpenMemory(now)
@@ -1117,4 +1193,3 @@ func TestConfirmPriorityWriteRestoreClearsDemotion(t *testing.T) {
 		t.Fatalf("demotion=%+v", state)
 	}
 }
-
