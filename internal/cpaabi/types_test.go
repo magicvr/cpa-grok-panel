@@ -3,7 +3,7 @@ package cpaabi
 import "testing"
 
 func TestPluginRegistrationVersion(t *testing.T) {
-	const want = "0.5.8"
+	const want = "0.5.9"
 	if PluginVersion != want {
 		t.Fatalf("PluginVersion=%q want=%q", PluginVersion, want)
 	}
