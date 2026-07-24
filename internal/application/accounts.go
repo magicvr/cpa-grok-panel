@@ -240,6 +240,46 @@ func (service *AccountsService) ApplyRequestedDemotion(authIndex string, _ int) 
 	return err
 }
 
+// SyncPriority forces CPA auth priority from the plugin's recorded probe_status
+// (PriorityForProbeStatus + PriorityWriter). Does not change probe_status.
+// skipped is true when priority already matches the target.
+func (service *AccountsService) SyncPriority(authIndex, exactFileName string) (view domain.AccountView, skipped bool, targetPriority int, err error) {
+	service.write.Lock()
+	defer service.write.Unlock()
+
+	var file domain.AuthFile
+	if strings.TrimSpace(exactFileName) != "" {
+		file, err = service.resolveExact(authIndex, exactFileName)
+	} else {
+		file, err = service.resolveByAuthIndex(authIndex)
+	}
+	if err != nil {
+		return domain.AccountView{}, false, 0, err
+	}
+
+	settings := service.settings()
+	state := service.store.View().Accounts[file.AuthIndex]
+	status := domain.CanonicalProbeStatus(state.Quota.ProbeStatus, state.Quota.ProbeHTTP)
+	targetPriority = PriorityForProbeStatus(settings, status)
+	if file.Priority == targetPriority {
+		return service.project(file), true, targetPriority, nil
+	}
+
+	if err := service.writePriority(file, targetPriority, nil); err != nil {
+		return domain.AccountView{}, false, targetPriority, err
+	}
+	verified, err := service.resolveExact(file.AuthIndex, file.Name)
+	if err != nil {
+		return domain.AccountView{}, false, targetPriority, err
+	}
+	if verified.Priority != targetPriority {
+		return domain.AccountView{}, false, targetPriority, &AccountError{
+			Code: "write_verification_failed", Message: "优先级写后校验不一致", HTTPStatus: 502, Retryable: true,
+		}
+	}
+	return service.project(verified), false, targetPriority, nil
+}
+
 // ConfirmPriorityWrite verifies a panel Management fields PATCH for set priority.
 // demote/restore operations return gone (before host verification).
 func (service *AccountsService) ConfirmPriorityWrite(authIndex, exactFileName, operation string, priority int, previousPriority *int) (domain.AccountView, error) {

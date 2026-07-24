@@ -62,6 +62,7 @@ func Registration() map[string]any {
 		{"Method": "POST", "Path": APIPrefix + "/accounts/quota", "Description": "保存账号额度快照"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/apply-probe", "Description": "应用测活结果并绑定 priority"},
 		{"Method": "POST", "Path": APIPrefix + "/accounts/resign", "Description": "用 refresh_token 重签并写回 CPA auth 文件"},
+		{"Method": "POST", "Path": APIPrefix + "/accounts/sync-priority", "Description": "按插件记录的存活状态强制同步 CPA priority（不改 probe_status）"},
 	}
 	resources := []map[string]any{
 		{"Path": ResourcePanelPath, "Menu": "Grok 账号", "Description": "Grok 账号管理面板"},
@@ -156,6 +157,16 @@ func (router *Router) Handle(request Request) cpaabi.ManagementResponse {
 			return accountErrorResponse(err)
 		}
 		return jsonResponse(200, map[string]any{"account": account})
+	case method == "POST" && matchesPath(path, "/accounts/sync-priority"):
+		var body accountTargetRequest
+		if err := decodeStrictBody(request.Body, &body); err != nil {
+			return apiError(400, "invalid_argument", err.Error(), false)
+		}
+		account, skipped, target, err := router.accounts.SyncPriority(body.AuthIndex, body.ExactFileName)
+		if err != nil {
+			return accountErrorResponse(err)
+		}
+		return jsonResponse(200, map[string]any{"account": account, "skipped": skipped, "target_priority": target})
 	case method == "POST" && matchesPath(path, "/accounts/quota"):
 		var body quotaSnapshotRequest
 		if err := decodeStrictBody(request.Body, &body); err != nil {

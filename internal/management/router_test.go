@@ -51,7 +51,7 @@ func TestRouterPanelPath(t *testing.T) {
 		t.Fatalf("not html panel: %s", string(resp.Body)[:80])
 	}
 	for _, marker := range []string{
-		"v0.7.0", "account_file_filter", "cpa_management_bearer", "data-1p-ignore",
+		"v0.7.1", "account_file_filter", "cpa_management_bearer", "data-1p-ignore",
 		"测活积分阈值", "debt_probe_threshold", "priority_live", "priority_invalid", "priority_dead",
 		"priority_throttled", "priority_unknown", "priority_error", "priority-live", "priority-unknown",
 		"data-sort=\"bot\"", "id=\"bot-filter\"", "matchesBot", "id=\"plan-filter\"", "matchesPlan",
@@ -68,7 +68,10 @@ func TestRouterPanelPath(t *testing.T) {
 		"html[data-panel-theme=\"light\"]", "外观 / 主题", "跟随系统（跟随 CPA）", "debt_fail_401", "debt_fail_429",
 		"debt_success_decay", "outbound_proxy_url", "出站代理（批量重签）", "CPA_GROK_OUTBOUND_PROXY",
 		"executeAccountAction", "statusCell(item)", "unavailable=true", "CPA 标记该凭证当前不可调度",
-		"id=\"alive-breakdown\"", "id=\"alive-summary\"", "isDemotedEffective", "matchesAliveFilter",
+		"id=\"alive-summary\"", "isDemotedEffective", "matchesAliveFilter",
+		"data-batch-action=\"refresh-priority\"", "刷新优先级", "performBatchRefreshPriority", "/accounts/sync-priority",
+		"syncPriorityForItem", "performRowResign", ">激活<", "priority_unknown:-10", "默认 -10",
+		"runConcurrent(targets,batchConcurrency()",
 	} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("panel missing %q", marker)
@@ -78,6 +81,8 @@ func TestRouterPanelPath(t *testing.T) {
 		`data-action="refresh-plan"`, "performRowRefreshPlan",
 		`data-action="demote"`, "matchesDemotionFilter", "demotionClassLabel",
 		`id="demoted-card"`, "watch_reprobe_minutes", "观察复测",
+		`data-batch-action="set-priority"`, "performBatchSetPriority", "批量设置优先级",
+		`id="alive-breakdown"`, "Math.min(3,batchConcurrency())",
 	} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("panel should not contain %q", forbidden)
@@ -305,7 +310,7 @@ func TestDefaultAutoRefreshSettings(t *testing.T) {
 		t.Fatalf("debt_probe_threshold=%v", settings.DebtProbeThreshold)
 	}
 	if settings.PriorityLive != 0 || settings.PriorityInvalid != -50 || settings.PriorityDead != -100 ||
-		settings.PriorityThrottled != -50 || settings.PriorityUnknown != 10 || settings.PriorityError != -50 {
+		settings.PriorityThrottled != -50 || settings.PriorityUnknown != -10 || settings.PriorityError != -50 {
 		t.Fatalf("priority_* defaults=%+v", settings)
 	}
 	if settings.DebtFail401 != 1.5 || settings.DebtFail429 != 0.5 || settings.DebtSuccessDecay != 1 {
@@ -460,3 +465,101 @@ func (s resignStub) Refresh(ctx context.Context, refreshToken, clientID string) 
 	return s.result, nil
 }
 
+
+func TestRouterSyncPriority(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	settings := application.DefaultSettings()
+	host := &fakeSyncHost{
+		files: []domain.AuthFile{{
+			AuthIndex: "idx-sync", Name: "xai-sync.json", Provider: "xai", Type: "xai", AccountType: "oauth", Priority: 99,
+		}},
+		documents: map[string]cpaabi.AuthDocument{"idx-sync": {"priority": 99}},
+	}
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		state := snapshot.Accounts["idx-sync"]
+		state.ExactFileName = "xai-sync.json"
+		state.Quota.ProbeStatus = domain.ProbeStatusDead
+		snapshot.Accounts["idx-sync"] = state
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := application.NewAccountsService(host, store, time.Now, settings)
+	router := management.NewRouter(service, store, settings)
+	body := []byte(`{"auth_index":"idx-sync","exact_file_name":"xai-sync.json"}`)
+	response := router.Handle(management.Request{Method: "POST", Path: management.APIPrefix + "/accounts/sync-priority", Body: body})
+	if response.StatusCode != 200 {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(response.Body, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["skipped"] == true {
+		t.Fatalf("expected write, got skipped: %+v", got)
+	}
+	if int(got["target_priority"].(float64)) != settings.PriorityDead {
+		t.Fatalf("target=%v want=%d", got["target_priority"], settings.PriorityDead)
+	}
+	if host.files[0].Priority != settings.PriorityDead {
+		t.Fatalf("priority=%d", host.files[0].Priority)
+	}
+	// second call should skip
+	response = router.Handle(management.Request{Method: "POST", Path: management.APIPrefix + "/accounts/sync-priority", Body: body})
+	if response.StatusCode != 200 {
+		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
+	}
+	if err := json.Unmarshal(response.Body, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["skipped"] != true {
+		t.Fatalf("expected skip: %+v", got)
+	}
+}
+
+type fakeSyncHost struct {
+	files     []domain.AuthFile
+	documents map[string]cpaabi.AuthDocument
+}
+
+func (host *fakeSyncHost) ListAuthFiles() ([]domain.AuthFile, error) {
+	return append([]domain.AuthFile(nil), host.files...), nil
+}
+
+func (host *fakeSyncHost) GetAuthFile(authIndex string) (cpaabi.AuthDocument, error) {
+	if doc := host.documents[authIndex]; doc != nil {
+		clone := cpaabi.AuthDocument{}
+		for k, v := range doc {
+			clone[k] = v
+		}
+		return clone, nil
+	}
+	for _, file := range host.files {
+		if file.AuthIndex == authIndex {
+			return cpaabi.AuthDocument{"priority": file.Priority}, nil
+		}
+	}
+	return nil, nil
+}
+
+func (host *fakeSyncHost) SaveAuthFile(name string, document cpaabi.AuthDocument) error {
+	for i := range host.files {
+		if host.files[i].Name != name {
+			continue
+		}
+		if priority, ok := document["priority"].(int); ok {
+			host.files[i].Priority = priority
+		} else if priority, ok := document["priority"].(float64); ok {
+			host.files[i].Priority = int(priority)
+		}
+		if host.documents == nil {
+			host.documents = map[string]cpaabi.AuthDocument{}
+		}
+		clone := cpaabi.AuthDocument{}
+		for k, v := range document {
+			clone[k] = v
+		}
+		host.documents[host.files[i].AuthIndex] = clone
+	}
+	return nil
+}
