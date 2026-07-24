@@ -51,7 +51,7 @@ func TestRouterPanelPath(t *testing.T) {
 		t.Fatalf("not html panel: %s", string(resp.Body)[:80])
 	}
 	for _, marker := range []string{
-		"v0.7.1", "account_file_filter", "cpa_management_bearer", "data-1p-ignore",
+		"v0.7.2", "account_file_filter", "cpa_management_bearer", "data-1p-ignore",
 		"测活积分阈值", "debt_probe_threshold", "priority_live", "priority_invalid", "priority_dead",
 		"priority_throttled", "priority_unknown", "priority_error", "priority-live", "priority-unknown",
 		"data-sort=\"bot\"", "id=\"bot-filter\"", "matchesBot", "id=\"plan-filter\"", "matchesPlan",
@@ -70,8 +70,9 @@ func TestRouterPanelPath(t *testing.T) {
 		"executeAccountAction", "statusCell(item)", "unavailable=true", "CPA 标记该凭证当前不可调度",
 		"id=\"alive-summary\"", "isDemotedEffective", "matchesAliveFilter",
 		"data-batch-action=\"refresh-priority\"", "刷新优先级", "performBatchRefreshPriority", "/accounts/sync-priority",
-		"syncPriorityForItem", "performRowResign", ">激活<", "priority_unknown:-10", "默认 -10",
-		"runConcurrent(targets,batchConcurrency()",
+		"syncPriorityForItem", "performRowResign", "performRowProbe", "data-action=\"probe\"", ">测活<", ">启用<",
+		"priority_unknown:-10", "默认 -10",
+		"runConcurrent(targets,batchConcurrency()", "成功 ${succeeded} · 失败 ${failed}",
 	} {
 		if !strings.Contains(body, marker) {
 			t.Fatalf("panel missing %q", marker)
@@ -83,6 +84,7 @@ func TestRouterPanelPath(t *testing.T) {
 		`id="demoted-card"`, "watch_reprobe_minutes", "观察复测",
 		`data-batch-action="set-priority"`, "performBatchSetPriority", "批量设置优先级",
 		`id="alive-breakdown"`, "Math.min(3,batchConcurrency())",
+		">激活<",
 	} {
 		if strings.Contains(body, forbidden) {
 			t.Fatalf("panel should not contain %q", forbidden)
@@ -504,7 +506,7 @@ func TestRouterSyncPriority(t *testing.T) {
 	if host.files[0].Priority != settings.PriorityDead {
 		t.Fatalf("priority=%d", host.files[0].Priority)
 	}
-	// second call should skip
+	// second call must still write (never skip when priority already matches)
 	response = router.Handle(management.Request{Method: "POST", Path: management.APIPrefix + "/accounts/sync-priority", Body: body})
 	if response.StatusCode != 200 {
 		t.Fatalf("status=%d body=%s", response.StatusCode, response.Body)
@@ -512,8 +514,8 @@ func TestRouterSyncPriority(t *testing.T) {
 	if err := json.Unmarshal(response.Body, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got["skipped"] != true {
-		t.Fatalf("expected skip: %+v", got)
+	if got["skipped"] == true {
+		t.Fatalf("expected write again (no skip): %+v", got)
 	}
 }
 

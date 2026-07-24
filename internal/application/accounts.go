@@ -242,7 +242,7 @@ func (service *AccountsService) ApplyRequestedDemotion(authIndex string, _ int) 
 
 // SyncPriority forces CPA auth priority from the plugin's recorded probe_status
 // (PriorityForProbeStatus + PriorityWriter). Does not change probe_status.
-// skipped is true when priority already matches the target.
+// Always writes even when priority already matches the target (skipped is always false).
 func (service *AccountsService) SyncPriority(authIndex, exactFileName string) (view domain.AccountView, skipped bool, targetPriority int, err error) {
 	service.write.Lock()
 	defer service.write.Unlock()
@@ -261,9 +261,6 @@ func (service *AccountsService) SyncPriority(authIndex, exactFileName string) (v
 	state := service.store.View().Accounts[file.AuthIndex]
 	status := domain.CanonicalProbeStatus(state.Quota.ProbeStatus, state.Quota.ProbeHTTP)
 	targetPriority = PriorityForProbeStatus(settings, status)
-	if file.Priority == targetPriority {
-		return service.project(file), true, targetPriority, nil
-	}
 
 	if err := service.writePriority(file, targetPriority, nil); err != nil {
 		return domain.AccountView{}, false, targetPriority, err

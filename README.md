@@ -7,7 +7,7 @@
 **CLIProxyAPI（CPA）** 的 Grok / xAI OAuth 账号运维面板。
 
 在 CPA 管理页集中查看账号状态、Token 用量与套餐缓存，并安全地启用 / 停用 / 设置优先级 / 删除账号。  
-插件 id：`cpa-grok-panel` · 当前文档对应 **v0.7.1**（Linux **amd64 / arm64** · Windows **amd64 / arm64**）。
+插件 id：`cpa-grok-panel` · 当前文档对应 **v0.7.2**（Linux **amd64 / arm64** · Windows **amd64 / arm64**）。
 
 ## 友链
 
@@ -40,7 +40,7 @@
 | **用量列** | `用量/限额` + 进度条；付费用 billing；Free 用插件日 token 与 Free 日限额（默认 2M） |
 | **用量统计** | 累计 CPA `usage` 回调真实 input / output / total token |
 | **请求数 host 补偿** | `host.auth.list` success/failed 相对周期 baseline 的增量补偿；与每日清零兼容 |
-| **账号操作** | 单账号：激活、停用、重签、删除；批量：启停、刷新优先级、测活、刷套餐、重签、安全删除（**无**手动设 priority / 降权） |
+| **账号操作** | 单账号：启用/停用、测活、重签、删除；批量：启停、刷新优先级、测活、刷套餐、重签、安全删除（**无**手动设 priority / 降权） |
 | **批量重签（refresh_token）** | auth 文件 `refresh_token` 换票写回；**不含** SSO；成功后存活→未知 + `priority_unknown`；出站用 `outbound_proxy_url` / `CPA_GROK_OUTBOUND_PROXY`（≠ CPA `proxy-url`） |
 | **积分→自动测活** | 失败按权重加 debt；成功可衰减；`debt ≥ debt_probe_threshold` → 清零 debt → 自动测活；死号冻结积分 |
 | **成功回血** | 任意 usage success 且存活≠正常 → 正常 + `priority_live` + 清 debt |
@@ -89,7 +89,7 @@ https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
 | --- | --- |
 | `id` | `cpa-grok-panel` |
 | `name` | Grok 账号面板 |
-| `version` | 与最新 Release 对齐（如 `0.7.1`） |
+| `version` | 与最新 Release 对齐（如 `0.7.2`） |
 | `repository` | `https://github.com/magicvr/cpa-grok-panel` |
 
 ```bash
@@ -118,7 +118,7 @@ plugins:
 
 1. 打开 CPA 管理页（如 `http://<cpa-host>:<port>/management.html`），用 management key 登录  
 2. **插件 / 插件商店** → 找到 **Grok 账号面板**（id `cpa-grok-panel`）  
-3. 选择版本（一般最新，如 `0.7.1`）并安装
+3. 选择版本（一般最新，如 `0.7.2`）并安装
 4. **完整停止并重新启动整个 CPA 进程**（原生 `.so`：热更新 / 只重载配置可能仍加载旧库）
 
 Management API 示例：
@@ -128,7 +128,7 @@ POST /v0/management/plugin-store/cpa-grok-panel/install
 Authorization: Bearer <management_key>
 Content-Type: application/json
 
-{"version":"0.7.1"}
+{"version":"0.7.2"}
 ```
 
 版本号为去掉 `v` 前缀的 semver，须与 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 已发布 tag 一致。
@@ -143,10 +143,10 @@ Content-Type: application/json
 适合不改 `store-sources`、离线拷包或商店链路不通。
 
 1. 在 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 按 CPA 主机架构下载  
-   - **Linux x86_64：** `cpa-grok-panel_0.7.1_linux_amd64.zip`  
-   - **Linux arm64：** `cpa-grok-panel_0.7.1_linux_arm64.zip`  
-   - **Windows x64：** `cpa-grok-panel_0.7.1_windows_amd64.zip`（根目录 `cpa-grok-panel.dll`）  
-   - **Windows ARM64：** `cpa-grok-panel_0.7.1_windows_arm64.zip`  
+   - **Linux x86_64：** `cpa-grok-panel_0.7.2_linux_amd64.zip`  
+   - **Linux arm64：** `cpa-grok-panel_0.7.2_linux_arm64.zip`  
+   - **Windows x64：** `cpa-grok-panel_0.7.2_windows_amd64.zip`（根目录 `cpa-grok-panel.dll`）  
+   - **Windows ARM64：** `cpa-grok-panel_0.7.2_windows_arm64.zip`  
    - （可选）`checksums.txt`  
 2. CPA **插件管理**里本地安装 / 上传该 zip  
    - zip **根目录**必须是 `cpa-grok-panel.so`，不要改包内结构  
@@ -226,7 +226,8 @@ Content-Type: application/json
 
 | 操作 | 行为 |
 | --- | --- |
-| **激活 / 停用** | Management status API（激活 = enabled，disabled=false） |
+| **启用 / 停用** | Management status API（启用 = enabled，disabled=false） |
+| **测活** | 与批量测活相同：CPA `api-call` + `data` 字符串 → `POST /accounts/apply-probe`（`source=manual`）；仅该 auth；完成后刷新列表 |
 | **重签** | `POST /accounts/resign`；成功后存活→未知 + `priority_unknown` |
 | **安全删除** | 须输入精确文件名；映射变化则跳过 |
 
@@ -236,7 +237,7 @@ Content-Type: application/json
 
 - 表头选当前页；「全部选中」= 当前筛选结果
 - 支持：启用、停用、批量测活、批量刷新套餐、批量重签、**刷新优先级**、安全删除（已移除批量设置优先级）
-- 刷新优先级：按插件记录的存活状态强制写 CPA `priority_*` 映射，**不改** `probe_status`；已是目标值则 skip
+- 刷新优先级：按插件记录的存活状态**始终强制写** CPA `priority_*` 映射，**不改** `probe_status`；数值已相同也算成功写入（**不**再 skip）
 - 批量测活 `source=manual`；api-call **`data` 字符串**（v0.5.11 起，勿回退）
 - 批量并发统一走 `runConcurrent(..., batch_operation_concurrency)`（默认 10，范围 1–50）。启停 / 删除 / 测活 / 重签 / 刷套餐 / 刷新优先级均完整使用该并发。CPA 管理端 PATCH 多文件在浏览器侧并发是常见做法；**插件侧未发现 CPA 官方“禁止并发”限制**。若偶发 429/锁冲突，用户可把并发调低。
 
@@ -310,6 +311,12 @@ priority 由 worker / `ApplyAliveStatus` **异步或同步**写入（优先 Mana
 
 ## Changelog
 
+### v0.7.2
+
+- **刷新优先级不再跳过**：`SyncPriority` 始终 `writePriority` 强制写入；即使 CPA priority 已等于目标值也算成功（API `skipped` 恒为 false；前端汇总仅「成功 / 失败」）
+- **行操作**：去掉行内「激活」；顺序改为 **启用/停用 → 测活 → 重签 → 删除**
+- **行内测活**：与批量测活相同路径（CPA `api-call` + `data` 字符串 + `apply-probe`，`source=manual`）；仅该 auth；完成后刷新列表
+
 ### v0.7.1
 
 - **行操作**：每行提供 **激活**（启用账号）/ **重签** / 停用 / 删除；去掉行内「启用」文案（语义同激活）
@@ -373,15 +380,15 @@ checksums.txt
 一键打包（本机有 `aarch64-linux-gnu-gcc` 时会同时打 arm64）：
 
 ```bash
-./scripts/package_release.sh 0.7.1
+./scripts/package_release.sh 0.7.2
 # 生成例如：
-#   dist/cpa-grok-panel_0.7.1_linux_amd64.zip
-#   dist/cpa-grok-panel_0.7.1_linux_arm64.zip
+#   dist/cpa-grok-panel_0.7.2_linux_amd64.zip
+#   dist/cpa-grok-panel_0.7.2_linux_arm64.zip
 #   dist/checksums.txt
 
-gh release upload v0.7.1 \
-  dist/cpa-grok-panel_0.7.1_linux_amd64.zip \
-  dist/cpa-grok-panel_0.7.1_linux_arm64.zip \
+gh release upload v0.7.2 \
+  dist/cpa-grok-panel_0.7.2_linux_amd64.zip \
+  dist/cpa-grok-panel_0.7.2_linux_arm64.zip \
   dist/checksums.txt \
   --clobber
 ```
@@ -392,4 +399,4 @@ gh release upload v0.7.1 \
 - 评审与探测：[docs/reviews/](docs/reviews/)
 - 发行版：[Releases](https://github.com/magicvr/cpa-grok-panel/releases)
 
-README 以当前可安装版本 **v0.7.1** 为准。
+README 以当前可安装版本 **v0.7.2** 为准。

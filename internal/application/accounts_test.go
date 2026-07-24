@@ -1354,8 +1354,8 @@ func TestSyncPriorityFromProbeStatus(t *testing.T) {
 		t.Fatalf("probe changed: %+v", store.View().Accounts["idx-sync"].Quota)
 	}
 	_, skipped, _, err = service.SyncPriority("idx-sync", "xai-sync.json")
-	if err != nil || !skipped {
-		t.Fatalf("second call skipped=%t err=%v", skipped, err)
+	if err != nil || skipped {
+		t.Fatalf("second call skipped=%t err=%v (must always write, never skip)", skipped, err)
 	}
 	// unknown status -> priority_unknown
 	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
