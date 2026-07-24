@@ -93,7 +93,7 @@ func TestResignRefreshTokenSuccessUpdatesAuthFile(t *testing.T) {
 	if _, ok := doc["sso"].(map[string]any); !ok {
 		t.Fatalf("sso not preserved: %#v", doc["sso"])
 	}
-	// v0.7.0: resign → probe unknown + priority_unknown (default 10).
+	// v0.7.1: resign → probe unknown + priority_unknown (default -10).
 	settings := application.DefaultSettings()
 	if int(doc["priority"].(float64)) != settings.PriorityUnknown {
 		t.Fatalf("priority after resign=%v want=%d", doc["priority"], settings.PriorityUnknown)

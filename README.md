@@ -7,7 +7,7 @@
 **CLIProxyAPI（CPA）** 的 Grok / xAI OAuth 账号运维面板。
 
 在 CPA 管理页集中查看账号状态、Token 用量与套餐缓存，并安全地启用 / 停用 / 设置优先级 / 删除账号。  
-插件 id：`cpa-grok-panel` · 当前文档对应 **v0.7.0**（Linux **amd64 / arm64** · Windows **amd64 / arm64**）。
+插件 id：`cpa-grok-panel` · 当前文档对应 **v0.7.1**（Linux **amd64 / arm64** · Windows **amd64 / arm64**）。
 
 ## 友链
 
@@ -36,11 +36,11 @@
 | **批量刷新套餐** | 独立按钮；原 billing 逻辑；**不**清掉测活结果 |
 | **套餐列** | badge：`Unknown`（plan=unknown）/ Free / SuperGrok / SuperGrok Heavy；失败记 unknown |
 | **存活列** | 唯一状态机：正常 / 无效 / 死号 / 限流 / 异常 / 未知（中文 UI；存盘小写英文） |
-| **priority 绑定** | 存活状态变更时同步写 CPA auth `priority`（`priority_live/invalid/dead/throttled/unknown/error`） |
+| **priority 绑定** | 存活状态变更时同步写 CPA auth `priority`；可对已选账号 **刷新优先级**（按当前存活强制写回，不改 probe） |
 | **用量列** | `用量/限额` + 进度条；付费用 billing；Free 用插件日 token 与 Free 日限额（默认 2M） |
 | **用量统计** | 累计 CPA `usage` 回调真实 input / output / total token |
 | **请求数 host 补偿** | `host.auth.list` success/failed 相对周期 baseline 的增量补偿；与每日清零兼容 |
-| **账号操作** | 单账号与批量：启用、停用、设置优先级、测活、重签、删除（**无**手动降权/解除降权） |
+| **账号操作** | 单账号：激活、停用、重签、删除；批量：启停、刷新优先级、测活、刷套餐、重签、安全删除（**无**手动设 priority / 降权） |
 | **批量重签（refresh_token）** | auth 文件 `refresh_token` 换票写回；**不含** SSO；成功后存活→未知 + `priority_unknown`；出站用 `outbound_proxy_url` / `CPA_GROK_OUTBOUND_PROXY`（≠ CPA `proxy-url`） |
 | **积分→自动测活** | 失败按权重加 debt；成功可衰减；`debt ≥ debt_probe_threshold` → 清零 debt → 自动测活；死号冻结积分 |
 | **成功回血** | 任意 usage success 且存活≠正常 → 正常 + `priority_live` + 清 debt |
@@ -89,7 +89,7 @@ https://raw.githubusercontent.com/magicvr/cpa-grok-panel/main/registry.json
 | --- | --- |
 | `id` | `cpa-grok-panel` |
 | `name` | Grok 账号面板 |
-| `version` | 与最新 Release 对齐（如 `0.7.0`） |
+| `version` | 与最新 Release 对齐（如 `0.7.1`） |
 | `repository` | `https://github.com/magicvr/cpa-grok-panel` |
 
 ```bash
@@ -118,7 +118,7 @@ plugins:
 
 1. 打开 CPA 管理页（如 `http://<cpa-host>:<port>/management.html`），用 management key 登录  
 2. **插件 / 插件商店** → 找到 **Grok 账号面板**（id `cpa-grok-panel`）  
-3. 选择版本（一般最新，如 `0.7.0`）并安装
+3. 选择版本（一般最新，如 `0.7.1`）并安装
 4. **完整停止并重新启动整个 CPA 进程**（原生 `.so`：热更新 / 只重载配置可能仍加载旧库）
 
 Management API 示例：
@@ -128,7 +128,7 @@ POST /v0/management/plugin-store/cpa-grok-panel/install
 Authorization: Bearer <management_key>
 Content-Type: application/json
 
-{"version":"0.7.0"}
+{"version":"0.7.1"}
 ```
 
 版本号为去掉 `v` 前缀的 semver，须与 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 已发布 tag 一致。
@@ -143,10 +143,10 @@ Content-Type: application/json
 适合不改 `store-sources`、离线拷包或商店链路不通。
 
 1. 在 [Releases](https://github.com/magicvr/cpa-grok-panel/releases) 按 CPA 主机架构下载  
-   - **Linux x86_64：** `cpa-grok-panel_0.7.0_linux_amd64.zip`  
-   - **Linux arm64：** `cpa-grok-panel_0.7.0_linux_arm64.zip`  
-   - **Windows x64：** `cpa-grok-panel_0.7.0_windows_amd64.zip`（根目录 `cpa-grok-panel.dll`）  
-   - **Windows ARM64：** `cpa-grok-panel_0.7.0_windows_arm64.zip`  
+   - **Linux x86_64：** `cpa-grok-panel_0.7.1_linux_amd64.zip`  
+   - **Linux arm64：** `cpa-grok-panel_0.7.1_linux_arm64.zip`  
+   - **Windows x64：** `cpa-grok-panel_0.7.1_windows_amd64.zip`（根目录 `cpa-grok-panel.dll`）  
+   - **Windows ARM64：** `cpa-grok-panel_0.7.1_windows_arm64.zip`  
    - （可选）`checksums.txt`  
 2. CPA **插件管理**里本地安装 / 上传该 zip  
    - zip **根目录**必须是 `cpa-grok-panel.so`，不要改包内结构  
@@ -184,7 +184,7 @@ Content-Type: application/json
 - 搜索文件名；筛选项：**存活 → 套餐 → 风控 → 状态**
 - 分页 20 / 50 / 100
 - 可排序：账号文件、套餐、存活、状态、风控、优先级、用量、成功 / 失败数
-- 顶部汇总：账号数、存活（正常）及分项、成功 / 失败请求、累计 Token
+- 顶部汇总：账号数、存活（正常大数字）、成功 / 失败请求、累计 Token（无存活分项小字）
 - `is_demoted`：便捷字段 = `probe_status` 非 live 且非 unknown（列表以存活 + priority 为准）
 
 ### 套餐、存活与测活
@@ -209,7 +209,7 @@ Content-Type: application/json
 | 401（兼容旧 `exceed`/`failure`） | `invalid` | **无效** | `priority_invalid` = -50 |
 | 403 | `dead` | **死号** | `priority_dead` = -100 |
 | 429（兼容旧 `cooling`） | `throttled` | **限流** | `priority_throttled` = -50 |
-| 从未测活 / 重签后清空 | `""` 或 `unknown` | **未知** | `priority_unknown` = **10** |
+| 从未测活 / 重签后清空 | `""` 或 `unknown` | **未知** | `priority_unknown` = **-10** |
 | 其它错误 | `error` | **异常** | `priority_error` = -50 |
 
 **规则**：存活状态变更时，**必须**经 PriorityWriter / fields API 把 CPA auth 的 `priority` 写成该状态对应设置值。
@@ -226,8 +226,8 @@ Content-Type: application/json
 
 | 操作 | 行为 |
 | --- | --- |
-| **启用 / 停用** | Management status API |
-| **设置优先级** | 直接写 CPA priority（仍可用） |
+| **激活 / 停用** | Management status API（激活 = enabled，disabled=false） |
+| **重签** | `POST /accounts/resign`；成功后存活→未知 + `priority_unknown` |
 | **安全删除** | 须输入精确文件名；映射变化则跳过 |
 
 > v0.7.0 **已移除** UI/API：`/accounts/demote`、`/accounts/restore-priority`（返回 **410 gone**）。priority 随存活状态自动绑定。
@@ -235,9 +235,10 @@ Content-Type: application/json
 ### 批量操作
 
 - 表头选当前页；「全部选中」= 当前筛选结果
-- 支持：启用、停用、批量测活、批量刷新套餐、批量重签、设置优先级、安全删除
+- 支持：启用、停用、批量测活、批量刷新套餐、批量重签、**刷新优先级**、安全删除（已移除批量设置优先级）
+- 刷新优先级：按插件记录的存活状态强制写 CPA `priority_*` 映射，**不改** `probe_status`；已是目标值则 skip
 - 批量测活 `source=manual`；api-call **`data` 字符串**（v0.5.11 起，勿回退）
-- 有限并发（默认 10）；测活并发更保守（约 3）
+- 批量并发统一走 `runConcurrent(..., batch_operation_concurrency)`（默认 10，范围 1–50）。启停 / 删除 / 测活 / 重签 / 刷套餐 / 刷新优先级均完整使用该并发。CPA 管理端 PATCH 多文件在浏览器侧并发是常见做法；**插件侧未发现 CPA 官方“禁止并发”限制**。若偶发 429/锁冲突，用户可把并发调低。
 
 ### 自动刷新（列表）
 
@@ -293,7 +294,7 @@ priority 由 worker / `ApplyAliveStatus` **异步或同步**写入（优先 Mana
 | `priority_invalid` / `CPA_GROK_PRIORITY_INVALID` | `-50` | 无效态 priority |
 | `priority_dead` / `CPA_GROK_PRIORITY_DEAD` | `-100` | 死号 priority（旧 `CPA_GROK_DEAD_PRIORITY` / `CPA_GROK_DEMOTION_PRIORITY` 为别名） |
 | `priority_throttled` / `CPA_GROK_PRIORITY_THROTTLED` | `-50` | 限流态 priority |
-| `priority_unknown` / `CPA_GROK_PRIORITY_UNKNOWN` | `10` | 未知 / 重签后 priority |
+| `priority_unknown` / `CPA_GROK_PRIORITY_UNKNOWN` | `-10` | 未知 / 重签后 priority |
 | `priority_error` / `CPA_GROK_PRIORITY_ERROR` | `-50` | 异常态 priority（旧 `CPA_GROK_ANOMALY_PRIORITY` 可映射） |
 | `CPA_GROK_COUNT_429` | `false` | 429 是否计入 debt |
 | `CPA_GROK_COUNT_5XX` | `false` | 5xx 是否计入连败计数 |
@@ -309,13 +310,23 @@ priority 由 worker / `ApplyAliveStatus` **异步或同步**写入（优先 Mana
 
 ## Changelog
 
+### v0.7.1
+
+- **行操作**：每行提供 **激活**（启用账号）/ **重签** / 停用 / 删除；去掉行内「启用」文案（语义同激活）
+- **去掉批量设置优先级**：删除按钮与 `performBatchSetPriority`
+- **刷新优先级**：批量栏按钮替换原「批量设置优先级」；`POST /accounts/sync-priority` 按当前存活状态强制写 CPA priority（不改 probe）；已是目标值 skip
+- **存活卡片**：去掉 `#alive-breakdown` 分项小字，仅保留正常大数字
+- **未知默认 priority**：`priority_unknown` 默认 **10 → -10**
+- **批量并发**：enable/disable/delete/probe/resign/refresh-plan/refresh-priority 统一 `runConcurrent(..., batch_operation_concurrency)`；测活/刷套餐不再人为 cap 3。CPA 侧未见官方禁止并发限制；429/锁冲突时可调低并发
+
 ### v0.7.0
 
+
 - **存活唯一状态机**：`live` / `invalid` / `dead` / `throttled` / `error` / `unknown`；UI 中文：正常 / 无效 / 死号 / 限流 / 异常 / 未知
-- **priority 绑定**：状态变更 → 写对应 `priority_*`（默认 0 / -50 / -100 / -50 / 10 / -50）；测活结果始终 ApplyAliveStatus
+- **priority 绑定**：状态变更 → 写对应 `priority_*`（默认 0 / -50 / -100 / -50 / 10 / -50；v0.7.1 起 unknown 默认改为 -10）；测活结果始终 ApplyAliveStatus
 - **积分策略简化**：仅 debt 阈值触发自动测活；去掉连败触发路径；死号冻结积分；成功回血为正常并清 debt
 - **去掉降权概念**：删除批量/单行降权与解除降权 UI；`/accounts/demote`、`/accounts/restore-priority` 返回 410
-- **重签**：成功后 probe 清空为未知 + `priority_unknown`（默认 10）
+- **重签**：成功后 probe 清空为未知 + `priority_unknown`（v0.7.0 默认 10；v0.7.1 起默认 -10）
 - **诊断栏**：只显示积分 debt；去掉连败/观察/异常/half-open 展示
 - **设置**：`priority_*` + debt 阈值；忽略旧 watch/anomaly/dead_priority / demotion_*
 
@@ -362,15 +373,15 @@ checksums.txt
 一键打包（本机有 `aarch64-linux-gnu-gcc` 时会同时打 arm64）：
 
 ```bash
-./scripts/package_release.sh 0.7.0
+./scripts/package_release.sh 0.7.1
 # 生成例如：
-#   dist/cpa-grok-panel_0.7.0_linux_amd64.zip
-#   dist/cpa-grok-panel_0.7.0_linux_arm64.zip
+#   dist/cpa-grok-panel_0.7.1_linux_amd64.zip
+#   dist/cpa-grok-panel_0.7.1_linux_arm64.zip
 #   dist/checksums.txt
 
-gh release upload v0.7.0 \
-  dist/cpa-grok-panel_0.7.0_linux_amd64.zip \
-  dist/cpa-grok-panel_0.7.0_linux_arm64.zip \
+gh release upload v0.7.1 \
+  dist/cpa-grok-panel_0.7.1_linux_amd64.zip \
+  dist/cpa-grok-panel_0.7.1_linux_arm64.zip \
   dist/checksums.txt \
   --clobber
 ```
@@ -381,4 +392,4 @@ gh release upload v0.7.0 \
 - 评审与探测：[docs/reviews/](docs/reviews/)
 - 发行版：[Releases](https://github.com/magicvr/cpa-grok-panel/releases)
 
-README 以当前可安装版本 **v0.7.0** 为准。
+README 以当前可安装版本 **v0.7.1** 为准。

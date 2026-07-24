@@ -1323,3 +1323,54 @@ func TestApplyRequestedDemotionHealsLive(t *testing.T) {
 		t.Fatalf("host priority=%d", host.files[0].Priority)
 	}
 }
+
+
+func TestSyncPriorityFromProbeStatus(t *testing.T) {
+	store := stateinfra.OpenMemory(time.Now().UTC())
+	settings := application.DefaultSettings()
+	host := &accountHost{
+		files:     []domain.AuthFile{xaiFile("idx-sync", "xai-sync.json", 7)},
+		documents: map[string]cpaabi.AuthDocument{"idx-sync": {"priority": 7}},
+	}
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		state := snapshot.Accounts["idx-sync"]
+		state.ExactFileName = "xai-sync.json"
+		state.Quota.ProbeStatus = domain.ProbeStatusInvalid
+		snapshot.Accounts["idx-sync"] = state
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	service := application.NewAccountsService(host, store, time.Now, settings)
+	view, skipped, target, err := service.SyncPriority("idx-sync", "xai-sync.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skipped || target != settings.PriorityInvalid || host.files[0].Priority != settings.PriorityInvalid {
+		t.Fatalf("view=%+v skipped=%t target=%d priority=%d", view, skipped, target, host.files[0].Priority)
+	}
+	// probe_status must be unchanged
+	if store.View().Accounts["idx-sync"].Quota.ProbeStatus != domain.ProbeStatusInvalid {
+		t.Fatalf("probe changed: %+v", store.View().Accounts["idx-sync"].Quota)
+	}
+	_, skipped, _, err = service.SyncPriority("idx-sync", "xai-sync.json")
+	if err != nil || !skipped {
+		t.Fatalf("second call skipped=%t err=%v", skipped, err)
+	}
+	// unknown status -> priority_unknown
+	if err := store.Update(func(snapshot *stateinfra.Snapshot) error {
+		state := snapshot.Accounts["idx-sync"]
+		state.Quota.ProbeStatus = ""
+		snapshot.Accounts["idx-sync"] = state
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	_, skipped, target, err = service.SyncPriority("idx-sync", "xai-sync.json")
+	if err != nil || skipped || target != settings.PriorityUnknown || host.files[0].Priority != settings.PriorityUnknown {
+		t.Fatalf("unknown sync skipped=%t target=%d priority=%d err=%v", skipped, target, host.files[0].Priority, err)
+	}
+	if settings.PriorityUnknown != -10 {
+		t.Fatalf("PriorityUnknown default=%d want -10", settings.PriorityUnknown)
+	}
+}

@@ -25,7 +25,7 @@ func DefaultSettings() Settings {
 		DebtProbeThreshold:        2.0,
 		DebtFail401:               1.5, DebtFail429: 0.5, DebtSuccessDecay: 1.0,
 		PriorityLive: 0, PriorityInvalid: -50, PriorityDead: -100,
-		PriorityThrottled: -50, PriorityUnknown: 10, PriorityError: -50,
+		PriorityThrottled: -50, PriorityUnknown: -10, PriorityError: -50,
 		// Legacy mirrors (ignored by v0.7 policy; kept for older JSON readers).
 		WatchPriority: -10, AnomalyPriority: -50, DeadPriority: -100,
 		DefaultRestorePriority: 0, DemotionPriority: -100, SoftDemotionPriority: -10,
@@ -302,7 +302,7 @@ func BuildMeta(snapshot stateinfra.Snapshot, stateInfo ...stateinfra.Info) Meta 
 		Capabilities: []string{
 			"usage", "auth_list", "auth_get", "auth_save", "management_routes", "set_enabled",
 			"alive_probe", "alive_priority_bind", "debt_probe_threshold", "safe_delete",
-			"daily_usage_reset", "token_resign",
+			"daily_usage_reset", "token_resign", "sync_priority",
 		},
 		UnavailableFeatures: []Unavailable{{Feature: "checks", Reason: "host.auth.invoke 未提供"}}}
 }
